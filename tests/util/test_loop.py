@@ -5,15 +5,22 @@ import contextlib
 import threading
 from unittest.mock import Mock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import loop as haloop
 
 from tests.common import extract_stack_to_frame
+from tests.hass_fixtures import LogCapture, caplog, hass
 
 
-def banned_function():
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture so imported `hass` resolves via Depends()."""
+    return 0
+
+
+def banned_function() -> None:
     """Mock banned function."""
 
 
@@ -42,14 +49,17 @@ def patch_get_current_frame(stack: list[Mock]) -> Generator[None]:
         yield
 
 
-async def test_raise_for_blocking_call_async() -> None:
+@test
+async def raise_for_blocking_call_async() -> None:
     """Test raise_for_blocking_call detects when called from event loop without integration context."""
-    with pytest.raises(RuntimeError):
-        haloop.raise_for_blocking_call(banned_function)
+    expect(lambda: haloop.raise_for_blocking_call(banned_function)).to_raise(
+        RuntimeError
+    )
 
 
-async def test_raise_for_blocking_call_async_non_strict_core(
-    caplog: pytest.LogCaptureFixture,
+@test
+async def raise_for_blocking_call_async_non_strict_core(
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test non_strict_core raise_for_blocking_call detects from event loop without integration context."""
     stack = [
@@ -71,42 +81,45 @@ async def test_raise_for_blocking_call_async_non_strict_core(
     ]
     with patch_get_current_frame(stack):
         haloop.raise_for_blocking_call(banned_function, strict_core=False)
-    assert "Detected blocking call to banned_function" in caplog.text
-    assert "Traceback (most recent call last)" in caplog.text
-    assert (
+    expect("Detected blocking call to banned_function" in caplog.text).to_be(True)
+    expect("Traceback (most recent call last)" in caplog.text).to_be(True)
+    expect(
         "Please create a bug report at https://github.com/home-assistant/core/issues"
         in caplog.text
-    )
-    assert (
+    ).to_be(True)
+    expect(
         "For developers, please see "
         "https://developers.home-assistant.io/docs/asyncio_blocking_operations/#banned_function"
-    ) in caplog.text
+        in caplog.text
+    ).to_be(True)
 
     warnings = [
         record for record in caplog.get_records("call") if record.levelname == "WARNING"
     ]
-    assert len(warnings) == 1
+    expect(len(warnings)).to_equal(1)
     caplog.clear()
 
-    # Second call should log at debug
+    # Second call should log at debug.
     with patch_get_current_frame(stack):
         haloop.raise_for_blocking_call(banned_function, strict_core=False)
 
     warnings = [
         record for record in caplog.get_records("call") if record.levelname == "WARNING"
     ]
-    assert len(warnings) == 0
-    assert (
+    expect(len(warnings)).to_equal(0)
+    expect(
         "For developers, please see "
         "https://developers.home-assistant.io/docs/asyncio_blocking_operations/#banned_function"
-    ) in caplog.text
+        in caplog.text
+    ).to_be(True)
 
-    # no expensive traceback on debug
-    assert "Traceback (most recent call last)" not in caplog.text
+    # No expensive traceback on debug.
+    expect("Traceback (most recent call last)" in caplog.text).to_be(False)
 
 
-async def test_raise_for_blocking_call_async_integration(
-    caplog: pytest.LogCaptureFixture,
+@test
+async def raise_for_blocking_call_async_integration(
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test raise_for_blocking_call detects and raises when called from event loop from integration context."""
     stack = [
@@ -126,27 +139,28 @@ async def test_raise_for_blocking_call_async_integration(
             line="something()",
         ),
     ]
-    with (
-        pytest.raises(RuntimeError),
-        patch_get_current_frame(stack),
-    ):
-        haloop.raise_for_blocking_call(banned_function)
-    assert (
+    with patch_get_current_frame(stack):
+        expect(lambda: haloop.raise_for_blocking_call(banned_function)).to_raise(
+            RuntimeError
+        )
+    expect(
         "Detected blocking call to banned_function with args None"
         " inside the event loop by integration"
         " 'hue' at homeassistant/components/hue/light.py, line 18: self.light.is_on "
         "(offender: /home/paulus/aiohue/lights.py, line 8: mock_line), please create "
         "a bug report at https://github.com/home-assistant/core/issues?"
         "q=is%3Aopen+is%3Aissue+label%3A%22integration%3A+hue%22" in caplog.text
-    )
-    assert (
+    ).to_be(True)
+    expect(
         "For developers, please see "
         "https://developers.home-assistant.io/docs/asyncio_blocking_operations/#banned_function"
-    ) in caplog.text
+        in caplog.text
+    ).to_be(True)
 
 
-async def test_raise_for_blocking_call_async_integration_non_strict(
-    caplog: pytest.LogCaptureFixture,
+@test
+async def raise_for_blocking_call_async_integration_non_strict(
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test raise_for_blocking_call detects when called from event loop from integration context."""
     stack = [
@@ -169,51 +183,54 @@ async def test_raise_for_blocking_call_async_integration_non_strict(
     with patch_get_current_frame(stack):
         haloop.raise_for_blocking_call(banned_function, strict=False)
 
-    assert (
+    expect(
         "Detected blocking call to banned_function with args None"
         " inside the event loop by integration"
         " 'hue' at homeassistant/components/hue/light.py, line 15: self.light.is_on "
         "(offender: /home/paulus/aiohue/lights.py, line 1: mock_line), "
         "please create a bug report at https://github.com/home-assistant/core/issues?"
         "q=is%3Aopen+is%3Aissue+label%3A%22integration%3A+hue%22" in caplog.text
-    )
-    assert "Traceback (most recent call last)" in caplog.text
-    assert (
+    ).to_be(True)
+    expect("Traceback (most recent call last)" in caplog.text).to_be(True)
+    expect(
         'File "/home/paulus/homeassistant/components/hue/light.py", line 15'
         in caplog.text
-    )
-    assert (
+    ).to_be(True)
+    expect(
         "please create a bug report at https://github.com/home-assistant/core/issues"
         in caplog.text
-    )
-    assert (
+    ).to_be(True)
+    expect(
         "For developers, please see "
         "https://developers.home-assistant.io/docs/asyncio_blocking_operations/#banned_function"
-    ) in caplog.text
+        in caplog.text
+    ).to_be(True)
     warnings = [
         record for record in caplog.get_records("call") if record.levelname == "WARNING"
     ]
-    assert len(warnings) == 1
+    expect(len(warnings)).to_equal(1)
     caplog.clear()
 
-    # Second call should log at debug
+    # Second call should log at debug.
     with patch_get_current_frame(stack):
         haloop.raise_for_blocking_call(banned_function, strict=False)
 
     warnings = [
         record for record in caplog.get_records("call") if record.levelname == "WARNING"
     ]
-    assert len(warnings) == 0
-    assert (
+    expect(len(warnings)).to_equal(0)
+    expect(
         "For developers, please see "
         "https://developers.home-assistant.io/docs/asyncio_blocking_operations/#banned_function"
-    ) in caplog.text
-    # no expensive traceback on debug
-    assert "Traceback (most recent call last)" not in caplog.text
+        in caplog.text
+    ).to_be(True)
+    # No expensive traceback on debug.
+    expect("Traceback (most recent call last)" in caplog.text).to_be(False)
 
 
-async def test_raise_for_blocking_call_async_custom(
-    caplog: pytest.LogCaptureFixture,
+@test
+async def raise_for_blocking_call_async_custom(
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test raise_for_blocking_call detects when called from event loop with custom component context."""
     stack = [
@@ -233,37 +250,43 @@ async def test_raise_for_blocking_call_async_custom(
             line="something()",
         ),
     ]
-    with pytest.raises(RuntimeError), patch_get_current_frame(stack):
-        haloop.raise_for_blocking_call(banned_function)
-    assert (
+    with patch_get_current_frame(stack):
+        expect(lambda: haloop.raise_for_blocking_call(banned_function)).to_raise(
+            RuntimeError
+        )
+    expect(
         "Detected blocking call to banned_function with args None"
         " inside the event loop by custom "
         "integration 'hue' at custom_components/hue/light.py, line 12: self.light.is_on"
         " (offender: /home/paulus/aiohue/lights.py, line 3: mock_line), "
         "please create a bug report at https://github.com/home-assistant/core/issues?"
-        "q=is%3Aopen+is%3Aissue+label%3A%22integration%3A+hue%22"
-    ) in caplog.text
-    assert "Traceback (most recent call last)" in caplog.text
-    assert (
+        "q=is%3Aopen+is%3Aissue+label%3A%22integration%3A+hue%22" in caplog.text
+    ).to_be(True)
+    expect("Traceback (most recent call last)" in caplog.text).to_be(True)
+    expect(
         'File "/home/paulus/config/custom_components/hue/light.py", line 12'
         in caplog.text
-    )
-    assert (
+    ).to_be(True)
+    expect(
         "For developers, please see "
         "https://developers.home-assistant.io/docs/asyncio_blocking_operations/#banned_function"
-    ) in caplog.text
+        in caplog.text
+    ).to_be(True)
 
 
-async def test_raise_for_blocking_call_sync(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def raise_for_blocking_call_sync(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test raise_for_blocking_call does nothing when called from thread."""
     func = haloop.protect_loop(banned_function, threading.get_ident())
     await hass.async_add_executor_job(func)
-    assert "Detected blocking call inside the event loop" not in caplog.text
+    expect("Detected blocking call inside the event loop" in caplog.text).to_be(False)
 
 
-async def test_protect_loop_async() -> None:
+@test
+async def protect_loop_async() -> None:
     """Test protect_loop calls raise_for_blocking_call."""
     func = Mock()
     with patch(

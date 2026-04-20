@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util.async_iterator import (
@@ -13,6 +13,14 @@ from homeassistant.util.async_iterator import (
     AsyncIteratorReader,
     AsyncIteratorWriter,
 )
+
+from tests.hass_fixtures import hass
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture so imported `hass` resolves via Depends()."""
+    return 0
 
 
 def _read_all(reader: AsyncIteratorReader) -> bytes:
@@ -22,7 +30,8 @@ def _read_all(reader: AsyncIteratorReader) -> bytes:
     return output
 
 
-async def test_async_iterator_reader(hass: HomeAssistant) -> None:
+@test
+async def async_iterator_reader(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the async iterator reader."""
     data = b"hello world" * 1000
 
@@ -31,10 +40,13 @@ async def test_async_iterator_reader(hass: HomeAssistant) -> None:
             yield data
 
     reader = AsyncIteratorReader(hass.loop, async_gen())
-    assert await hass.async_add_executor_job(_read_all, reader) == data * 10
+    expect(await hass.async_add_executor_job(_read_all, reader)).to_equal(data * 10)
 
 
-async def test_async_iterator_reader_abort_early(hass: HomeAssistant) -> None:
+@test
+async def async_iterator_reader_abort_early(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test abort the async iterator reader."""
     evt = asyncio.Event()
 
@@ -45,11 +57,18 @@ async def test_async_iterator_reader_abort_early(hass: HomeAssistant) -> None:
     reader = AsyncIteratorReader(hass.loop, async_gen())
     reader.abort()
     fut = hass.async_add_executor_job(_read_all, reader)
-    with pytest.raises(Abort):
+    try:
         await fut
+    except Abort:
+        pass
+    else:
+        expect(False).to_be(True)
 
 
-async def test_async_iterator_reader_abort_late(hass: HomeAssistant) -> None:
+@test
+async def async_iterator_reader_abort_late(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test abort the async iterator reader."""
     evt = asyncio.Event()
 
@@ -61,8 +80,12 @@ async def test_async_iterator_reader_abort_late(hass: HomeAssistant) -> None:
     fut = hass.async_add_executor_job(_read_all, reader)
     await asyncio.sleep(0.1)
     reader.abort()
-    with pytest.raises(Abort):
+    try:
         await fut
+    except Abort:
+        pass
+    else:
+        expect(False).to_be(True)
 
 
 def _write_all(writer: AsyncIteratorWriter, data: list[bytes]) -> bytes:
@@ -71,7 +94,8 @@ def _write_all(writer: AsyncIteratorWriter, data: list[bytes]) -> bytes:
     assert writer.write(b"") == 0
 
 
-async def test_async_iterator_writer(hass: HomeAssistant) -> None:
+@test
+async def async_iterator_writer(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the async iterator writer."""
     chunk = b"hello world" * 1000
     chunks = [chunk] * 10
@@ -85,11 +109,14 @@ async def test_async_iterator_writer(hass: HomeAssistant) -> None:
 
     await fut
 
-    assert read == chunk * 10
-    assert writer.tell() == len(read)
+    expect(read).to_equal(chunk * 10)
+    expect(writer.tell()).to_equal(len(read))
 
 
-async def test_async_iterator_writer_abort_early(hass: HomeAssistant) -> None:
+@test
+async def async_iterator_writer_abort_early(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test the async iterator writer."""
     chunk = b"hello world" * 1000
     chunks = [chunk] * 10
@@ -98,11 +125,18 @@ async def test_async_iterator_writer_abort_early(hass: HomeAssistant) -> None:
 
     fut = hass.async_add_executor_job(_write_all, writer, chunks)
 
-    with pytest.raises(Abort):
+    try:
         await fut
+    except Abort:
+        pass
+    else:
+        expect(False).to_be(True)
 
 
-async def test_async_iterator_writer_abort_late(hass: HomeAssistant) -> None:
+@test
+async def async_iterator_writer_abort_late(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test the async iterator writer."""
     chunk = b"hello world" * 1000
     chunks = [chunk] * 10
@@ -112,11 +146,18 @@ async def test_async_iterator_writer_abort_late(hass: HomeAssistant) -> None:
     await asyncio.sleep(0.1)
     writer.abort()
 
-    with pytest.raises(Abort):
+    try:
         await fut
+    except Abort:
+        pass
+    else:
+        expect(False).to_be(True)
 
 
-async def test_async_iterator_reader_exhausted(hass: HomeAssistant) -> None:
+@test
+async def async_iterator_reader_exhausted(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test that read() returns empty bytes after stream exhaustion."""
 
     async def async_gen() -> AsyncIterator[bytes]:
@@ -126,8 +167,8 @@ async def test_async_iterator_reader_exhausted(hass: HomeAssistant) -> None:
 
     def _read_then_read_again() -> bytes:
         data = _read_all(reader)
-        # Second read after exhaustion should return b"" immediately
+        # Second read after exhaustion should return b"" immediately.
         assert reader.read(500) == b""
         return data
 
-    assert await hass.async_add_executor_job(_read_then_read_again) == b"hello"
+    expect(await hass.async_add_executor_job(_read_then_read_again)).to_equal(b"hello")

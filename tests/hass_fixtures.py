@@ -17,22 +17,24 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator, Generator
+import logging
 from typing import Any
 
 from tryke import Depends, fixture
 
+from homeassistant.config_entries import ConfigEntryState
+import homeassistant.core as ha
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import frame, translation as translation_helper
 from homeassistant.util import dt as dt_util  # noqa: F401  (side effects on import)
-import homeassistant.core as ha
-from homeassistant.config_entries import ConfigEntryState
-from homeassistant.core import HomeAssistant
 from homeassistant.util.async_ import create_eager_task
 
 from .common import async_test_home_assistant, get_test_config_dir, mock_storage
+from .test_util.aiohttp import AiohttpClientMocker, mock_aiohttp_client
 
 
 @fixture
-def hass_storage() -> Generator[dict[str, Any], None, None]:
+def hass_storage() -> Generator[dict[str, Any]]:
     """Mock the Home Assistant storage layer for the duration of a test."""
     with mock_storage() as stored_data:
         yield stored_data
@@ -59,8 +61,8 @@ def hass_config_dir() -> str:
 async def hass(
     load_registries: bool = Depends(load_registries),
     hass_config_dir: str = Depends(hass_config_dir),
-    hass_storage: dict[str, Any] = Depends(hass_storage),  # noqa: ARG001
-) -> AsyncGenerator[HomeAssistant, None]:
+    hass_storage: dict[str, Any] = Depends(hass_storage),
+) -> AsyncGenerator[HomeAssistant]:
     """Create a test instance of Home Assistant.
 
     Minimum viable port of the legacy ``hass`` fixture: omits the
@@ -71,9 +73,7 @@ async def hass(
 
     exceptions: list[BaseException] = []
 
-    def exc_handle(
-        loop: asyncio.AbstractEventLoop, context: dict[str, Any]
-    ) -> None:
+    def exc_handle(loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
         if "exception" in context:
             exceptions.append(context["exception"])
         else:
@@ -116,3 +116,86 @@ async def hass(
 
     for ex in exceptions:
         raise ex
+
+
+@fixture
+def aioclient_mock() -> Generator[AiohttpClientMocker]:
+    """Mock aioclient calls."""
+    with mock_aiohttp_client() as mock_session:
+        yield mock_session
+
+
+class LogCapture:
+    """Minimum-viable drop-in for ``pytest.LogCaptureFixture``.
+
+    Only the members actually used by ported HA tests are implemented:
+    ``text`` for substring assertions, ``records`` for per-record
+    inspection, ``set_level`` / ``at_level`` for scoped level control,
+    and ``clear`` for resetting between assertions.
+    """
+
+    def __init__(self) -> None:
+        """Initialize an empty capture."""
+        self.records: list[logging.LogRecord] = []
+        self._handler = _ListHandler(self.records)
+        self._root = logging.getLogger()
+        self._prev_level = self._root.level
+
+    @property
+    def text(self) -> str:
+        """Formatted text of all captured records."""
+        return "\n".join(self._handler.format(r) for r in self.records)
+
+    def set_level(self, level: int | str, logger: str | None = None) -> None:
+        """Set the capture level."""
+        target = logging.getLogger(logger) if logger else self._root
+        target.setLevel(level)
+
+    def clear(self) -> None:
+        """Drop all captured records."""
+        self.records.clear()
+
+    def get_records(self, when: str) -> list[logging.LogRecord]:
+        """Return records for a test phase.
+
+        Tryke does not expose a pytest-style phase model, so all records
+        are returned regardless of ``when`` — this mirrors caplog's
+        "call" phase which is the only one HA tests actually ask for.
+        """
+        return list(self.records)
+
+
+class _ListHandler(logging.Handler):
+    """Capture records into an externally-held list."""
+
+    def __init__(self, sink: list[logging.LogRecord]) -> None:
+        super().__init__()
+        self._sink = sink
+        self.setFormatter(logging.Formatter("%(name)s %(levelname)s %(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._sink.append(record)
+
+
+@fixture
+def caplog() -> Generator[LogCapture]:
+    """Capture log records for the duration of a test."""
+    cap = LogCapture()
+    root = logging.getLogger()
+    prev_level = root.level
+    root.setLevel(logging.DEBUG)
+    root.addHandler(cap._handler)
+    try:
+        yield cap
+    finally:
+        root.removeHandler(cap._handler)
+        root.setLevel(prev_level)
+
+
+@fixture
+def freezer() -> Generator[Any]:
+    """Drop-in replacement for pytest-freezer's ``freezer`` fixture."""
+    from freezegun import freeze_time  # noqa: PLC0415
+
+    with freeze_time() as frozen:
+        yield frozen

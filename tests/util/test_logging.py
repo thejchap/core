@@ -8,7 +8,7 @@ import queue
 from unittest.mock import patch
 
 from freezegun.api import FrozenDateTimeFactory
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import (
     HomeAssistant,
@@ -18,6 +18,14 @@ from homeassistant.core import (
 )
 from homeassistant.util import logging as logging_util
 
+from tests.hass_fixtures import LogCapture, caplog, freezer, hass
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture so imported `hass` resolves via Depends()."""
+    return 0
+
 
 async def empty_log_queue() -> None:
     """Empty the log queue."""
@@ -26,21 +34,19 @@ async def empty_log_queue() -> None:
         await asyncio.sleep(0)
 
 
-async def test_logging_with_queue_handler() -> None:
+@test
+async def logging_with_queue_handler() -> None:
     """Test logging with HomeAssistantQueueHandler."""
 
-    simple_queue = queue.SimpleQueue()
+    simple_queue: queue.SimpleQueue = queue.SimpleQueue()
     handler = logging_util.HomeAssistantQueueHandler(simple_queue)
 
     log_record = logging.makeLogRecord({"msg": "Test Log Record"})
 
     handler.emit(log_record)
 
-    with (
-        pytest.raises(asyncio.CancelledError),
-        patch.object(handler, "enqueue", side_effect=asyncio.CancelledError),
-    ):
-        handler.emit(log_record)
+    with patch.object(handler, "enqueue", side_effect=asyncio.CancelledError):
+        expect(lambda: handler.emit(log_record)).to_raise(asyncio.CancelledError)
 
     with patch.object(handler, "emit") as emit_mock:
         handler.handle(log_record)
@@ -63,124 +69,154 @@ async def test_logging_with_queue_handler() -> None:
 
     handler.close()
 
-    assert simple_queue.get_nowait().msg == "Test Log Record"
-    assert simple_queue.empty()
+    expect(simple_queue.get_nowait().msg).to_equal("Test Log Record")
+    expect(simple_queue.empty()).to_be(True)
 
 
-async def test_migrate_log_handler(hass: HomeAssistant) -> None:
+@test
+async def migrate_log_handler(hass: HomeAssistant = Depends(hass)) -> None:
     """Test migrating log handlers."""
 
     logging_util.async_activate_log_queue_handler(hass)
 
-    assert len(logging.root.handlers) == 1
-    assert isinstance(logging.root.handlers[0], logging_util.HomeAssistantQueueHandler)
+    expect(len(logging.root.handlers)).to_equal(1)
+    expect(
+        isinstance(logging.root.handlers[0], logging_util.HomeAssistantQueueHandler)
+    ).to_be(True)
 
-    # Test that the close hook shuts down the queue handler's thread
+    # Test that the close hook shuts down the queue handler's thread.
     listener_thread = logging.root.handlers[0].listener._thread
-    assert listener_thread.is_alive()
+    expect(listener_thread.is_alive()).to_be(True)
     logging.root.handlers[0].close()
-    assert not listener_thread.is_alive()
+    expect(listener_thread.is_alive()).to_be(False)
 
 
-@pytest.mark.no_fail_on_log_exception
-async def test_async_create_catching_coro(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def async_create_catching_coro(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test exception logging of wrapped coroutine."""
 
-    async def job():
+    async def job() -> None:
         raise Exception("This is a bad coroutine")  # noqa: TRY002
 
     hass.async_create_task(logging_util.async_create_catching_coro(job()))
     await hass.async_block_till_done()
-    assert "This is a bad coroutine" in caplog.text
-    assert "in test_async_create_catching_coro" in caplog.text
+    expect("This is a bad coroutine" in caplog.text).to_be(True)
+    expect("in async_create_catching_coro" in caplog.text).to_be(True)
 
 
-def test_catch_log_exception() -> None:
+@test
+def catch_log_exception() -> None:
     """Test it is still a callback after wrapping including partial."""
 
-    async def async_meth():
+    async def async_meth() -> None:
         pass
 
-    assert inspect.iscoroutinefunction(
-        logging_util.catch_log_exception(partial(async_meth), lambda: None)
-    )
+    expect(
+        inspect.iscoroutinefunction(
+            logging_util.catch_log_exception(partial(async_meth), lambda: None)
+        )
+    ).to_be(True)
 
     @callback
-    def callback_meth():
+    def callback_meth() -> None:
         pass
 
-    assert is_callback_check_partial(
-        logging_util.catch_log_exception(partial(callback_meth), lambda: None)
-    )
+    expect(
+        is_callback_check_partial(
+            logging_util.catch_log_exception(partial(callback_meth), lambda: None)
+        )
+    ).to_be(True)
 
-    def sync_meth():
+    def sync_meth() -> None:
         pass
 
     wrapped = logging_util.catch_log_exception(partial(sync_meth), lambda: None)
 
-    assert not is_callback(wrapped)
-    assert not inspect.iscoroutinefunction(wrapped)
+    expect(is_callback(wrapped)).to_be(False)
+    expect(inspect.iscoroutinefunction(wrapped)).to_be(False)
 
 
-@pytest.mark.no_fail_on_log_exception
-async def test_catch_log_exception_catches_and_logs() -> None:
+@test
+async def catch_log_exception_catches_and_logs() -> None:
     """Test it is still a callback after wrapping including partial."""
-    saved_args = []
+    saved_args: list[tuple[object, ...]] = []
 
-    def save_args(*args):
+    def save_args(*args: object) -> None:
         saved_args.append(args)
 
-    async def async_meth():
+    async def async_meth() -> None:
         raise ValueError("failure async")
 
     func = logging_util.catch_log_exception(async_meth, save_args)
     await func("failure async passed")
 
-    assert saved_args == [("failure async passed",)]
+    expect(saved_args).to_equal([("failure async passed",)])
     saved_args.clear()
 
     @callback
-    def callback_meth():
+    def callback_meth() -> None:
         raise ValueError("failure callback")
 
     func = logging_util.catch_log_exception(callback_meth, save_args)
     func("failure callback passed")
 
-    assert saved_args == [("failure callback passed",)]
+    expect(saved_args).to_equal([("failure callback passed",)])
     saved_args.clear()
 
-    def sync_meth():
+    def sync_meth() -> None:
         raise ValueError("failure sync")
 
     func = logging_util.catch_log_exception(sync_meth, save_args)
     func("failure sync passed")
 
-    assert saved_args == [("failure sync passed",)]
+    expect(saved_args).to_equal([("failure sync passed",)])
 
 
+@test.cases(
+    test.case(
+        "under-threshold",
+        logger1_count=4,
+        logger1_expected_notices=0,
+        logger2_count=0,
+        logger2_expected_notices=0,
+    ),
+    test.case(
+        "one-over",
+        logger1_count=5,
+        logger1_expected_notices=1,
+        logger2_count=1,
+        logger2_expected_notices=0,
+    ),
+    test.case(
+        "one-spike",
+        logger1_count=11,
+        logger1_expected_notices=1,
+        logger2_count=5,
+        logger2_expected_notices=1,
+    ),
+    test.case(
+        "both-spike",
+        logger1_count=20,
+        logger1_expected_notices=1,
+        logger2_count=20,
+        logger2_expected_notices=1,
+    ),
+)
 @patch("homeassistant.util.logging.HomeAssistantQueueListener.MAX_LOGS_COUNT", 5)
 @patch(
     "homeassistant.util.logging.HomeAssistantQueueListener.EXCLUDED_LOG_COUNT_MODULES",
     ["excluded"],
 )
-@pytest.mark.parametrize(
-    (
-        "logger1_count",
-        "logger1_expected_notices",
-        "logger2_count",
-        "logger2_expected_notices",
-    ),
-    [(4, 0, 0, 0), (5, 1, 1, 0), (11, 1, 5, 1), (20, 1, 20, 1)],
-)
-async def test_noisy_loggers(
-    hass: HomeAssistant,
-    caplog: pytest.LogCaptureFixture,
+async def noisy_loggers(
     logger1_count: int,
     logger1_expected_notices: int,
     logger2_count: int,
     logger2_expected_notices: int,
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test that noisy loggers all logged as warnings."""
 
@@ -200,31 +236,30 @@ async def test_noisy_loggers(
 
     await empty_log_queue()
 
-    assert (
+    expect(
         caplog.text.count(
             "Module noisy1 is logging too frequently. 5 messages since last count"
         )
-        == logger1_expected_notices
-    )
-    assert (
+    ).to_equal(logger1_expected_notices)
+    expect(
         caplog.text.count(
             "Module noisy2.module is logging too frequently. 5 messages since last count"
         )
-        == logger2_expected_notices
-    )
-    # Ensure that the excluded module did not trigger a warning
-    assert (
-        caplog.text.count("is logging too frequently")
-        == logger1_expected_notices + logger2_expected_notices
+    ).to_equal(logger2_expected_notices)
+    # Ensure that the excluded module did not trigger a warning.
+    expect(caplog.text.count("is logging too frequently")).to_equal(
+        logger1_expected_notices + logger2_expected_notices
     )
 
-    # close the handler so the queue thread stops
+    # Close the handler so the queue thread stops.
     logging.root.handlers[0].close()
 
 
+@test
 @patch("homeassistant.util.logging.HomeAssistantQueueListener.MAX_LOGS_COUNT", 1)
-async def test_noisy_loggers_ignores_self(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+async def noisy_loggers_ignores_self(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test that the noisy loggers warning does not trigger a warning for its own module."""
 
@@ -238,15 +273,17 @@ async def test_noisy_loggers_ignores_self(
     logger3.info("This is a log")
 
     await empty_log_queue()
-    assert caplog.text.count("logging too frequently") == 3
+    expect(caplog.text.count("logging too frequently")).to_equal(3)
 
-    # close the handler so the queue thread stops
+    # Close the handler so the queue thread stops.
     logging.root.handlers[0].close()
 
 
+@test
 @patch("homeassistant.util.logging.HomeAssistantQueueListener.MAX_LOGS_COUNT", 5)
-async def test_noisy_loggers_ignores_lower_than_info(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+async def noisy_loggers_ignores_lower_than_info(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test that noisy loggers all logged as warnings, except for levels lower than INFO."""
 
@@ -258,7 +295,7 @@ async def test_noisy_loggers_ignores_lower_than_info(
 
     await empty_log_queue()
     expected_warning = "Module noisy_module is logging too frequently"
-    assert caplog.text.count(expected_warning) == 0
+    expect(caplog.text.count(expected_warning)).to_equal(0)
 
     logger.info("This is a log")
     logger.info("This is a log")
@@ -267,17 +304,18 @@ async def test_noisy_loggers_ignores_lower_than_info(
     logger.critical("This is a log")
 
     await empty_log_queue()
-    assert caplog.text.count(expected_warning) == 1
+    expect(caplog.text.count(expected_warning)).to_equal(1)
 
-    # close the handler so the queue thread stops
+    # Close the handler so the queue thread stops.
     logging.root.handlers[0].close()
 
 
+@test
 @patch("homeassistant.util.logging.HomeAssistantQueueListener.MAX_LOGS_COUNT", 3)
-async def test_noisy_loggers_counters_reset(
-    hass: HomeAssistant,
-    caplog: pytest.LogCaptureFixture,
-    freezer: FrozenDateTimeFactory,
+async def noisy_loggers_counters_reset(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
+    freezer: FrozenDateTimeFactory = Depends(freezer),
 ) -> None:
     """Test that noisy logger counters reset periodically."""
 
@@ -286,7 +324,7 @@ async def test_noisy_loggers_counters_reset(
 
     expected_warning = "Module noisy_module is logging too frequently"
 
-    # Do multiple iterations to ensure the reset is periodic
+    # Do multiple iterations to ensure the reset is periodic.
     for _ in range(logging_util.HomeAssistantQueueListener.MAX_LOGS_COUNT * 2):
         logger.info("This is log 0")
         await empty_log_queue()
@@ -297,11 +335,11 @@ async def test_noisy_loggers_counters_reset(
 
         logger.info("This is log 1")
         await empty_log_queue()
-        assert caplog.text.count(expected_warning) == 0
+        expect(caplog.text.count(expected_warning)).to_equal(0)
 
     logger.info("This is log 2")
     logger.info("This is log 3")
     await empty_log_queue()
-    assert caplog.text.count(expected_warning) == 1
-    # close the handler so the queue thread stops
+    expect(caplog.text.count(expected_warning)).to_equal(1)
+    # Close the handler so the queue thread stops.
     logging.root.handlers[0].close()
