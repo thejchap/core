@@ -18,6 +18,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, Generator
 import logging
+from pathlib import Path
+import tempfile
 from typing import Any
 
 from tryke import Depends, fixture
@@ -199,3 +201,10 @@ def freezer() -> Generator[Any]:
 
     with freeze_time() as frozen:
         yield frozen
+
+
+@fixture
+def tmp_path() -> Generator[Path]:
+    """Drop-in replacement for pytest's ``tmp_path`` fixture."""
+    with tempfile.TemporaryDirectory() as td:
+        yield Path(td)
