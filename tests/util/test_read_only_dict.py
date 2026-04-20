@@ -3,38 +3,32 @@
 import copy
 import json
 
-import pytest
+from tryke import expect, test
 
 from homeassistant.util.read_only_dict import ReadOnlyDict
 
 
-def test_read_only_dict() -> None:
+@test
+def read_only_dict() -> None:
     """Test read only dictionary."""
     data = ReadOnlyDict({"hello": "world"})
 
-    with pytest.raises(RuntimeError):
+    def set_existing() -> None:
         data["hello"] = "universe"
 
-    with pytest.raises(RuntimeError):
+    def set_new() -> None:
         data["other_key"] = "universe"
 
-    with pytest.raises(RuntimeError):
-        data.pop("hello")
+    expect(set_existing).to_raise(RuntimeError)
+    expect(set_new).to_raise(RuntimeError)
+    expect(lambda: data.pop("hello")).to_raise(RuntimeError)
+    expect(lambda: data.popitem()).to_raise(RuntimeError)
+    expect(lambda: data.clear()).to_raise(RuntimeError)
+    expect(lambda: data.update({"yo": "yo"})).to_raise(RuntimeError)
+    expect(lambda: data.setdefault("yo", "yo")).to_raise(RuntimeError)
 
-    with pytest.raises(RuntimeError):
-        data.popitem()
+    expect(isinstance(data, dict)).to_be(True)
+    expect(dict(data)).to_equal({"hello": "world"})
+    expect(json.dumps(data)).to_equal(json.dumps({"hello": "world"}))
 
-    with pytest.raises(RuntimeError):
-        data.clear()
-
-    with pytest.raises(RuntimeError):
-        data.update({"yo": "yo"})
-
-    with pytest.raises(RuntimeError):
-        data.setdefault("yo", "yo")
-
-    assert isinstance(data, dict)
-    assert dict(data) == {"hello": "world"}
-    assert json.dumps(data) == json.dumps({"hello": "world"})
-
-    assert copy.deepcopy(data) == {"hello": "world"}
+    expect(copy.deepcopy(data)).to_equal({"hello": "world"})

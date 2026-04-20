@@ -145,3 +145,6 @@ pytest_buckets.txt
 .claude/worktrees/
 .serena/
 
+# Tryke migration scratch
+.migration/
+
