@@ -1,86 +1,106 @@
 """Test aiohttp request helper."""
 
 from aiohttp import web
+from tryke import expect, test
 
 from homeassistant.util import aiohttp
 
 
-async def test_request_json() -> None:
+@test
+async def request_json() -> None:
     """Test a JSON request."""
     request = aiohttp.MockRequest(b'{"hello": 2}', mock_source="test")
-    assert request.status == 200
-    assert await request.json() == {"hello": 2}
+    expect(request.status).to_equal(200)
+    expect(await request.json()).to_equal({"hello": 2})
 
 
-async def test_request_text() -> None:
+@test
+async def request_text() -> None:
     """Test bytes in request."""
     request = aiohttp.MockRequest(b"hello", status=201, mock_source="test")
-    assert request.body_exists
-    assert request.status == 201
-    assert await request.text() == "hello"
+    expect(request.body_exists).to_be_truthy()
+    expect(request.status).to_equal(201)
+    expect(await request.text()).to_equal("hello")
 
 
-async def test_request_body_exists() -> None:
+@test
+async def request_body_exists() -> None:
     """Test body exists."""
     request = aiohttp.MockRequest(b"", mock_source="test")
-    assert not request.body_exists
+    expect(request.body_exists).to_be_falsy()
 
 
-async def test_request_post_query() -> None:
+@test
+async def request_post_query() -> None:
     """Test a JSON request."""
     request = aiohttp.MockRequest(
         b"hello=2&post=true", query_string="get=true", method="POST", mock_source="test"
     )
-    assert request.method == "POST"
-    assert await request.post() == {"hello": "2", "post": "true"}
-    assert request.query == {"get": "true"}
+    expect(request.method).to_equal("POST")
+    expect(await request.post()).to_equal({"hello": "2", "post": "true"})
+    expect(request.query).to_equal({"get": "true"})
 
 
-def test_serialize_text() -> None:
+@test
+def serialize_text() -> None:
     """Test serializing a text response."""
     response = web.Response(status=201, text="Hello")
-    assert aiohttp.serialize_response(response) == {
-        "status": 201,
-        "body": "Hello",
-        "headers": {"Content-Type": "text/plain; charset=utf-8"},
-    }
+    expect(aiohttp.serialize_response(response)).to_equal(
+        {
+            "status": 201,
+            "body": "Hello",
+            "headers": {"Content-Type": "text/plain; charset=utf-8"},
+        }
+    )
 
 
-def test_serialize_body_str() -> None:
+@test
+def serialize_body_str() -> None:
     """Test serializing a response with a str as body."""
     response = web.Response(status=201, body="Hello")
-    assert aiohttp.serialize_response(response) == {
-        "status": 201,
-        "body": "Hello",
-        "headers": {"Content-Type": "text/plain; charset=utf-8"},
-    }
+    expect(aiohttp.serialize_response(response)).to_equal(
+        {
+            "status": 201,
+            "body": "Hello",
+            "headers": {"Content-Type": "text/plain; charset=utf-8"},
+        }
+    )
 
 
-def test_serialize_body_None() -> None:
+@test
+def serialize_body_None() -> None:
     """Test serializing a response with a str as body."""
     response = web.Response(status=201, body=None)
-    assert aiohttp.serialize_response(response) == {
-        "status": 201,
-        "body": None,
-        "headers": {},
-    }
+    expect(aiohttp.serialize_response(response)).to_equal(
+        {
+            "status": 201,
+            "body": None,
+            "headers": {},
+        }
+    )
 
 
-def test_serialize_body_bytes() -> None:
+@test
+def serialize_body_bytes() -> None:
     """Test serializing a response with a str as body."""
     response = web.Response(status=201, body=b"Hello")
-    assert aiohttp.serialize_response(response) == {
-        "status": 201,
-        "body": "Hello",
-        "headers": {},
-    }
+    expect(aiohttp.serialize_response(response)).to_equal(
+        {
+            "status": 201,
+            "body": "Hello",
+            "headers": {},
+        }
+    )
 
 
-def test_serialize_json() -> None:
+@test
+def serialize_json() -> None:
     """Test serializing a JSON response."""
     response = web.json_response({"how": "what"})
-    assert aiohttp.serialize_response(response) == {
-        "status": 200,
-        "body": '{"how": "what"}',
-        "headers": {"Content-Type": "application/json; charset=utf-8"},
-    }
+    expect(aiohttp.serialize_response(response)).to_equal(
+        {
+            "status": 200,
+            "body": '{"how": "what"}',
+            "headers": {"Content-Type": "application/json; charset=utf-8"},
+        }
+    )
