@@ -3,17 +3,25 @@
 from types import MappingProxyType
 from typing import Any
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import ATTR_DEVICE_CLASS, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import significant_change
 
+from tests.hass_fixtures import hass
 
-@pytest.fixture(name="checker")
-async def checker_fixture(
-    hass: HomeAssistant,
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@fixture
+async def checker(
+    hass: HomeAssistant = Depends(hass),
 ) -> significant_change.SignificantlyChangedChecker:
     """Checker fixture."""
     checker = await significant_change.create_checker(hass, "test")
@@ -29,45 +37,59 @@ async def checker_fixture(
     return checker
 
 
-async def test_signicant_change(
-    checker: significant_change.SignificantlyChangedChecker,
+@test
+async def signicant_change(
+    checker: significant_change.SignificantlyChangedChecker = Depends(checker),
 ) -> None:
     """Test initialize helper works."""
     ent_id = "test_domain.test_entity"
     attrs = {ATTR_DEVICE_CLASS: SensorDeviceClass.BATTERY}
 
-    assert checker.async_is_significant_change(State(ent_id, "100", attrs))
+    expect(checker.async_is_significant_change(State(ent_id, "100", attrs))).to_be(True)
 
     # Same state is not significant.
-    assert not checker.async_is_significant_change(State(ent_id, "100", attrs))
+    expect(checker.async_is_significant_change(State(ent_id, "100", attrs))).to_be(
+        False
+    )
 
     # State under 5 difference is not significant. (per test mock)
-    assert not checker.async_is_significant_change(State(ent_id, "96", attrs))
+    expect(checker.async_is_significant_change(State(ent_id, "96", attrs))).to_be(False)
 
     # Make sure we always compare against last significant change
-    assert checker.async_is_significant_change(State(ent_id, "95", attrs))
+    expect(checker.async_is_significant_change(State(ent_id, "95", attrs))).to_be(True)
 
     # State turned unknown
-    assert checker.async_is_significant_change(State(ent_id, STATE_UNKNOWN, attrs))
+    expect(
+        checker.async_is_significant_change(State(ent_id, STATE_UNKNOWN, attrs))
+    ).to_be(True)
 
     # State turned unavailable
-    assert checker.async_is_significant_change(State(ent_id, "100", attrs))
-    assert checker.async_is_significant_change(State(ent_id, STATE_UNAVAILABLE, attrs))
+    expect(checker.async_is_significant_change(State(ent_id, "100", attrs))).to_be(True)
+    expect(
+        checker.async_is_significant_change(State(ent_id, STATE_UNAVAILABLE, attrs))
+    ).to_be(True)
 
 
-async def test_significant_change_extra(
-    checker: significant_change.SignificantlyChangedChecker,
+@test
+async def significant_change_extra(
+    checker: significant_change.SignificantlyChangedChecker = Depends(checker),
 ) -> None:
     """Test extra significant checker works."""
     ent_id = "test_domain.test_entity"
     attrs = {ATTR_DEVICE_CLASS: SensorDeviceClass.BATTERY}
 
-    assert checker.async_is_significant_change(State(ent_id, "100", attrs), extra_arg=1)
-    assert checker.async_is_significant_change(State(ent_id, "200", attrs), extra_arg=1)
+    expect(
+        checker.async_is_significant_change(State(ent_id, "100", attrs), extra_arg=1)
+    ).to_be(True)
+    expect(
+        checker.async_is_significant_change(State(ent_id, "200", attrs), extra_arg=1)
+    ).to_be(True)
 
     # Reset the last significiant change to 100 to repeat test but with
     # extra checker installed.
-    assert checker.async_is_significant_change(State(ent_id, "100", attrs), extra_arg=1)
+    expect(
+        checker.async_is_significant_change(State(ent_id, "100", attrs), extra_arg=1)
+    ).to_be(True)
 
     def extra_significant_check(
         hass: HomeAssistant,
@@ -84,18 +106,21 @@ async def test_significant_change_extra(
 
     # This is normally a significant change (100 -> 200), but the extra arg check marks it
     # as insignificant.
-    assert not checker.async_is_significant_change(
-        State(ent_id, "200", attrs), extra_arg=1
-    )
-    assert checker.async_is_significant_change(State(ent_id, "200", attrs), extra_arg=2)
+    expect(
+        checker.async_is_significant_change(State(ent_id, "200", attrs), extra_arg=1)
+    ).to_be(False)
+    expect(
+        checker.async_is_significant_change(State(ent_id, "200", attrs), extra_arg=2)
+    ).to_be(True)
 
 
-async def test_check_valid_float() -> None:
+@test
+async def check_valid_float() -> None:
     """Test extra significant checker works."""
-    assert significant_change.check_valid_float("1")
-    assert significant_change.check_valid_float("1.0")
-    assert significant_change.check_valid_float(1)
-    assert significant_change.check_valid_float(1.0)
-    assert not significant_change.check_valid_float("")
-    assert not significant_change.check_valid_float("invalid")
-    assert not significant_change.check_valid_float("1.1.1")
+    expect(significant_change.check_valid_float("1")).to_be(True)
+    expect(significant_change.check_valid_float("1.0")).to_be(True)
+    expect(significant_change.check_valid_float(1)).to_be(True)
+    expect(significant_change.check_valid_float(1.0)).to_be(True)
+    expect(significant_change.check_valid_float("")).to_be(False)
+    expect(significant_change.check_valid_float("invalid")).to_be(False)
+    expect(significant_change.check_valid_float("1.1.1")).to_be(False)

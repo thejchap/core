@@ -3,13 +3,20 @@
 from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.helpers import storage
 from homeassistant.helpers.registry import SAVE_DELAY, SAVE_DELAY_LONG, BaseRegistry
 
 from tests.common import async_fire_time_changed
+from tests.hass_fixtures import freezer, hass, hass_storage
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
 
 
 class SampleRegistry(BaseRegistry):
@@ -30,20 +37,17 @@ class SampleRegistry(BaseRegistry):
         return {}
 
 
-@pytest.mark.parametrize(
-    "long_delay_state",
-    [
-        CoreState.not_running,
-        CoreState.starting,
-        CoreState.stopped,
-        CoreState.final_write,
-    ],
+@test.cases(
+    test.case("NOT_RUNNING", long_delay_state=CoreState.not_running),
+    test.case("STARTING", long_delay_state=CoreState.starting),
+    test.case("STOPPED", long_delay_state=CoreState.stopped),
+    test.case("FINAL_WRITE", long_delay_state=CoreState.final_write),
 )
-async def test_async_schedule_save(
-    hass: HomeAssistant,
-    freezer: FrozenDateTimeFactory,
+async def async_schedule_save(
     long_delay_state: CoreState,
-    hass_storage: dict[str, Any],
+    hass: HomeAssistant = Depends(hass),
+    freezer: FrozenDateTimeFactory = Depends(freezer),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test saving the registry.
 
@@ -59,16 +63,16 @@ async def test_async_schedule_save(
     freezer.tick(SAVE_DELAY)
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
-    assert registry.save_calls == 0
+    expect(registry.save_calls).to_equal(0)
 
     freezer.tick(SAVE_DELAY_LONG)
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
-    assert registry.save_calls == 1
+    expect(registry.save_calls).to_equal(1)
 
     hass.set_state(CoreState.running)
     registry.async_schedule_save()
     freezer.tick(SAVE_DELAY)
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
-    assert registry.save_calls == 2
+    expect(registry.save_calls).to_equal(2)
