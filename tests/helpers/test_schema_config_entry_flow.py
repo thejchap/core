@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 import voluptuous as vol
 
 from homeassistant import config_entries, data_entry_flow
@@ -25,6 +25,7 @@ from homeassistant.helpers.schema_config_entry_flow import (
 from homeassistant.util.decorator import Registry
 
 from tests.common import MockConfigEntry, MockModule, mock_integration, mock_platform
+from tests.hass_fixtures import entity_registry, hass
 
 TEST_DOMAIN = "test"
 
@@ -40,53 +41,53 @@ class MockSchemaConfigFlowHandler(SchemaConfigFlowHandler):
         return "title"
 
 
-@pytest.fixture(name="manager")
-def manager_fixture():
-    """Return a flow manager."""
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+def _make_manager() -> data_entry_flow.FlowManager:
+    """Build a fresh FlowManager for tests that need one."""
     handlers = Registry()
     entries = []
 
     class FlowManager(data_entry_flow.FlowManager):
-        """Test flow manager."""
+        def __init__(self) -> None:
+            super().__init__(None)
+            self.mock_created_entries = entries
+            self.mock_reg_handler = handlers.register
 
         async def async_create_flow(self, handler_key, *, context, data):
-            """Test create flow."""
             handler = handlers.get(handler_key)
-
             if handler is None:
                 raise data_entry_flow.UnknownHandler
-
             flow = handler()
             flow.init_step = context.get("init_step", "init")
             return flow
 
         async def async_finish_flow(self, flow, result):
-            """Test finish flow."""
             if result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY:
                 result["source"] = flow.context.get("source")
                 entries.append(result)
             return result
 
-    mgr = FlowManager(None)
-    # pylint: disable-next=attribute-defined-outside-init
-    mgr.mock_created_entries = entries
-    # pylint: disable-next=attribute-defined-outside-init
-    mgr.mock_reg_handler = handlers.register
-    return mgr
+    return FlowManager()
 
 
-async def test_name(hass: HomeAssistant, entity_registry: er.EntityRegistry) -> None:
+@test
+async def name(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
+) -> None:
     """Test the config flow name is copied from registry entry, with fallback to state."""
     entity_id = "switch.ceiling"
 
-    # No entry or state, use Object ID
-    assert wrapped_entity_config_entry_title(hass, entity_id) == "ceiling"
+    expect(wrapped_entity_config_entry_title(hass, entity_id)).to_equal("ceiling")
 
-    # State set, use name from state
     hass.states.async_set(entity_id, "on", {"friendly_name": "State Name"})
-    assert wrapped_entity_config_entry_title(hass, entity_id) == "State Name"
+    expect(wrapped_entity_config_entry_title(hass, entity_id)).to_equal("State Name")
 
-    # Entity registered, use original name from registry entry
     hass.states.async_remove(entity_id)
     entry = entity_registry.async_get_or_create(
         "switch",
@@ -96,21 +97,25 @@ async def test_name(hass: HomeAssistant, entity_registry: er.EntityRegistry) -> 
         original_name="Original Name",
     )
     hass.states.async_set(entity_id, "on", {"friendly_name": "State Name"})
-    assert entry.entity_id == entity_id
-    assert wrapped_entity_config_entry_title(hass, entity_id) == "Original Name"
-    assert wrapped_entity_config_entry_title(hass, entry.id) == "Original Name"
+    expect(entry.entity_id).to_equal(entity_id)
+    expect(wrapped_entity_config_entry_title(hass, entity_id)).to_equal("Original Name")
+    expect(wrapped_entity_config_entry_title(hass, entry.id)).to_equal("Original Name")
 
-    # Entity has customized name
     entity_registry.async_update_entity("switch.ceiling", name="Custom Name")
-    assert wrapped_entity_config_entry_title(hass, entity_id) == "Custom Name"
-    assert wrapped_entity_config_entry_title(hass, entry.id) == "Custom Name"
+    expect(wrapped_entity_config_entry_title(hass, entity_id)).to_equal("Custom Name")
+    expect(wrapped_entity_config_entry_title(hass, entry.id)).to_equal("Custom Name")
 
 
-@pytest.mark.parametrize("marker", [vol.Required, vol.Optional])
-async def test_config_flow_advanced_option(
-    hass: HomeAssistant, manager: data_entry_flow.FlowManager, marker
+@test.cases(
+    test.case("Required", marker=vol.Required),
+    test.case("Optional", marker=vol.Optional),
+)
+async def config_flow_advanced_option(
+    marker,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test handling of advanced options in config flow."""
+    manager = _make_manager()
     manager.hass = hass
 
     CONFIG_SCHEMA = vol.Schema(
@@ -133,53 +138,56 @@ async def test_config_flow_advanced_option(
     class TestFlow(MockSchemaConfigFlowHandler):
         config_flow = CONFIG_FLOW
 
-    # Start flow in basic mode
     result = await manager.async_init("test")
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert list(result["data_schema"].schema.keys()) == ["option1"]
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(list(result["data_schema"].schema.keys())).to_equal(["option1"])
 
     result = await manager.async_configure(result["flow_id"], {"option1": "blabla"})
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"] == {}
-    assert result["options"] == {
-        "advanced_default": "a very reasonable default",
-        "option1": "blabla",
-    }
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({})
+    expect(result["options"]).to_equal(
+        {
+            "advanced_default": "a very reasonable default",
+            "option1": "blabla",
+        }
+    )
     for option in result["options"]:
-        # Make sure we didn't get the Optional or Required instance as key
-        assert isinstance(option, str)
+        expect(isinstance(option, str)).to_be(True)
 
-    # Start flow in advanced mode
     result = await manager.async_init("test", context={"show_advanced_options": True})
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert list(result["data_schema"].schema.keys()) == [
-        "option1",
-        "advanced_no_default",
-        "advanced_default",
-    ]
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(list(result["data_schema"].schema.keys())).to_equal(
+        [
+            "option1",
+            "advanced_no_default",
+            "advanced_default",
+        ]
+    )
 
     result = await manager.async_configure(
         result["flow_id"], {"advanced_no_default": "abc123", "option1": "blabla"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"] == {}
-    assert result["options"] == {
-        "advanced_default": "a very reasonable default",
-        "advanced_no_default": "abc123",
-        "option1": "blabla",
-    }
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({})
+    expect(result["options"]).to_equal(
+        {
+            "advanced_default": "a very reasonable default",
+            "advanced_no_default": "abc123",
+            "option1": "blabla",
+        }
+    )
     for option in result["options"]:
-        # Make sure we didn't get the Optional or Required instance as key
-        assert isinstance(option, str)
+        expect(isinstance(option, str)).to_be(True)
 
-    # Start flow in advanced mode
     result = await manager.async_init("test", context={"show_advanced_options": True})
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert list(result["data_schema"].schema.keys()) == [
-        "option1",
-        "advanced_no_default",
-        "advanced_default",
-    ]
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(list(result["data_schema"].schema.keys())).to_equal(
+        [
+            "option1",
+            "advanced_no_default",
+            "advanced_default",
+        ]
+    )
 
     result = await manager.async_configure(
         result["flow_id"],
@@ -189,23 +197,29 @@ async def test_config_flow_advanced_option(
             "option1": "blabla",
         },
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"] == {}
-    assert result["options"] == {
-        "advanced_default": "not default",
-        "advanced_no_default": "abc123",
-        "option1": "blabla",
-    }
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({})
+    expect(result["options"]).to_equal(
+        {
+            "advanced_default": "not default",
+            "advanced_no_default": "abc123",
+            "option1": "blabla",
+        }
+    )
     for option in result["options"]:
-        # Make sure we didn't get the Optional or Required instance as key
-        assert isinstance(option, str)
+        expect(isinstance(option, str)).to_be(True)
 
 
-@pytest.mark.parametrize("marker", [vol.Required, vol.Optional])
-async def test_options_flow_advanced_option(
-    hass: HomeAssistant, manager: data_entry_flow.FlowManager, marker
+@test.cases(
+    test.case("Required", marker=vol.Required),
+    test.case("Optional", marker=vol.Optional),
+)
+async def options_flow_advanced_option(
+    marker,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test handling of advanced options in options flow."""
+    manager = _make_manager()
     manager.hass = hass
 
     OPTIONS_SCHEMA = vol.Schema(
@@ -241,58 +255,61 @@ async def test_options_flow_advanced_option(
     )
     config_entry.add_to_hass(hass)
 
-    # Start flow in basic mode
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert list(result["data_schema"].schema.keys()) == ["option1"]
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(list(result["data_schema"].schema.keys())).to_equal(["option1"])
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"option1": "blublu"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        "advanced_default": "not default",
-        "advanced_no_default": "abc123",
-        "option1": "blublu",
-    }
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            "advanced_default": "not default",
+            "advanced_no_default": "abc123",
+            "option1": "blublu",
+        }
+    )
     for option in result["data"]:
-        # Make sure we didn't get the Optional or Required instance as key
-        assert isinstance(option, str)
+        expect(isinstance(option, str)).to_be(True)
 
-    # Start flow in advanced mode
     result = await hass.config_entries.options.async_init(
         config_entry.entry_id, context={"show_advanced_options": True}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert list(result["data_schema"].schema.keys()) == [
-        "option1",
-        "advanced_no_default",
-        "advanced_default",
-    ]
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(list(result["data_schema"].schema.keys())).to_equal(
+        [
+            "option1",
+            "advanced_no_default",
+            "advanced_default",
+        ]
+    )
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"advanced_no_default": "def456", "option1": "blabla"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        "advanced_default": "a very reasonable default",
-        "advanced_no_default": "def456",
-        "option1": "blabla",
-    }
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            "advanced_default": "a very reasonable default",
+            "advanced_no_default": "def456",
+            "option1": "blabla",
+        }
+    )
     for option in result["data"]:
-        # Make sure we didn't get the Optional or Required instance as key
-        assert isinstance(option, str)
+        expect(isinstance(option, str)).to_be(True)
 
-    # Start flow in advanced mode
     result = await hass.config_entries.options.async_init(
         config_entry.entry_id, context={"show_advanced_options": True}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert list(result["data_schema"].schema.keys()) == [
-        "option1",
-        "advanced_no_default",
-        "advanced_default",
-    ]
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(list(result["data_schema"].schema.keys())).to_equal(
+        [
+            "option1",
+            "advanced_no_default",
+            "advanced_default",
+        ]
+    )
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -302,20 +319,21 @@ async def test_options_flow_advanced_option(
             "option1": "blabla",
         },
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        "advanced_default": "also not default",
-        "advanced_no_default": "abc123",
-        "option1": "blabla",
-    }
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            "advanced_default": "also not default",
+            "advanced_no_default": "abc123",
+            "option1": "blabla",
+        }
+    )
     for option in result["data"]:
-        # Make sure we didn't get the Optional or Required instance as key
-        assert isinstance(option, str)
+        expect(isinstance(option, str)).to_be(True)
 
 
-async def test_menu_step(hass: HomeAssistant) -> None:
+@test
+async def menu_step(hass: HomeAssistant = Depends(hass)) -> None:
     """Test menu step."""
-
     MENU_1 = ["option1", "option2"]
 
     async def menu_2(handler: SchemaCommonFlowHandler) -> list[str]:
@@ -333,8 +351,6 @@ async def test_menu_step(hass: HomeAssistant) -> None:
     }
 
     class TestConfigFlow(MockSchemaConfigFlowHandler, domain=TEST_DOMAIN):
-        """Handle a config or options flow for Derivative."""
-
         config_flow = CONFIG_FLOW
 
     mock_platform(hass, f"{TEST_DOMAIN}.config_flow")
@@ -342,38 +358,38 @@ async def test_menu_step(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             TEST_DOMAIN, context={"source": "user"}
         )
-        assert result["type"] is FlowResultType.MENU
-        assert result["step_id"] == "user"
+        expect(result["type"]).to_be(FlowResultType.MENU)
+        expect(result["step_id"]).to_equal("user")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {"next_step_id": "option1"},
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "option1"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("option1")
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.MENU
-        assert result["step_id"] == "menu2"
+        expect(result["type"]).to_be(FlowResultType.MENU)
+        expect(result["step_id"]).to_equal("menu2")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {"next_step_id": "option3"},
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "option3"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("option3")
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "option4"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("option4")
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.CREATE_ENTRY
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_schema_none(hass: HomeAssistant) -> None:
+@test
+async def schema_none(hass: HomeAssistant = Depends(hass)) -> None:
     """Test SchemaFlowFormStep with schema set to None."""
-
     CONFIG_FLOW: dict[str, SchemaFlowFormStep | SchemaFlowMenuStep] = {
         "user": SchemaFlowFormStep(next_step="option1"),
         "option1": SchemaFlowFormStep(vol.Schema({}), next_step="pass"),
@@ -382,8 +398,6 @@ async def test_schema_none(hass: HomeAssistant) -> None:
     }
 
     class TestConfigFlow(MockSchemaConfigFlowHandler, domain=TEST_DOMAIN):
-        """Handle a config or options flow for Derivative."""
-
         config_flow = CONFIG_FLOW
 
     mock_platform(hass, f"{TEST_DOMAIN}.config_flow")
@@ -391,19 +405,20 @@ async def test_schema_none(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             TEST_DOMAIN, context={"source": "user"}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "option1"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("option1")
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "option3"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("option3")
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.CREATE_ENTRY
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_last_step(hass: HomeAssistant) -> None:
-    """Test SchemaFlowFormStep with schema set to None."""
+@test
+async def last_step(hass: HomeAssistant = Depends(hass)) -> None:
+    """Test SchemaFlowFormStep last_step tracking."""
 
     async def _step2_next_step(_: dict[str, Any]) -> str:
         return "step3"
@@ -416,8 +431,6 @@ async def test_last_step(hass: HomeAssistant) -> None:
     }
 
     class TestConfigFlow(MockSchemaConfigFlowHandler, domain=TEST_DOMAIN):
-        """Handle a config or options flow for Derivative."""
-
         config_flow = CONFIG_FLOW
 
     mock_platform(hass, f"{TEST_DOMAIN}.config_flow")
@@ -425,25 +438,26 @@ async def test_last_step(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             TEST_DOMAIN, context={"source": "user"}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "step1"
-        assert result["last_step"] is False
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("step1")
+        expect(result["last_step"]).to_be(False)
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "step2"
-        assert result["last_step"] is None
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("step2")
+        expect(result["last_step"]).to_be_none()
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "step3"
-        assert result["last_step"] is True
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("step3")
+        expect(result["last_step"]).to_be(True)
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.CREATE_ENTRY
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_next_step_function(hass: HomeAssistant) -> None:
+@test
+async def next_step_function(hass: HomeAssistant = Depends(hass)) -> None:
     """Test SchemaFlowFormStep with a next_step function."""
 
     async def _step1_next_step(_: dict[str, Any]) -> str:
@@ -459,8 +473,6 @@ async def test_next_step_function(hass: HomeAssistant) -> None:
     }
 
     class TestConfigFlow(MockSchemaConfigFlowHandler, domain=TEST_DOMAIN):
-        """Handle a config or options flow for Derivative."""
-
         config_flow = CONFIG_FLOW
 
     mock_platform(hass, f"{TEST_DOMAIN}.config_flow")
@@ -468,21 +480,21 @@ async def test_next_step_function(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             TEST_DOMAIN, context={"source": "user"}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "step1"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("step1")
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "step2"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("step2")
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.CREATE_ENTRY
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_suggested_values(
-    hass: HomeAssistant, manager: data_entry_flow.FlowManager
-) -> None:
+@test
+async def suggested_values(hass: HomeAssistant = Depends(hass)) -> None:
     """Test suggested_values handling in SchemaFlowFormStep."""
+    manager = _make_manager()
     manager.hass = hass
 
     OPTIONS_SCHEMA = vol.Schema(
@@ -528,75 +540,72 @@ async def test_suggested_values(
     )
     config_entry.add_to_hass(hass)
 
-    # Start flow in basic mode, suggested values should be the existing options
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "init"
-    schema_keys: list[vol.Optional] = list(result["data_schema"].schema.keys())
-    assert schema_keys == ["option1"]
-    assert schema_keys[0].description == {"suggested_value": "initial value"}
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+    schema_keys = list(result["data_schema"].schema.keys())
+    expect(schema_keys).to_equal(["option1"])
+    expect(schema_keys[0].description).to_equal({"suggested_value": "initial value"})
 
-    # Go to step 1, suggested values should be the input from init
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"option1": "blublu"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "step_1"
-    schema_keys: list[vol.Optional] = list(result["data_schema"].schema.keys())
-    assert schema_keys == ["option1"]
-    assert schema_keys[0].description == {"suggested_value": "blublu"}
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("step_1")
+    schema_keys = list(result["data_schema"].schema.keys())
+    expect(schema_keys).to_equal(["option1"])
+    expect(schema_keys[0].description).to_equal({"suggested_value": "blublu"})
 
-    # Go to step 2, suggested values should come from the callback function
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"option1": "blabla"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "step_2"
-    schema_keys: list[vol.Optional] = list(result["data_schema"].schema.keys())
-    assert schema_keys == ["option1"]
-    assert schema_keys[0].description == {"suggested_value": "a random override"}
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("step_2")
+    schema_keys = list(result["data_schema"].schema.keys())
+    expect(schema_keys).to_equal(["option1"])
+    expect(schema_keys[0].description).to_equal(
+        {"suggested_value": "a random override"}
+    )
 
-    # Go to step 3, suggested values should be empty
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"option1": "blabla"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "step_3"
-    schema_keys: list[vol.Optional] = list(result["data_schema"].schema.keys())
-    assert schema_keys == ["option1"]
-    assert schema_keys[0].description is None
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("step_3")
+    schema_keys = list(result["data_schema"].schema.keys())
+    expect(schema_keys).to_equal(["option1"])
+    expect(schema_keys[0].description).to_be_none()
 
-    # Go to step 4, suggested values should be the user input
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"option1": "blabla"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "step_4"
-    schema_keys: list[vol.Optional] = list(result["data_schema"].schema.keys())
-    assert schema_keys == ["option1"]
-    assert schema_keys[0].description == {"suggested_value": "blabla"}
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("step_4")
+    schema_keys = list(result["data_schema"].schema.keys())
+    expect(schema_keys).to_equal(["option1"])
+    expect(schema_keys[0].description).to_equal({"suggested_value": "blabla"})
 
-    # Incorrect value in step 4, suggested values should be the user input
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"option1": "not a valid value"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "step_4"
-    schema_keys: list[vol.Optional] = list(result["data_schema"].schema.keys())
-    assert schema_keys == ["option1"]
-    assert schema_keys[0].description == {"suggested_value": "not a valid value"}
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("step_4")
+    schema_keys = list(result["data_schema"].schema.keys())
+    expect(schema_keys).to_equal(["option1"])
+    expect(schema_keys[0].description).to_equal(
+        {"suggested_value": "not a valid value"}
+    )
 
-    # Correct value in step 4, end of flow
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"option1": "blabla"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
 
 
-async def test_description_placeholders(
-    hass: HomeAssistant, manager: data_entry_flow.FlowManager
-) -> None:
+@test
+async def description_placeholders(hass: HomeAssistant = Depends(hass)) -> None:
     """Test description_placeholders handling in SchemaFlowFormStep."""
+    manager = _make_manager()
     manager.hass = hass
 
     OPTIONS_SCHEMA = vol.Schema(
@@ -625,16 +634,15 @@ async def test_description_placeholders(
     config_entry = MockConfigEntry(data={}, domain="test")
     config_entry.add_to_hass(hass)
 
-    # Start flow and check the description_placeholders is populated
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert result["description_placeholders"] == {"option1": "a dynamic string"}
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+    expect(result["description_placeholders"]).to_equal({"option1": "a dynamic string"})
 
 
-async def test_options_flow_state(hass: HomeAssistant) -> None:
+@test
+async def options_flow_state(hass: HomeAssistant = Depends(hass)) -> None:
     """Test flow_state handling in SchemaFlowFormStep."""
-
     OPTIONS_SCHEMA = vol.Schema(
         {vol.Optional("option1", default="a very reasonable default"): str}
     )
@@ -680,44 +688,43 @@ async def test_options_flow_state(hass: HomeAssistant) -> None:
     )
     config_entry.add_to_hass(hass)
 
-    # Start flow in basic mode, flow state is initialised with None value
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "step_1"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("step_1")
 
     options_handler: SchemaOptionsFlowHandler
     options_handler = hass.config_entries.options._progress[result["flow_id"]]
-    assert options_handler._common_handler.flow_state == {"idx": None}
+    expect(options_handler._common_handler.flow_state).to_equal({"idx": None})
 
-    # Ensure that self.options and self._common_handler.options refer to the
-    # same mutable copy of the options
-    assert options_handler.options is options_handler._common_handler.options
+    expect(options_handler.options).to_be(options_handler._common_handler.options)
 
-    # In step 1, flow state is updated with user input
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"option1": "blublu"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "step_2"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("step_2")
 
     options_handler = hass.config_entries.options._progress[result["flow_id"]]
-    assert options_handler._common_handler.flow_state == {"idx": "blublu"}
+    expect(options_handler._common_handler.flow_state).to_equal({"idx": "blublu"})
 
-    # In step 2, options were updated from flow state
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {"option1": "blabla"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        "idx_from_flow_state": "blublu",
-        "option1": "blabla",
-    }
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            "idx_from_flow_state": "blublu",
+            "option1": "blabla",
+        }
+    )
 
 
-async def test_options_flow_omit_optional_keys(
-    hass: HomeAssistant, manager: data_entry_flow.FlowManager
+@test
+async def options_flow_omit_optional_keys(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test handling of advanced options in options flow."""
+    manager = _make_manager()
     manager.hass = hass
 
     OPTIONS_SCHEMA = vol.Schema(
@@ -755,62 +762,70 @@ async def test_options_flow_omit_optional_keys(
     )
     config_entry.add_to_hass(hass)
 
-    # Start flow in basic mode
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert list(result["data_schema"].schema.keys()) == [
-        "optional_no_default",
-        "optional_default",
-    ]
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(list(result["data_schema"].schema.keys())).to_equal(
+        [
+            "optional_no_default",
+            "optional_default",
+        ]
+    )
 
     result = await hass.config_entries.options.async_configure(result["flow_id"], {})
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        "advanced_default": "not default",
-        "advanced_no_default": "abc123",
-        "optional_default": "a very reasonable default",
-    }
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            "advanced_default": "not default",
+            "advanced_no_default": "abc123",
+            "optional_default": "a very reasonable default",
+        }
+    )
 
-    # Start flow in advanced mode
     result = await hass.config_entries.options.async_init(
         config_entry.entry_id, context={"show_advanced_options": True}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert list(result["data_schema"].schema.keys()) == [
-        "optional_no_default",
-        "optional_default",
-        "advanced_no_default",
-        "advanced_default",
-    ]
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(list(result["data_schema"].schema.keys())).to_equal(
+        [
+            "optional_no_default",
+            "optional_default",
+            "advanced_no_default",
+            "advanced_default",
+        ]
+    )
 
     result = await hass.config_entries.options.async_configure(result["flow_id"], {})
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        "advanced_default": "a very reasonable default",
-        "optional_default": "a very reasonable default",
-    }
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            "advanced_default": "a very reasonable default",
+            "optional_default": "a very reasonable default",
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    (
-        "new_options",
-        "expected_loads",
-        "expected_unloads",
+@test.cases(
+    test.case(
+        "should_not_reload",
+        new_options={},
+        expected_loads=1,
+        expected_unloads=0,
     ),
-    [
-        ({}, 1, 0),
-        ({"some_string": "some_value"}, 2, 1),
-    ],
-    ids=["should_not_reload", "should_reload"],
+    test.case(
+        "should_reload",
+        new_options={"some_string": "some_value"},
+        expected_loads=2,
+        expected_unloads=1,
+    ),
 )
-async def test_options_flow_with_automatic_reload(
-    hass: HomeAssistant,
-    manager: data_entry_flow.FlowManager,
+async def options_flow_with_automatic_reload(
     new_options: dict[str, str],
     expected_loads: int,
     expected_unloads: int,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test using options flow with automatic reloading."""
+    manager = _make_manager()
     manager.hass = hass
 
     OPTIONS_SCHEMA = vol.Schema({vol.Optional("some_string"): str})
@@ -847,16 +862,15 @@ async def test_options_flow_with_automatic_reload(
     )
     config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(config_entry.entry_id)
-    assert len(load_entry_mock.mock_calls) == 1
+    expect(len(load_entry_mock.mock_calls)).to_equal(1)
 
-    # Start flow in basic mode
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], new_options
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
 
-    assert len(load_entry_mock.mock_calls) == expected_loads
-    assert len(unload_entry_mock.mock_calls) == expected_unloads
+    expect(len(load_entry_mock.mock_calls)).to_equal(expected_loads)
+    expect(len(unload_entry_mock.mock_calls)).to_equal(expected_unloads)
