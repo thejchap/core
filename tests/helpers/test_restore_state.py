@@ -6,7 +6,7 @@ import logging
 from typing import Any
 from unittest.mock import Mock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.const import EVENT_HOMEASSISTANT_START, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState, HomeAssistant, State
@@ -37,13 +37,21 @@ from tests.common import (
     mock_integration,
     mock_platform,
 )
+from tests.hass_fixtures import LogCapture, caplog, hass, hass_storage
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "test_domain"
 PLATFORM = "test_platform"
 
 
-async def test_caching_data(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def caching_data(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that we cache data."""
     now = dt_util.utcnow()
     stored_states = [
@@ -70,7 +78,7 @@ async def test_caching_data(hass: HomeAssistant) -> None:
         await async_load(hass)
 
     data = async_get(hass)
-    assert data.last_states == {}
+    expect(data.last_states).to_equal({})
 
     # Mock that only b1 is present this run
     with patch(
@@ -88,14 +96,15 @@ async def test_caching_data(hass: HomeAssistant) -> None:
     # Mock that only b1 is present this run
     state = await entity.async_get_last_state()
 
-    assert state is not None
-    assert state.entity_id == "input_boolean.b1"
-    assert state.state == "on"
+    expect(state).not_.to_be_none()
+    expect(state.entity_id).to_equal("input_boolean.b1")
+    expect(state.state).to_equal("on")
 
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
 
 
-async def test_periodic_write(hass: HomeAssistant) -> None:
+@test
+async def periodic_write(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that we write periodiclly but not after stop."""
     data = async_get(hass)
     await hass.async_block_till_done()
@@ -116,7 +125,7 @@ async def test_periodic_write(hass: HomeAssistant) -> None:
         await entity.async_get_last_state()
         await hass.async_block_till_done()
 
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
 
     with patch(
         "homeassistant.helpers.restore_state.Store.async_save"
@@ -124,7 +133,7 @@ async def test_periodic_write(hass: HomeAssistant) -> None:
         async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=15))
         await hass.async_block_till_done()
 
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
 
     with patch(
         "homeassistant.helpers.restore_state.Store.async_save"
@@ -132,7 +141,7 @@ async def test_periodic_write(hass: HomeAssistant) -> None:
         hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
         await hass.async_block_till_done()
 
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
 
     with patch(
         "homeassistant.helpers.restore_state.Store.async_save"
@@ -140,10 +149,11 @@ async def test_periodic_write(hass: HomeAssistant) -> None:
         async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=30))
         await hass.async_block_till_done()
 
-    assert not mock_write_data.called
+    expect(mock_write_data.called).to_be_falsy()
 
 
-async def test_save_persistent_states(hass: HomeAssistant) -> None:
+@test
+async def save_persistent_states(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that we cancel the currently running job, save the data, and verify the perdiodic job continues."""
     data = async_get(hass)
     await hass.async_block_till_done()
@@ -165,7 +175,7 @@ async def test_save_persistent_states(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
 
     # Startup Save
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
 
     with patch(
         "homeassistant.helpers.restore_state.Store.async_save"
@@ -174,7 +184,7 @@ async def test_save_persistent_states(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
 
     # Not quite the first interval
-    assert not mock_write_data.called
+    expect(mock_write_data.called).to_be_falsy()
 
     with patch(
         "homeassistant.helpers.restore_state.Store.async_save"
@@ -182,7 +192,7 @@ async def test_save_persistent_states(hass: HomeAssistant) -> None:
         await RestoreStateData.async_save_persistent_states(hass)
         await hass.async_block_till_done()
 
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
 
     with patch(
         "homeassistant.helpers.restore_state.Store.async_save"
@@ -190,7 +200,7 @@ async def test_save_persistent_states(hass: HomeAssistant) -> None:
         async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=20))
         await hass.async_block_till_done()
     # Verify still saving
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
 
     with patch(
         "homeassistant.helpers.restore_state.Store.async_save"
@@ -198,10 +208,11 @@ async def test_save_persistent_states(hass: HomeAssistant) -> None:
         hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
         await hass.async_block_till_done()
     # Verify normal shutdown
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
 
 
-async def test_hass_starting(hass: HomeAssistant) -> None:
+@test
+async def hass_starting(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that we cache data."""
     hass.set_state(CoreState.starting)
 
@@ -227,7 +238,7 @@ async def test_hass_starting(hass: HomeAssistant) -> None:
     entity.entity_id = "input_boolean.b1"
 
     all_states = hass.states.async_all()
-    assert len(all_states) == 0
+    expect(len(all_states)).to_equal(0)
     hass.states.async_set("input_boolean.b1", "on")
 
     # Mock that only b1 is present this run
@@ -237,13 +248,13 @@ async def test_hass_starting(hass: HomeAssistant) -> None:
         state = await entity.async_get_last_state()
         await hass.async_block_till_done()
 
-    assert state is not None
-    assert state.entity_id == "input_boolean.b1"
-    assert state.state == "on"
+    expect(state).not_.to_be_none()
+    expect(state.entity_id).to_equal("input_boolean.b1")
+    expect(state.state).to_equal("on")
     hass.states.async_remove("input_boolean.b1")
 
     # Assert that no data was written yet, since hass is still starting.
-    assert not mock_write_data.called
+    expect(mock_write_data.called).to_be_falsy()
 
     # Finish hass startup
     with patch(
@@ -253,10 +264,11 @@ async def test_hass_starting(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
 
     # Assert that this session states were written
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
 
 
-async def test_dump_data(hass: HomeAssistant) -> None:
+@test
+async def dump_data(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that we cache data."""
     states = [
         State("input_boolean.b0", "on"),
@@ -299,7 +311,7 @@ async def test_dump_data(hass: HomeAssistant) -> None:
     ) as mock_write_data:
         await data.async_dump_states()
 
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
     args = mock_write_data.mock_calls[0][1]
     written_states = args[0]
 
@@ -311,16 +323,16 @@ async def test_dump_data(hass: HomeAssistant) -> None:
     # b3 should be written, since it is still not expired
     # b4 should not be written, since it is now expired
     # b5 should be written, since current state is restored by entity registry
-    assert len(written_states) == 3
+    expect(len(written_states)).to_equal(3)
     state0 = json_round_trip(written_states[0])
     state1 = json_round_trip(written_states[1])
     state2 = json_round_trip(written_states[2])
-    assert state0["state"]["entity_id"] == "input_boolean.b1"
-    assert state0["state"]["state"] == "on"
-    assert state1["state"]["entity_id"] == "input_boolean.b3"
-    assert state1["state"]["state"] == "off"
-    assert state2["state"]["entity_id"] == "input_boolean.b5"
-    assert state2["state"]["state"] == "off"
+    expect(state0["state"]["entity_id"]).to_equal("input_boolean.b1")
+    expect(state0["state"]["state"]).to_equal("on")
+    expect(state1["state"]["entity_id"]).to_equal("input_boolean.b3")
+    expect(state1["state"]["state"]).to_equal("off")
+    expect(state2["state"]["entity_id"]).to_equal("input_boolean.b5")
+    expect(state2["state"]["state"]).to_equal("off")
 
     # Test that removed entities are not persisted
     await entity.async_remove()
@@ -333,23 +345,26 @@ async def test_dump_data(hass: HomeAssistant) -> None:
     ) as mock_write_data:
         await data.async_dump_states()
 
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
     args = mock_write_data.mock_calls[0][1]
     written_states = args[0]
-    assert len(written_states) == 2
+    expect(len(written_states)).to_equal(2)
     state0 = json_round_trip(written_states[0])
     state1 = json_round_trip(written_states[1])
-    assert state0["state"]["entity_id"] == "input_boolean.b3"
-    assert state0["state"]["state"] == "off"
-    assert state1["state"]["entity_id"] == "input_boolean.b5"
-    assert state1["state"]["state"] == "off"
+    expect(state0["state"]["entity_id"]).to_equal("input_boolean.b3")
+    expect(state0["state"]["state"]).to_equal("off")
+    expect(state1["state"]["entity_id"]).to_equal("input_boolean.b5")
+    expect(state1["state"]["state"]).to_equal("off")
 
 
-@pytest.mark.parametrize(
-    "exception",
-    [HomeAssistantError, RuntimeError],
+@test.cases(
+    test.case("home_assistant_error", exception=HomeAssistantError),
+    test.case("runtime_error", exception=RuntimeError),
 )
-async def test_dump_error(hass: HomeAssistant, exception: type[Exception]) -> None:
+async def dump_error(
+    exception: type[Exception],
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test that errors during save are caught."""
     states = [
         State("input_boolean.b0", "on"),
@@ -379,10 +394,11 @@ async def test_dump_error(hass: HomeAssistant, exception: type[Exception]) -> No
     ) as mock_write_data:
         await data.async_dump_states()
 
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
 
 
-async def test_load_error(hass: HomeAssistant) -> None:
+@test
+async def load_error(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that we cache data."""
     entity = RestoreEntity()
     entity.hass = hass
@@ -394,10 +410,11 @@ async def test_load_error(hass: HomeAssistant) -> None:
     ):
         state = await entity.async_get_last_state()
 
-    assert state is None
+    expect(state).to_be_none()
 
 
-async def test_state_saved_on_remove(hass: HomeAssistant) -> None:
+@test
+async def state_saved_on_remove(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that we save entity state on removal."""
     platform = MockEntityPlatform(hass, domain="input_boolean")
     entity = RestoreEntity()
@@ -413,19 +430,23 @@ async def test_state_saved_on_remove(hass: HomeAssistant) -> None:
     data = async_get(hass)
 
     # No last states should currently be saved
-    assert not data.last_states
+    expect(data.last_states).to_be_falsy()
 
     await entity.async_remove()
 
     # We should store the input boolean state when it is removed
     state = data.last_states["input_boolean.b0"].state
-    assert state.state == "on"
-    assert isinstance(state.attributes["complicated"]["value"], list)
-    assert set(state.attributes["complicated"]["value"]) == {1, 2, now.isoformat()}
+    expect(state.state).to_equal("on")
+    expect(isinstance(state.attributes["complicated"]["value"], list)).to_be_truthy()
+    expect(set(state.attributes["complicated"]["value"])).to_equal(
+        {1, 2, now.isoformat()}
+    )
 
 
-async def test_restoring_invalid_entity_id(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def restoring_invalid_entity_id(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test restoring invalid entity IDs."""
     entity = RestoreEntity()
@@ -454,11 +475,13 @@ async def test_restoring_invalid_entity_id(
     }
 
     state = await entity.async_get_last_state()
-    assert state is None
+    expect(state).to_be_none()
 
 
-async def test_restore_entity_end_to_end(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def restore_entity_end_to_end(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test restoring an entity end-to-end."""
     component_setup = Mock(return_value=True)
@@ -509,27 +532,27 @@ async def test_restore_entity_end_to_end(
 
     await component.async_setup({DOMAIN: {"platform": PLATFORM, "sensors": None}})
     await hass.async_block_till_done()
-    assert component_setup.called
+    expect(component_setup.called).to_be_truthy()
 
-    assert f"{PLATFORM}.{DOMAIN}" in hass.config.components
-    assert len(setup_called) == 1
+    expect(hass.config.components).to_contain(f"{PLATFORM}.{DOMAIN}")
+    expect(len(setup_called)).to_equal(1)
 
     platform = async_get_platform_without_config_entry(hass, PLATFORM, DOMAIN)
-    assert platform.platform_name == PLATFORM
-    assert platform.domain == DOMAIN
-    assert hass.states.get(entity_id).state == "stored"
+    expect(platform.platform_name).to_equal(PLATFORM)
+    expect(platform.domain).to_equal(DOMAIN)
+    expect(hass.states.get(entity_id).state).to_equal("stored")
 
     await data.async_dump_states()
     await hass.async_block_till_done()
 
     storage_data = hass_storage[STORAGE_KEY]["data"]
-    assert len(storage_data) == 1
-    assert storage_data[0]["state"]["entity_id"] == entity_id
-    assert storage_data[0]["state"]["state"] == "stored"
+    expect(len(storage_data)).to_equal(1)
+    expect(storage_data[0]["state"]["entity_id"]).to_equal(entity_id)
+    expect(storage_data[0]["state"]["state"]).to_equal("stored")
 
     await platform.async_reset()
 
-    assert hass.states.get(entity_id) is None
+    expect(hass.states.get(entity_id)).to_be_none()
 
     # Make sure the entity still gets saved to restore state
     # even though the platform has been reset since it should
@@ -538,14 +561,15 @@ async def test_restore_entity_end_to_end(
     await hass.async_block_till_done()
 
     storage_data = hass_storage[STORAGE_KEY]["data"]
-    assert len(storage_data) == 1
-    assert storage_data[0]["state"]["entity_id"] == entity_id
-    assert storage_data[0]["state"]["state"] == "stored"
+    expect(len(storage_data)).to_equal(1)
+    expect(storage_data[0]["state"]["entity_id"]).to_equal(entity_id)
+    expect(storage_data[0]["state"]["state"]).to_equal("stored")
 
 
-async def test_dump_states_with_failing_extra_data(
-    hass: HomeAssistant,
-    caplog: pytest.LogCaptureFixture,
+@test
+async def dump_states_with_failing_extra_data(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test that a failing extra_restore_state_data skips only that entity."""
 
@@ -583,21 +607,24 @@ async def test_dump_states_with_failing_extra_data(
     ) as mock_write_data:
         await data.async_dump_states()
 
-    assert mock_write_data.called
+    expect(mock_write_data.called).to_be_truthy()
     written_states = mock_write_data.mock_calls[0][1][0]
 
     # Only the good entity should be saved
-    assert len(written_states) == 1
+    expect(len(written_states)).to_equal(1)
     state0 = json_round_trip(written_states[0])
-    assert state0["state"]["entity_id"] == "input_boolean.good"
-    assert state0["state"]["state"] == "on"
+    expect(state0["state"]["entity_id"]).to_equal("input_boolean.good")
+    expect(state0["state"]["state"]).to_equal("on")
 
-    assert "Error getting extra restore state data for input_boolean.bad" in caplog.text
+    expect(caplog.text).to_contain(
+        "Error getting extra restore state data for input_boolean.bad"
+    )
 
 
-async def test_entity_removal_with_failing_extra_data(
-    hass: HomeAssistant,
-    caplog: pytest.LogCaptureFixture,
+@test
+async def entity_removal_with_failing_extra_data(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test that entity removal succeeds even if extra_restore_state_data raises."""
 
@@ -617,13 +644,15 @@ async def test_entity_removal_with_failing_extra_data(
     hass.states.async_set("input_boolean.bad", "on")
 
     data = async_get(hass)
-    assert "input_boolean.bad" in data.entities
+    expect(data.entities).to_contain("input_boolean.bad")
 
     await entity.async_remove()
 
     # Entity should be unregistered
-    assert "input_boolean.bad" not in data.entities
+    expect(data.entities).not_.to_contain("input_boolean.bad")
     # No last state should be saved since extra data failed
-    assert "input_boolean.bad" not in data.last_states
+    expect(data.last_states).not_.to_contain("input_boolean.bad")
 
-    assert "Error getting extra restore state data for input_boolean.bad" in caplog.text
+    expect(caplog.text).to_contain(
+        "Error getting extra restore state data for input_boolean.bad"
+    )
