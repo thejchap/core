@@ -3,23 +3,32 @@
 import asyncio
 from datetime import timedelta
 import logging
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 import weakref
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import debounce
 from homeassistant.util.dt import utcnow
 
 from tests.common import async_fire_time_changed
+from tests.hass_fixtures import LogCapture, caplog, hass
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def test_immediate_works(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def immediate_works(hass: HomeAssistant = Depends(hass)) -> None:
     """Test immediate works."""
-    calls = []
+    calls: list[Any] = []
     debouncer = debounce.Debouncer(
         hass,
         _LOGGER,
@@ -30,52 +39,55 @@ async def test_immediate_works(hass: HomeAssistant) -> None:
 
     # Call when nothing happening
     await debouncer.async_call()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Call when cooldown active setting execute at end to True
     await debouncer.async_call()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Canceling debounce in cooldown
     debouncer.async_cancel()
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     before_job = debouncer._job
 
     # Call and let timer run out
     await debouncer.async_call()
-    assert len(calls) == 2
+    expect(len(calls)).to_equal(2)
     async_fire_time_changed(hass, utcnow() + timedelta(seconds=1))
     await hass.async_block_till_done()
-    assert len(calls) == 2
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
-    assert debouncer._job == before_job
+    expect(len(calls)).to_equal(2)
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
+    expect(debouncer._job).to_equal(before_job)
 
     # Test calling enabled timer if currently executing.
     await debouncer._execute_lock.acquire()
     await debouncer.async_call()
-    assert len(calls) == 2
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
+    expect(len(calls)).to_equal(2)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
     debouncer._execute_lock.release()
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     debouncer.async_shutdown()
 
 
-async def test_immediate_works_with_schedule_call(hass: HomeAssistant) -> None:
+@test
+async def immediate_works_with_schedule_call(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test immediate works with scheduled calls."""
-    calls = []
+    calls: list[Any] = []
     debouncer = debounce.Debouncer(
         hass,
         _LOGGER,
@@ -87,55 +99,58 @@ async def test_immediate_works_with_schedule_call(hass: HomeAssistant) -> None:
     # Call when nothing happening
     debouncer.async_schedule_call()
     await hass.async_block_till_done()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Call when cooldown active setting execute at end to True
     debouncer.async_schedule_call()
     await hass.async_block_till_done()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Canceling debounce in cooldown
     debouncer.async_cancel()
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     before_job = debouncer._job
 
     # Call and let timer run out
     debouncer.async_schedule_call()
     await hass.async_block_till_done()
-    assert len(calls) == 2
+    expect(len(calls)).to_equal(2)
     async_fire_time_changed(hass, utcnow() + timedelta(seconds=1))
     await hass.async_block_till_done()
-    assert len(calls) == 2
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
-    assert debouncer._job == before_job
+    expect(len(calls)).to_equal(2)
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
+    expect(debouncer._job).to_equal(before_job)
 
     # Test calling enabled timer if currently executing.
     await debouncer._execute_lock.acquire()
     debouncer.async_schedule_call()
     await hass.async_block_till_done()
-    assert len(calls) == 2
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
+    expect(len(calls)).to_equal(2)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
     debouncer._execute_lock.release()
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     debouncer.async_shutdown()
 
 
-async def test_immediate_works_with_callback_function(hass: HomeAssistant) -> None:
+@test
+async def immediate_works_with_callback_function(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test immediate works with callback function."""
-    calls = []
+    calls: list[Any] = []
     debouncer = debounce.Debouncer(
         hass,
         _LOGGER,
@@ -146,17 +161,20 @@ async def test_immediate_works_with_callback_function(hass: HomeAssistant) -> No
 
     # Call when nothing happening
     await debouncer.async_call()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     debouncer.async_shutdown()
 
 
-async def test_immediate_works_with_executor_function(hass: HomeAssistant) -> None:
+@test
+async def immediate_works_with_executor_function(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test immediate works with executor function."""
-    calls = []
+    calls: list[Any] = []
     debouncer = debounce.Debouncer(
         hass,
         _LOGGER,
@@ -167,19 +185,30 @@ async def test_immediate_works_with_executor_function(hass: HomeAssistant) -> No
 
     # Call when nothing happening
     await debouncer.async_call()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     debouncer.async_shutdown()
 
 
-async def test_immediate_works_with_passed_callback_function_raises(
-    hass: HomeAssistant,
+async def _expect_runtime_error_forced_raise(coro: Any) -> None:
+    caught: Exception | None = None
+    try:
+        await coro
+    except RuntimeError as exc:
+        caught = exc
+    expect(caught).not_.to_be_none()
+    expect("forced_raise" in str(caught)).to_be(True)
+
+
+@test
+async def immediate_works_with_passed_callback_function_raises(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test immediate works with a callback function that raises."""
-    calls = []
+    calls: list[Any] = []
 
     @callback
     def _append_and_raise() -> None:
@@ -195,57 +224,56 @@ async def test_immediate_works_with_passed_callback_function_raises(
     )
 
     # Call when nothing happening
-    with pytest.raises(RuntimeError, match="forced_raise"):
-        await debouncer.async_call()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    await _expect_runtime_error_forced_raise(debouncer.async_call())
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Call when cooldown active setting execute at end to True
     await debouncer.async_call()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Canceling debounce in cooldown
     debouncer.async_cancel()
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     before_job = debouncer._job
 
     # Call and let timer run out
-    with pytest.raises(RuntimeError, match="forced_raise"):
-        await debouncer.async_call()
-    assert len(calls) == 2
+    await _expect_runtime_error_forced_raise(debouncer.async_call())
+    expect(len(calls)).to_equal(2)
     async_fire_time_changed(hass, utcnow() + timedelta(seconds=1))
     await hass.async_block_till_done()
-    assert len(calls) == 2
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
-    assert debouncer._job == before_job
+    expect(len(calls)).to_equal(2)
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
+    expect(debouncer._job).to_equal(before_job)
 
     # Test calling enabled timer if currently executing.
     await debouncer._execute_lock.acquire()
     await debouncer.async_call()
-    assert len(calls) == 2
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
+    expect(len(calls)).to_equal(2)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
     debouncer._execute_lock.release()
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     debouncer.async_shutdown()
 
 
-async def test_immediate_works_with_passed_coroutine_raises(
-    hass: HomeAssistant,
+@test
+async def immediate_works_with_passed_coroutine_raises(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test immediate works with a coroutine that raises."""
-    calls = []
+    calls: list[Any] = []
 
     async def _append_and_raise() -> None:
         calls.append(None)
@@ -260,55 +288,54 @@ async def test_immediate_works_with_passed_coroutine_raises(
     )
 
     # Call when nothing happening
-    with pytest.raises(RuntimeError, match="forced_raise"):
-        await debouncer.async_call()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    await _expect_runtime_error_forced_raise(debouncer.async_call())
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Call when cooldown active setting execute at end to True
     await debouncer.async_call()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Canceling debounce in cooldown
     debouncer.async_cancel()
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     before_job = debouncer._job
 
     # Call and let timer run out
-    with pytest.raises(RuntimeError, match="forced_raise"):
-        await debouncer.async_call()
-    assert len(calls) == 2
+    await _expect_runtime_error_forced_raise(debouncer.async_call())
+    expect(len(calls)).to_equal(2)
     async_fire_time_changed(hass, utcnow() + timedelta(seconds=1))
     await hass.async_block_till_done()
-    assert len(calls) == 2
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
-    assert debouncer._job == before_job
+    expect(len(calls)).to_equal(2)
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
+    expect(debouncer._job).to_equal(before_job)
 
     # Test calling enabled timer if currently executing.
     await debouncer._execute_lock.acquire()
     await debouncer.async_call()
-    assert len(calls) == 2
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
+    expect(len(calls)).to_equal(2)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
     debouncer._execute_lock.release()
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     debouncer.async_shutdown()
 
 
-async def test_not_immediate_works(hass: HomeAssistant) -> None:
+@test
+async def not_immediate_works(hass: HomeAssistant = Depends(hass)) -> None:
     """Test immediate works."""
-    calls = []
+    calls: list[Any] = []
     debouncer = debounce.Debouncer(
         hass,
         _LOGGER,
@@ -319,30 +346,30 @@ async def test_not_immediate_works(hass: HomeAssistant) -> None:
 
     # Call when nothing happening
     await debouncer.async_call()
-    assert len(calls) == 0
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
+    expect(len(calls)).to_equal(0)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
 
     # Call while still on cooldown
     await debouncer.async_call()
-    assert len(calls) == 0
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
+    expect(len(calls)).to_equal(0)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
 
     # Canceling while on cooldown
     debouncer.async_cancel()
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
 
     # Call and let timer run out
     await debouncer.async_call()
-    assert len(calls) == 0
+    expect(len(calls)).to_equal(0)
     async_fire_time_changed(hass, utcnow() + timedelta(seconds=1))
     await hass.async_block_till_done()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Reset debouncer
     debouncer.async_cancel()
@@ -350,18 +377,21 @@ async def test_not_immediate_works(hass: HomeAssistant) -> None:
     # Test calling enabled timer if currently executing.
     await debouncer._execute_lock.acquire()
     await debouncer.async_call()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
     debouncer._execute_lock.release()
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     debouncer.async_shutdown()
 
 
-async def test_not_immediate_works_schedule_call(hass: HomeAssistant) -> None:
+@test
+async def not_immediate_works_schedule_call(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test immediate works with schedule call."""
-    calls = []
+    calls: list[Any] = []
     debouncer = debounce.Debouncer(
         hass,
         _LOGGER,
@@ -373,32 +403,32 @@ async def test_not_immediate_works_schedule_call(hass: HomeAssistant) -> None:
     # Call when nothing happening
     debouncer.async_schedule_call()
     await hass.async_block_till_done()
-    assert len(calls) == 0
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
+    expect(len(calls)).to_equal(0)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
 
     # Call while still on cooldown
     debouncer.async_schedule_call()
     await hass.async_block_till_done()
-    assert len(calls) == 0
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
+    expect(len(calls)).to_equal(0)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
 
     # Canceling while on cooldown
     debouncer.async_cancel()
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
 
     # Call and let timer run out
     debouncer.async_schedule_call()
     await hass.async_block_till_done()
-    assert len(calls) == 0
+    expect(len(calls)).to_equal(0)
     async_fire_time_changed(hass, utcnow() + timedelta(seconds=1))
     await hass.async_block_till_done()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Reset debouncer
     debouncer.async_cancel()
@@ -407,18 +437,21 @@ async def test_not_immediate_works_schedule_call(hass: HomeAssistant) -> None:
     await debouncer._execute_lock.acquire()
     debouncer.async_schedule_call()
     await hass.async_block_till_done()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
     debouncer._execute_lock.release()
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     debouncer.async_shutdown()
 
 
-async def test_immediate_works_with_function_swapped(hass: HomeAssistant) -> None:
+@test
+async def immediate_works_with_function_swapped(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test immediate works and we can change out the function."""
-    calls = []
+    calls: list[Any] = []
 
     one_function = AsyncMock(side_effect=lambda: calls.append(1))
     two_function = AsyncMock(side_effect=lambda: calls.append(2))
@@ -433,57 +466,61 @@ async def test_immediate_works_with_function_swapped(hass: HomeAssistant) -> Non
 
     # Call when nothing happening
     await debouncer.async_call()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Call when cooldown active setting execute at end to True
     await debouncer.async_call()
-    assert len(calls) == 1
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
-    assert debouncer._job.target == debouncer.function
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     # Canceling debounce in cooldown
     debouncer.async_cancel()
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     before_job = debouncer._job
     debouncer.function = two_function
 
     # Call and let timer run out
     await debouncer.async_call()
-    assert len(calls) == 2
-    assert calls == [1, 2]
+    expect(len(calls)).to_equal(2)
+    expect(calls).to_equal([1, 2])
     async_fire_time_changed(hass, utcnow() + timedelta(seconds=1))
     await hass.async_block_till_done()
-    assert len(calls) == 2
-    assert calls == [1, 2]
-    assert debouncer._timer_task is None
-    assert debouncer._execute_at_end_of_timer is False
-    assert debouncer._job.target == debouncer.function
-    assert debouncer._job != before_job
+    expect(len(calls)).to_equal(2)
+    expect(calls).to_equal([1, 2])
+    expect(debouncer._timer_task).to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(False)
+    expect(debouncer._job.target).to_equal(debouncer.function)
+    expect(debouncer._job != before_job).to_be(True)
 
     # Test calling enabled timer if currently executing.
     await debouncer._execute_lock.acquire()
     await debouncer.async_call()
-    assert len(calls) == 2
-    assert calls == [1, 2]
-    assert debouncer._timer_task is not None
-    assert debouncer._execute_at_end_of_timer is True
+    expect(len(calls)).to_equal(2)
+    expect(calls).to_equal([1, 2])
+    expect(debouncer._timer_task).not_.to_be_none()
+    expect(debouncer._execute_at_end_of_timer).to_be(True)
     debouncer._execute_lock.release()
-    assert debouncer._job.target == debouncer.function
+    expect(debouncer._job.target).to_equal(debouncer.function)
 
     debouncer.async_shutdown()
 
 
-async def test_shutdown(hass: HomeAssistant, caplog: pytest.LogCaptureFixture) -> None:
+@test
+async def shutdown(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
+) -> None:
     """Test shutdown."""
-    calls = []
-    future = asyncio.Future()
+    calls: list[Any] = []
+    future: asyncio.Future[bool] = asyncio.Future()
 
     async def _func() -> None:
         await future
@@ -503,22 +540,28 @@ async def test_shutdown(hass: HomeAssistant, caplog: pytest.LogCaptureFixture) -
     debouncer.async_shutdown()
     future.set_result(True)
     await hass.async_block_till_done()
-    assert len(calls) == 1
-    assert debouncer._timer_task is None
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).to_be_none()
 
-    assert "Debouncer call ignored as shutdown has been requested." not in caplog.text
+    expect(
+        "Debouncer call ignored as shutdown has been requested." not in caplog.text
+    ).to_be(True)
     await debouncer.async_call()
-    assert "Debouncer call ignored as shutdown has been requested." in caplog.text
+    expect(
+        "Debouncer call ignored as shutdown has been requested." in caplog.text
+    ).to_be(True)
 
-    assert len(calls) == 1
-    assert debouncer._timer_task is None
+    expect(len(calls)).to_equal(1)
+    expect(debouncer._timer_task).to_be_none()
 
 
-async def test_background(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def background(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test background tasks are created when background is True."""
-    calls = []
+    calls: list[Any] = []
 
     async def _func() -> None:
         await asyncio.sleep(0.1)
@@ -529,29 +572,32 @@ async def test_background(
     )
 
     await debouncer.async_call()
-    assert len(calls) == 1
+    expect(len(calls)).to_equal(1)
 
     debouncer.async_schedule_call()
-    assert len(calls) == 1
+    expect(len(calls)).to_equal(1)
 
     async_fire_time_changed(hass, utcnow() + timedelta(seconds=1))
     await hass.async_block_till_done(wait_background_tasks=False)
-    assert len(calls) == 1
+    expect(len(calls)).to_equal(1)
 
     await hass.async_block_till_done(wait_background_tasks=True)
-    assert len(calls) == 2
+    expect(len(calls)).to_equal(2)
 
     async_fire_time_changed(hass, utcnow() + timedelta(seconds=1))
     await hass.async_block_till_done(wait_background_tasks=False)
-    assert len(calls) == 2
+    expect(len(calls)).to_equal(2)
 
 
-async def test_shutdown_releases_parent_class(hass: HomeAssistant) -> None:
+@test
+async def shutdown_releases_parent_class(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test shutdown releases parent class.
 
     See https://github.com/home-assistant/core/issues/137237
     """
-    calls = []
+    calls: list[Any] = []
 
     class SomeClass:
         def run_func(self) -> None:
@@ -572,9 +618,9 @@ async def test_shutdown_releases_parent_class(hass: HomeAssistant) -> None:
     del my_class
     await debouncer.async_call()
     await hass.async_block_till_done()
-    assert len(calls) == 1
-    assert my_class_weak_ref() is not None
+    expect(len(calls)).to_equal(1)
+    expect(my_class_weak_ref()).not_.to_be_none()
 
     # Debouncer shutdown releases the class
     debouncer.async_shutdown()
-    assert my_class_weak_ref() is None
+    expect(my_class_weak_ref()).to_be_none()
