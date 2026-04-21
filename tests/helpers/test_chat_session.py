@@ -1,68 +1,72 @@
 """Test the chat session helper."""
 
-from collections.abc import Generator
 from datetime import timedelta
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import chat_session
 from homeassistant.util import dt as dt_util, ulid as ulid_util
 
 from tests.common import async_fire_time_changed
+from tests.hass_fixtures import hass
 
 
-@pytest.fixture
-def mock_ulid() -> Generator[Mock]:
-    """Mock the ulid library."""
-    with patch("homeassistant.helpers.chat_session.ulid_now") as mock_ulid_now:
-        mock_ulid_now.return_value = "mock-ulid"
-        yield mock_ulid_now
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
 
 
-@pytest.mark.parametrize(
-    ("start_id", "given_id"),
-    [
-        (None, "mock-ulid"),
-        # This ULID is not known as a session
-        ("01JHXE0952TSJCFJZ869AW6HMD", "mock-ulid"),
-        ("not-a-ulid", "not-a-ulid"),
-    ],
+@test.cases(
+    test.case("none_start_id", start_id=None, given_id="mock-ulid"),
+    # This ULID is not known as a session
+    test.case(
+        "unknown_ulid", start_id="01JHXE0952TSJCFJZ869AW6HMD", given_id="mock-ulid"
+    ),
+    test.case("not_a_ulid", start_id="not-a-ulid", given_id="not-a-ulid"),
 )
-async def test_conversation_id(
-    hass: HomeAssistant,
+async def conversation_id(
     start_id: str | None,
     given_id: str,
-    mock_ulid: Mock,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test conversation ID generation."""
-    with chat_session.async_get_chat_session(hass, start_id) as session:
-        assert session.conversation_id == given_id
+    # Patched inline rather than via a module-level @fixture, because
+    # Tryke module-level fixtures auto-run for every test in the file
+    # and would taint tests below that rely on the real ulid_now.
+    with (
+        patch("homeassistant.helpers.chat_session.ulid_now", return_value="mock-ulid"),
+        chat_session.async_get_chat_session(hass, start_id) as session,
+    ):
+        expect(session.conversation_id).to_equal(given_id)
 
 
-async def test_context_var(hass: HomeAssistant) -> None:
+@test
+async def context_var(hass: HomeAssistant = Depends(hass)) -> None:
     """Test context var."""
     with chat_session.async_get_chat_session(hass) as session:
         with chat_session.async_get_chat_session(
             hass, session.conversation_id
         ) as session2:
-            assert session is session2
+            expect(session is session2).to_be(True)
 
         with chat_session.async_get_chat_session(hass, None) as session2:
-            assert session.conversation_id != session2.conversation_id
+            expect(session.conversation_id != session2.conversation_id).to_be(True)
 
         with chat_session.async_get_chat_session(hass, "something else") as session2:
-            assert session.conversation_id != session2.conversation_id
+            expect(session.conversation_id != session2.conversation_id).to_be(True)
 
         with chat_session.async_get_chat_session(
             hass, ulid_util.ulid_now()
         ) as session2:
-            assert session.conversation_id != session2.conversation_id
+            expect(session.conversation_id != session2.conversation_id).to_be(True)
 
 
-async def test_cleanup(
-    hass: HomeAssistant,
+@test
+async def cleanup(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test cleanup of the chat session."""
     with chat_session.async_get_chat_session(hass) as session:
@@ -70,7 +74,7 @@ async def test_cleanup(
 
     # Reuse conversation ID to ensure we can chat with same session
     with chat_session.async_get_chat_session(hass, conversation_id) as session:
-        assert session.conversation_id == conversation_id
+        expect(session.conversation_id).to_equal(conversation_id)
 
     # Set the last updated to be older than the timeout
     hass.data[chat_session.DATA_CHAT_SESSION][conversation_id].last_updated = (
@@ -84,7 +88,7 @@ async def test_cleanup(
 
     # Should not be cleaned up, but it should have scheduled another cleanup
     with chat_session.async_get_chat_session(hass, conversation_id) as session:
-        assert session.conversation_id == conversation_id
+        expect(session.conversation_id).to_equal(conversation_id)
 
     async_fire_time_changed(
         hass,
@@ -93,4 +97,4 @@ async def test_cleanup(
 
     # It should be cleaned up now and we start a new conversation
     with chat_session.async_get_chat_session(hass, conversation_id) as session:
-        assert session.conversation_id != conversation_id
+        expect(session.conversation_id != conversation_id).to_be(True)
