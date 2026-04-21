@@ -26,6 +26,7 @@ from typing import Any, Self
 
 from tryke import Depends, fixture
 
+from homeassistant import block_async_io
 from homeassistant.config_entries import ConfigEntryState
 import homeassistant.core as ha
 from homeassistant.core import HomeAssistant
@@ -428,6 +429,18 @@ class _StringSink:
         value = "".join(self._parts)
         self._parts.clear()
         return value
+
+
+@fixture
+def disable_block_async_io() -> Generator[None]:
+    """Restore any methods patched by block_async_io after the test."""
+    yield
+    calls = block_async_io._BLOCKED_CALLS.calls
+    for blocking_call in calls:
+        setattr(
+            blocking_call.object, blocking_call.function, blocking_call.original_func
+        )
+    calls.clear()
 
 
 @fixture
