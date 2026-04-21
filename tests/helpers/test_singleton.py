@@ -3,45 +3,53 @@
 from typing import Any
 from unittest.mock import Mock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import singleton
+from homeassistant.helpers import singleton as _singleton
 
 
-@pytest.fixture
-def mock_hass():
+@fixture
+def mock_hass() -> Mock:
     """Mock hass fixture."""
     return Mock(data={})
 
 
-@pytest.mark.parametrize("result", [object(), {}, []])
-async def test_singleton_async(mock_hass: HomeAssistant, result: Any) -> None:
+@test.cases(
+    test.case("object", result=object()),
+    test.case("dict", result={}),
+    test.case("list", result=[]),
+)
+async def singleton_async(result: Any, mock_hass: Mock = Depends(mock_hass)) -> None:
     """Test singleton with async function."""
 
-    @singleton.singleton("test_key")
+    @_singleton.singleton("test_key")
     async def something(hass: HomeAssistant) -> Any:
         return result
 
     result1 = await something(mock_hass)
     result2 = await something(mock_hass)
-    assert result1 is result
-    assert result1 is result2
-    assert "test_key" in mock_hass.data
-    assert mock_hass.data["test_key"] is result1
+    expect(result1 is result).to_be(True)
+    expect(result1 is result2).to_be(True)
+    expect("test_key" in mock_hass.data).to_be(True)
+    expect(mock_hass.data["test_key"] is result1).to_be(True)
 
 
-@pytest.mark.parametrize("result", [object(), {}, []])
-def test_singleton(mock_hass: HomeAssistant, result: Any) -> None:
+@test.cases(
+    test.case("object", result=object()),
+    test.case("dict", result={}),
+    test.case("list", result=[]),
+)
+def singleton(result: Any, mock_hass: Mock = Depends(mock_hass)) -> None:
     """Test singleton with function."""
 
-    @singleton.singleton("test_key")
+    @_singleton.singleton("test_key")
     def something(hass: HomeAssistant) -> Any:
         return result
 
     result1 = something(mock_hass)
     result2 = something(mock_hass)
-    assert result1 is result
-    assert result1 is result2
-    assert "test_key" in mock_hass.data
-    assert mock_hass.data["test_key"] is result1
+    expect(result1 is result).to_be(True)
+    expect(result1 is result2).to_be(True)
+    expect("test_key" in mock_hass.data).to_be(True)
+    expect(mock_hass.data["test_key"] is result1).to_be(True)
