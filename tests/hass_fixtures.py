@@ -148,10 +148,19 @@ class LogCapture:
         """Formatted text of all captured records."""
         return "\n".join(self._handler.format(r) for r in self.records)
 
+    @property
+    def messages(self) -> list[str]:
+        """Return list of formatted messages (no level/logger prefix)."""
+        return [r.getMessage() for r in self.records]
+
     def set_level(self, level: int | str, logger: str | None = None) -> None:
         """Set the capture level."""
         target = logging.getLogger(logger) if logger else self._root
         target.setLevel(level)
+
+    def at_level(self, level: int | str, logger: str | None = None) -> _AtLevel:
+        """Scoped level change, restored on __exit__."""
+        return _AtLevel(self, level, logger)
 
     def clear(self) -> None:
         """Drop all captured records."""
@@ -177,6 +186,24 @@ class _ListHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         self._sink.append(record)
+
+
+class _AtLevel:
+    """Context manager for LogCapture.at_level()."""
+
+    def __init__(self, cap: LogCapture, level: int | str, logger: str | None) -> None:
+        self._target = logging.getLogger(logger) if logger else logging.getLogger()
+        self._level = level
+        self._prev: int | None = None
+
+    def __enter__(self) -> _AtLevel:
+        self._prev = self._target.level
+        self._target.setLevel(self._level)
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        if self._prev is not None:
+            self._target.setLevel(self._prev)
 
 
 @fixture

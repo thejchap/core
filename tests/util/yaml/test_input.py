@@ -1,32 +1,34 @@
 """Test inputs."""
 
-import pytest
+from tryke import expect, test
 
 from homeassistant.util.yaml import (
     Input,
     UndefinedSubstitution,
-    extract_inputs,
-    substitute,
+    extract_inputs as _extract_inputs,
+    substitute as _substitute,
 )
 
 
-def test_extract_inputs() -> None:
+@test
+def extract_inputs() -> None:
     """Test extracting inputs from data."""
-    assert extract_inputs(Input("hello")) == {"hello"}
-    assert extract_inputs({"info": [1, Input("hello"), 2, Input("world")]}) == {
-        "hello",
-        "world",
-    }
+    expect(_extract_inputs(Input("hello"))).to_equal({"hello"})
+    expect(_extract_inputs({"info": [1, Input("hello"), 2, Input("world")]})).to_equal(
+        {"hello", "world"}
+    )
 
 
-def test_substitute() -> None:
+@test
+def substitute() -> None:
     """Test we can substitute."""
-    assert substitute(Input("hello"), {"hello": 5}) == 5
+    expect(_substitute(Input("hello"), {"hello": 5})).to_equal(5)
 
-    with pytest.raises(UndefinedSubstitution):
-        substitute(Input("hello"), {})
+    expect(lambda: _substitute(Input("hello"), {})).to_raise(UndefinedSubstitution)
 
-    assert substitute(
-        {"info": [1, Input("hello"), 2, Input("world")]},
-        {"hello": 5, "world": 10},
-    ) == {"info": [1, 5, 2, 10]}
+    expect(
+        _substitute(
+            {"info": [1, Input("hello"), 2, Input("world")]},
+            {"hello": 5, "world": 10},
+        )
+    ).to_equal({"info": [1, 5, 2, 10]})
