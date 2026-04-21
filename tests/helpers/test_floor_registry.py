@@ -6,27 +6,58 @@ import re
 from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar, floor_registry as fr
 from homeassistant.util.dt import utcnow
 
 from tests.common import async_capture_events, flush_store
+from tests.hass_fixtures import (
+    area_registry,
+    floor_registry,
+    freezer,
+    hass,
+    hass_storage,
+    hass_unloaded,
+)
 
 
-async def test_list_floors(floor_registry: fr.FloorRegistry) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+async def _assert_thread_check_raises(coro_factory, method_name: str) -> None:
+    """Verify coro_factory raises RuntimeError about cross-thread use."""
+    try:
+        await coro_factory()
+    except RuntimeError as err:
+        expect(str(err)).to_contain(
+            f"Detected code that calls floor_registry.{method_name} from a thread"
+        )
+        return
+    raise AssertionError("Expected RuntimeError")
+
+
+@test
+async def list_floors(
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
+) -> None:
     """Make sure that we can read floors."""
     floors = floor_registry.async_list_floors()
-    assert len(list(floors)) == len(floor_registry.floors)
+    expect(len(list(floors))).to_equal(len(floor_registry.floors))
 
 
-@pytest.mark.usefixtures("freezer")
-async def test_create_floor(
-    hass: HomeAssistant,
-    floor_registry: fr.FloorRegistry,
+@test
+async def create_floor(
+    hass: HomeAssistant = Depends(hass),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
+    freezer: FrozenDateTimeFactory = Depends(freezer),
 ) -> None:
     """Make sure that we can create floors."""
+    del freezer
     update_events = async_capture_events(hass, fr.EVENT_FLOOR_REGISTRY_UPDATED)
     floor = floor_registry.async_create(
         name="First floor",
@@ -35,99 +66,114 @@ async def test_create_floor(
         level=1,
     )
 
-    assert floor == fr.FloorEntry(
-        floor_id="first_floor",
-        name="First floor",
-        icon="mdi:home-floor-1",
-        aliases={"first", "ground", "ground floor"},
-        level=1,
-        created_at=utcnow(),
-        modified_at=utcnow(),
+    expect(floor).to_equal(
+        fr.FloorEntry(
+            floor_id="first_floor",
+            name="First floor",
+            icon="mdi:home-floor-1",
+            aliases={"first", "ground", "ground floor"},
+            level=1,
+            created_at=utcnow(),
+            modified_at=utcnow(),
+        )
     )
 
-    assert len(floor_registry.floors) == 1
+    expect(len(floor_registry.floors)).to_equal(1)
 
     await hass.async_block_till_done()
 
-    assert len(update_events) == 1
-    assert update_events[0].data == {
-        "action": "create",
-        "floor_id": floor.floor_id,
-    }
+    expect(len(update_events)).to_equal(1)
+    expect(update_events[0].data).to_equal(
+        {
+            "action": "create",
+            "floor_id": floor.floor_id,
+        }
+    )
 
 
-async def test_create_floor_with_name_already_in_use(
-    hass: HomeAssistant, floor_registry: fr.FloorRegistry
+@test
+async def create_floor_with_name_already_in_use(
+    hass: HomeAssistant = Depends(hass),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure that we can't create a floor with a name already in use."""
     update_events = async_capture_events(hass, fr.EVENT_FLOOR_REGISTRY_UPDATED)
     floor_registry.async_create("First floor")
 
-    with pytest.raises(
+    expect(lambda: floor_registry.async_create("First floor")).to_raise(
         ValueError,
         match=re.escape("The name First floor (firstfloor) is already in use"),
-    ):
-        floor_registry.async_create("First floor")
+    )
 
     await hass.async_block_till_done()
 
-    assert len(floor_registry.floors) == 1
-    assert len(update_events) == 1
+    expect(len(floor_registry.floors)).to_equal(1)
+    expect(len(update_events)).to_equal(1)
 
 
-async def test_create_floor_with_id_already_in_use(
-    floor_registry: fr.FloorRegistry,
+@test
+async def create_floor_with_id_already_in_use(
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure that we can't create an floor with an id already in use."""
     floor = floor_registry.async_create("First")
 
     updated_floor = floor_registry.async_update(floor.floor_id, name="Second")
-    assert updated_floor.floor_id == floor.floor_id
+    expect(updated_floor.floor_id).to_equal(floor.floor_id)
 
     another_floor = floor_registry.async_create("First")
-    assert floor.floor_id != another_floor.floor_id
-    assert another_floor.floor_id == "first_2"
+    expect(floor.floor_id).not_.to_equal(another_floor.floor_id)
+    expect(another_floor.floor_id).to_equal("first_2")
 
 
-async def test_delete_floor(
-    hass: HomeAssistant, floor_registry: fr.FloorRegistry
+@test
+async def delete_floor(
+    hass: HomeAssistant = Depends(hass),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure that we can delete a floor."""
     update_events = async_capture_events(hass, fr.EVENT_FLOOR_REGISTRY_UPDATED)
     floor = floor_registry.async_create("First floor")
-    assert len(floor_registry.floors) == 1
+    expect(len(floor_registry.floors)).to_equal(1)
 
     floor_registry.async_delete(floor.floor_id)
 
-    assert not floor_registry.floors
+    expect(bool(floor_registry.floors)).to_be(False)
 
     await hass.async_block_till_done()
 
-    assert len(update_events) == 2
-    assert update_events[0].data == {
-        "action": "create",
-        "floor_id": floor.floor_id,
-    }
-    assert update_events[1].data == {
-        "action": "remove",
-        "floor_id": floor.floor_id,
-    }
+    expect(len(update_events)).to_equal(2)
+    expect(update_events[0].data).to_equal(
+        {
+            "action": "create",
+            "floor_id": floor.floor_id,
+        }
+    )
+    expect(update_events[1].data).to_equal(
+        {
+            "action": "remove",
+            "floor_id": floor.floor_id,
+        }
+    )
 
 
-async def test_delete_non_existing_floor(floor_registry: fr.FloorRegistry) -> None:
+@test
+async def delete_non_existing_floor(
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
+) -> None:
     """Make sure that we can't delete a floor that doesn't exist."""
     floor_registry.async_create("First floor")
 
-    with pytest.raises(KeyError):
-        floor_registry.async_delete("")
+    expect(lambda: floor_registry.async_delete("")).to_raise(KeyError)
 
-    assert len(floor_registry.floors) == 1
+    expect(len(floor_registry.floors)).to_equal(1)
 
 
-async def test_update_floor(
-    hass: HomeAssistant,
-    floor_registry: fr.FloorRegistry,
-    freezer: FrozenDateTimeFactory,
+@test
+async def update_floor(
+    hass: HomeAssistant = Depends(hass),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
+    freezer: FrozenDateTimeFactory = Depends(freezer),
 ) -> None:
     """Make sure that we can update floors."""
     created_at = datetime.fromisoformat("2024-01-01T01:00:00+00:00")
@@ -136,16 +182,18 @@ async def test_update_floor(
     update_events = async_capture_events(hass, fr.EVENT_FLOOR_REGISTRY_UPDATED)
     floor = floor_registry.async_create("First floor")
 
-    assert floor == fr.FloorEntry(
-        floor_id="first_floor",
-        name="First floor",
-        icon=None,
-        aliases=set(),
-        level=None,
-        created_at=created_at,
-        modified_at=created_at,
+    expect(floor).to_equal(
+        fr.FloorEntry(
+            floor_id="first_floor",
+            name="First floor",
+            icon=None,
+            aliases=set(),
+            level=None,
+            created_at=created_at,
+            modified_at=created_at,
+        )
     )
-    assert len(floor_registry.floors) == 1
+    expect(len(floor_registry.floors)).to_equal(1)
 
     modified_at = datetime.fromisoformat("2024-02-01T01:00:00+00:00")
     freezer.move_to(modified_at)
@@ -158,34 +206,42 @@ async def test_update_floor(
         level=2,
     )
 
-    assert updated_floor != floor
-    assert updated_floor == fr.FloorEntry(
-        floor_id="first_floor",
-        name="Second floor",
-        icon="mdi:home-floor-2",
-        aliases={"ground", "downstairs"},
-        level=2,
-        created_at=created_at,
-        modified_at=modified_at,
+    expect(updated_floor).not_.to_equal(floor)
+    expect(updated_floor).to_equal(
+        fr.FloorEntry(
+            floor_id="first_floor",
+            name="Second floor",
+            icon="mdi:home-floor-2",
+            aliases={"ground", "downstairs"},
+            level=2,
+            created_at=created_at,
+            modified_at=modified_at,
+        )
     )
 
-    assert len(floor_registry.floors) == 1
+    expect(len(floor_registry.floors)).to_equal(1)
 
     await hass.async_block_till_done()
 
-    assert len(update_events) == 2
-    assert update_events[0].data == {
-        "action": "create",
-        "floor_id": floor.floor_id,
-    }
-    assert update_events[1].data == {
-        "action": "update",
-        "floor_id": floor.floor_id,
-    }
+    expect(len(update_events)).to_equal(2)
+    expect(update_events[0].data).to_equal(
+        {
+            "action": "create",
+            "floor_id": floor.floor_id,
+        }
+    )
+    expect(update_events[1].data).to_equal(
+        {
+            "action": "update",
+            "floor_id": floor.floor_id,
+        }
+    )
 
 
-async def test_update_floor_with_same_data(
-    hass: HomeAssistant, floor_registry: fr.FloorRegistry
+@test
+async def update_floor_with_same_data(
+    hass: HomeAssistant = Depends(hass),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure that we can reapply the same data to a floor and it won't update."""
     update_events = async_capture_events(hass, fr.EVENT_FLOOR_REGISTRY_UPDATED)
@@ -199,71 +255,79 @@ async def test_update_floor_with_same_data(
         name="First floor",
         icon="mdi:home-floor-1",
     )
-    assert floor == updated_floor
+    expect(floor).to_equal(updated_floor)
 
     await hass.async_block_till_done()
 
-    # No update event
-    assert len(update_events) == 1
-    assert update_events[0].data == {
-        "action": "create",
-        "floor_id": floor.floor_id,
-    }
+    expect(len(update_events)).to_equal(1)
+    expect(update_events[0].data).to_equal(
+        {
+            "action": "create",
+            "floor_id": floor.floor_id,
+        }
+    )
 
 
-async def test_update_floor_with_same_name_change_case(
-    floor_registry: fr.FloorRegistry,
+@test
+async def update_floor_with_same_name_change_case(
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure that we can reapply the same name with a different case to a floor."""
     floor = floor_registry.async_create("first floor")
 
     updated_floor = floor_registry.async_update(floor.floor_id, name="First floor")
 
-    assert updated_floor.floor_id == floor.floor_id
-    assert updated_floor.name == "First floor"
-    assert updated_floor.normalized_name == floor.normalized_name
-    assert len(floor_registry.floors) == 1
+    expect(updated_floor.floor_id).to_equal(floor.floor_id)
+    expect(updated_floor.name).to_equal("First floor")
+    expect(updated_floor.normalized_name).to_equal(floor.normalized_name)
+    expect(len(floor_registry.floors)).to_equal(1)
 
 
-async def test_update_floor_with_name_already_in_use(
-    floor_registry: fr.FloorRegistry,
+@test
+async def update_floor_with_name_already_in_use(
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure that we can't update a floor with a name already in use."""
     floor1 = floor_registry.async_create("First floor")
     floor2 = floor_registry.async_create("Second floor")
 
-    with pytest.raises(
+    expect(
+        lambda: floor_registry.async_update(floor1.floor_id, name="Second floor")
+    ).to_raise(
         ValueError,
         match=re.escape("The name Second floor (secondfloor) is already in use"),
-    ):
-        floor_registry.async_update(floor1.floor_id, name="Second floor")
+    )
 
-    assert floor1.name == "First floor"
-    assert floor2.name == "Second floor"
-    assert len(floor_registry.floors) == 2
+    expect(floor1.name).to_equal("First floor")
+    expect(floor2.name).to_equal("Second floor")
+    expect(len(floor_registry.floors)).to_equal(2)
 
 
-async def test_update_floor_with_normalized_name_already_in_use(
-    floor_registry: fr.FloorRegistry,
+@test
+async def update_floor_with_normalized_name_already_in_use(
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure that we can't update a floor with a normalized name already in use."""
     floor1 = floor_registry.async_create("first")
     floor2 = floor_registry.async_create("S E C O N D")
 
-    with pytest.raises(
-        ValueError, match=re.escape("The name second (second) is already in use")
-    ):
-        floor_registry.async_update(floor1.floor_id, name="second")
+    expect(
+        lambda: floor_registry.async_update(floor1.floor_id, name="second")
+    ).to_raise(
+        ValueError,
+        match=re.escape("The name second (second) is already in use"),
+    )
 
-    assert floor1.name == "first"
-    assert floor2.name == "S E C O N D"
-    assert len(floor_registry.floors) == 2
+    expect(floor1.name).to_equal("first")
+    expect(floor2.name).to_equal("S E C O N D")
+    expect(len(floor_registry.floors)).to_equal(2)
 
 
-async def test_load_floors(
-    hass: HomeAssistant,
-    floor_registry: fr.FloorRegistry,
-    freezer: FrozenDateTimeFactory,
+@test
+async def load_floors(
+    hass: HomeAssistant = Depends(hass),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
+    freezer: FrozenDateTimeFactory = Depends(freezer),
 ) -> None:
     """Make sure that we can load/save data correctly."""
     floor1_created = datetime.fromisoformat("2024-01-01T00:00:00+00:00")
@@ -284,26 +348,26 @@ async def test_load_floors(
         level=2,
     )
 
-    assert len(floor_registry.floors) == 2
+    expect(len(floor_registry.floors)).to_equal(2)
 
     registry2 = fr.FloorRegistry(hass)
     await flush_store(floor_registry._store)
     await registry2.async_load()
 
-    assert len(registry2.floors) == 2
-    assert list(floor_registry.floors) == list(registry2.floors)
+    expect(len(registry2.floors)).to_equal(2)
+    expect(list(floor_registry.floors)).to_equal(list(registry2.floors))
 
     floor1_registry2 = registry2.async_get_floor_by_name("First floor")
-    assert floor1_registry2 == floor1
+    expect(floor1_registry2).to_equal(floor1)
 
     floor2_registry2 = registry2.async_get_floor_by_name("Second floor")
-    assert floor2_registry2 == floor2
+    expect(floor2_registry2).to_equal(floor2)
 
 
-@pytest.mark.parametrize("load_registries", [False])
-async def test_loading_floors_from_storage(
-    hass: HomeAssistant,
-    hass_storage: dict[str, Any],
+@test
+async def loading_floors_from_storage(
+    hass: HomeAssistant = Depends(hass_unloaded),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test loading stored floors on start."""
     hass_storage[fr.STORAGE_KEY] = {
@@ -324,152 +388,165 @@ async def test_loading_floors_from_storage(
     await fr.async_load(hass)
     registry = fr.async_get(hass)
 
-    assert len(registry.floors) == 1
+    expect(len(registry.floors)).to_equal(1)
 
 
-async def test_getting_floor_by_name(floor_registry: fr.FloorRegistry) -> None:
+@test
+async def getting_floor_by_name(
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
+) -> None:
     """Make sure we can get the floors by name."""
     floor = floor_registry.async_create("First floor")
     floor2 = floor_registry.async_get_floor_by_name("first floor")
     floor3 = floor_registry.async_get_floor_by_name("first    floor")
 
-    assert floor == floor2
-    assert floor == floor3
-    assert floor2 == floor3
+    expect(floor).to_equal(floor2)
+    expect(floor).to_equal(floor3)
+    expect(floor2).to_equal(floor3)
 
     get_floor = floor_registry.async_get_floor(floor.floor_id)
-    assert get_floor == floor
+    expect(get_floor).to_equal(floor)
 
 
-async def test_async_get_floors_by_alias(
-    floor_registry: fr.FloorRegistry,
+@test
+async def async_get_floors_by_alias(
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure we can get the floors by alias."""
     floor1 = floor_registry.async_create("First floor", aliases=("alias_1", "alias_2"))
     floor2 = floor_registry.async_create("Second floor", aliases=("alias_1", "alias_3"))
 
-    assert floor_registry.async_get_floors_by_alias("A l i a s_1") == [floor1, floor2]
-    assert floor_registry.async_get_floors_by_alias("A l i a s_2") == [floor1]
-    assert floor_registry.async_get_floors_by_alias("A l i a s_3") == [floor2]
+    expect(floor_registry.async_get_floors_by_alias("A l i a s_1")).to_equal(
+        [floor1, floor2]
+    )
+    expect(floor_registry.async_get_floors_by_alias("A l i a s_2")).to_equal([floor1])
+    expect(floor_registry.async_get_floors_by_alias("A l i a s_3")).to_equal([floor2])
 
 
-async def test_async_get_floors_by_alias_collisions(
-    floor_registry: fr.FloorRegistry,
+@test
+async def async_get_floors_by_alias_collisions(
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure we can get the floors by alias when the aliases have collisions."""
     floor = floor_registry.async_create("First floor")
-    assert floor_registry.async_get_floors_by_alias("A l i a s 1") == []
+    expect(floor_registry.async_get_floors_by_alias("A l i a s 1")).to_equal([])
 
-    # Add an alias
     updated_floor = floor_registry.async_update(floor.floor_id, aliases={"alias1"})
-    assert floor_registry.async_get_floors_by_alias("A l i a s 1") == [updated_floor]
+    expect(floor_registry.async_get_floors_by_alias("A l i a s 1")).to_equal(
+        [updated_floor]
+    )
 
-    # Add a colliding alias
     updated_floor = floor_registry.async_update(
         floor.floor_id, aliases={"alias1", "alias  1"}
     )
-    assert floor_registry.async_get_floors_by_alias("A l i a s 1") == [updated_floor]
+    expect(floor_registry.async_get_floors_by_alias("A l i a s 1")).to_equal(
+        [updated_floor]
+    )
 
-    # Add a colliding alias
     updated_floor = floor_registry.async_update(
         floor.floor_id, aliases={"alias1", "alias 1", "alias  1"}
     )
-    assert floor_registry.async_get_floors_by_alias("A l i a s 1") == [updated_floor]
+    expect(floor_registry.async_get_floors_by_alias("A l i a s 1")).to_equal(
+        [updated_floor]
+    )
 
-    # Remove a colliding alias
     updated_floor = floor_registry.async_update(
         floor.floor_id, aliases={"alias1", "alias  1"}
     )
-    assert floor_registry.async_get_floors_by_alias("A l i a s 1") == [updated_floor]
+    expect(floor_registry.async_get_floors_by_alias("A l i a s 1")).to_equal(
+        [updated_floor]
+    )
 
-    # Remove a colliding alias
     updated_floor = floor_registry.async_update(floor.floor_id, aliases={"alias1"})
-    assert floor_registry.async_get_floors_by_alias("A l i a s 1") == [updated_floor]
+    expect(floor_registry.async_get_floors_by_alias("A l i a s 1")).to_equal(
+        [updated_floor]
+    )
 
-    # Remove all aliases
     updated_floor = floor_registry.async_update(floor.floor_id, aliases={})
-    assert floor_registry.async_get_floors_by_alias("A l i a s 1") == []
+    expect(floor_registry.async_get_floors_by_alias("A l i a s 1")).to_equal([])
 
 
-async def test_async_get_floor_by_name_not_found(
-    floor_registry: fr.FloorRegistry,
+@test
+async def async_get_floor_by_name_not_found(
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure we return None for non-existent floors."""
     floor_registry.async_create("First floor")
 
-    assert len(floor_registry.floors) == 1
+    expect(len(floor_registry.floors)).to_equal(1)
 
-    assert floor_registry.async_get_floor_by_name("non_exist") is None
+    expect(floor_registry.async_get_floor_by_name("non_exist")).to_be_none()
 
 
-async def test_floor_removed_from_areas(
-    hass: HomeAssistant,
-    area_registry: ar.AreaRegistry,
-    floor_registry: fr.FloorRegistry,
+@test
+async def floor_removed_from_areas(
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Test if floor gets removed from areas when the floor is removed."""
-
     floor = floor_registry.async_create("First floor")
-    assert len(floor_registry.floors) == 1
+    expect(len(floor_registry.floors)).to_equal(1)
 
     entry = area_registry.async_create(name="Kitchen")
     area_registry.async_update(entry.id, floor_id=floor.floor_id)
 
     entries = ar.async_entries_for_floor(area_registry, floor.floor_id)
-    assert len(entries) == 1
+    expect(len(entries)).to_equal(1)
 
     floor_registry.async_delete(floor.floor_id)
     await hass.async_block_till_done()
 
     entries = ar.async_entries_for_floor(area_registry, floor.floor_id)
-    assert len(entries) == 0
+    expect(len(entries)).to_equal(0)
 
 
-async def test_async_create_thread_safety(
-    hass: HomeAssistant,
-    floor_registry: fr.FloorRegistry,
+@test
+async def async_create_thread_safety(
+    hass: HomeAssistant = Depends(hass),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Test async_create raises when called from wrong thread."""
-    with pytest.raises(
-        RuntimeError,
-        match="Detected code that calls floor_registry.async_create from a thread.",
-    ):
-        await hass.async_add_executor_job(floor_registry.async_create, "any")
+    await _assert_thread_check_raises(
+        lambda: hass.async_add_executor_job(floor_registry.async_create, "any"),
+        "async_create",
+    )
 
 
-async def test_async_delete_thread_safety(
-    hass: HomeAssistant,
-    floor_registry: fr.FloorRegistry,
+@test
+async def async_delete_thread_safety(
+    hass: HomeAssistant = Depends(hass),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Test async_delete raises when called from wrong thread."""
     any_floor = floor_registry.async_create("any")
 
-    with pytest.raises(
-        RuntimeError,
-        match="Detected code that calls floor_registry.async_delete from a thread.",
-    ):
-        await hass.async_add_executor_job(floor_registry.async_delete, any_floor)
+    await _assert_thread_check_raises(
+        lambda: hass.async_add_executor_job(floor_registry.async_delete, any_floor),
+        "async_delete",
+    )
 
 
-async def test_async_update_thread_safety(
-    hass: HomeAssistant,
-    floor_registry: fr.FloorRegistry,
+@test
+async def async_update_thread_safety(
+    hass: HomeAssistant = Depends(hass),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Test async_update raises when called from wrong thread."""
     any_floor = floor_registry.async_create("any")
 
-    with pytest.raises(
-        RuntimeError,
-        match="Detected code that calls floor_registry.async_update from a thread.",
-    ):
-        await hass.async_add_executor_job(
+    await _assert_thread_check_raises(
+        lambda: hass.async_add_executor_job(
             partial(floor_registry.async_update, any_floor.floor_id, name="new name")
-        )
+        ),
+        "async_update",
+    )
 
 
-@pytest.mark.parametrize("load_registries", [False])
-async def test_migration_from_1_1(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def migration_from_1_1(
+    hass: HomeAssistant = Depends(hass_unloaded),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test migration from version 1.1."""
     hass_storage[fr.STORAGE_KEY] = {
@@ -567,238 +644,239 @@ async def test_migration_from_1_1(
     await fr.async_load(hass)
     registry = fr.async_get(hass)
 
-    # Test data was loaded
     entry = registry.async_get_floor_by_name("AA floor no level floor")
-    assert entry.floor_id == "12345A"
+    expect(entry.floor_id).to_equal("12345A")
 
-    # Check sort order
-    assert list(registry.async_list_floors()) == [
-        fr.FloorEntry(
-            name="AA floor level 1",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345J",
-            icon=None,
-            level=1,
-        ),
-        fr.FloorEntry(
-            name="bb floor level 1",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345L",
-            icon=None,
-            level=1,
-        ),
-        fr.FloorEntry(
-            name="CC floor level 1",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345K",
-            icon=None,
-            level=1,
-        ),
-        fr.FloorEntry(
-            name="AA floor level 0",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345G",
-            icon=None,
-            level=0,
-        ),
-        fr.FloorEntry(
-            name="bb floor level 0",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345I",
-            icon=None,
-            level=0,
-        ),
-        fr.FloorEntry(
-            name="CC floor level 0",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345H",
-            icon=None,
-            level=0,
-        ),
-        fr.FloorEntry(
-            name="AA floor level -1",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345D",
-            icon=None,
-            level=-1,
-        ),
-        fr.FloorEntry(
-            name="bb floor level -1",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345F",
-            icon=None,
-            level=-1,
-        ),
-        fr.FloorEntry(
-            name="CC floor level -1",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345E",
-            icon=None,
-            level=-1,
-        ),
-        fr.FloorEntry(
-            name="AA floor no level floor",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345A",
-            icon=None,
-            level=None,
-        ),
-        fr.FloorEntry(
-            name="bb floor no level floor",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345C",
-            icon=None,
-            level=None,
-        ),
-        fr.FloorEntry(
-            name="CC floor no level floor",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id="12345B",
-            icon=None,
-            level=None,
-        ),
-    ]
+    expect(list(registry.async_list_floors())).to_equal(
+        [
+            fr.FloorEntry(
+                name="AA floor level 1",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345J",
+                icon=None,
+                level=1,
+            ),
+            fr.FloorEntry(
+                name="bb floor level 1",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345L",
+                icon=None,
+                level=1,
+            ),
+            fr.FloorEntry(
+                name="CC floor level 1",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345K",
+                icon=None,
+                level=1,
+            ),
+            fr.FloorEntry(
+                name="AA floor level 0",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345G",
+                icon=None,
+                level=0,
+            ),
+            fr.FloorEntry(
+                name="bb floor level 0",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345I",
+                icon=None,
+                level=0,
+            ),
+            fr.FloorEntry(
+                name="CC floor level 0",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345H",
+                icon=None,
+                level=0,
+            ),
+            fr.FloorEntry(
+                name="AA floor level -1",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345D",
+                icon=None,
+                level=-1,
+            ),
+            fr.FloorEntry(
+                name="bb floor level -1",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345F",
+                icon=None,
+                level=-1,
+            ),
+            fr.FloorEntry(
+                name="CC floor level -1",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345E",
+                icon=None,
+                level=-1,
+            ),
+            fr.FloorEntry(
+                name="AA floor no level floor",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345A",
+                icon=None,
+                level=None,
+            ),
+            fr.FloorEntry(
+                name="bb floor no level floor",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345C",
+                icon=None,
+                level=None,
+            ),
+            fr.FloorEntry(
+                name="CC floor no level floor",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id="12345B",
+                icon=None,
+                level=None,
+            ),
+        ]
+    )
 
-    # Check we store migrated data
     await flush_store(registry._store)
-    assert hass_storage[fr.STORAGE_KEY] == {
-        "version": fr.STORAGE_VERSION_MAJOR,
-        "minor_version": fr.STORAGE_VERSION_MINOR,
-        "key": fr.STORAGE_KEY,
-        "data": {
-            "floors": [
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345J",
-                    "icon": None,
-                    "level": 1,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "AA floor level 1",
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345L",
-                    "icon": None,
-                    "level": 1,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "bb floor level 1",
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345K",
-                    "icon": None,
-                    "level": 1,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "CC floor level 1",
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345G",
-                    "icon": None,
-                    "level": 0,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "AA floor level 0",
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345I",
-                    "icon": None,
-                    "level": 0,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "bb floor level 0",
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345H",
-                    "icon": None,
-                    "level": 0,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "CC floor level 0",
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345D",
-                    "icon": None,
-                    "level": -1,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "AA floor level -1",
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345F",
-                    "icon": None,
-                    "level": -1,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "bb floor level -1",
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345E",
-                    "icon": None,
-                    "level": -1,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "CC floor level -1",
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345A",
-                    "icon": None,
-                    "level": None,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "AA floor no level floor",
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345C",
-                    "icon": None,
-                    "level": None,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "bb floor no level floor",
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": "12345B",
-                    "icon": None,
-                    "level": None,
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "CC floor no level floor",
-                },
-            ]
-        },
-    }
+    expect(hass_storage[fr.STORAGE_KEY]).to_equal(
+        {
+            "version": fr.STORAGE_VERSION_MAJOR,
+            "minor_version": fr.STORAGE_VERSION_MINOR,
+            "key": fr.STORAGE_KEY,
+            "data": {
+                "floors": [
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345J",
+                        "icon": None,
+                        "level": 1,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "AA floor level 1",
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345L",
+                        "icon": None,
+                        "level": 1,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "bb floor level 1",
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345K",
+                        "icon": None,
+                        "level": 1,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "CC floor level 1",
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345G",
+                        "icon": None,
+                        "level": 0,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "AA floor level 0",
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345I",
+                        "icon": None,
+                        "level": 0,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "bb floor level 0",
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345H",
+                        "icon": None,
+                        "level": 0,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "CC floor level 0",
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345D",
+                        "icon": None,
+                        "level": -1,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "AA floor level -1",
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345F",
+                        "icon": None,
+                        "level": -1,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "bb floor level -1",
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345E",
+                        "icon": None,
+                        "level": -1,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "CC floor level -1",
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345A",
+                        "icon": None,
+                        "level": None,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "AA floor no level floor",
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345C",
+                        "icon": None,
+                        "level": None,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "bb floor no level floor",
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": "12345B",
+                        "icon": None,
+                        "level": None,
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "CC floor no level floor",
+                    },
+                ]
+            },
+        }
+    )
