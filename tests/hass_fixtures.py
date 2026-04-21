@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator, Generator
+from dataclasses import dataclass
 import logging
 from pathlib import Path
+import sys
 import tempfile
-from typing import Any
+from typing import Any, Self
 
 from tryke import Depends, fixture
 
@@ -104,6 +106,12 @@ async def hass(
         orig_exception_handler = loop.get_exception_handler()
         loop.set_exception_handler(exc_handle)
         frame.async_setup(hass_inst)
+
+        # Escape hatch for tests that intentionally trigger uncaught loop
+        # exceptions (e.g. testing the unhandled-exception traceback path)
+        # and want to clear the captured list before the fixture tears
+        # down, mirroring the legacy IGNORE_UNCAUGHT_EXCEPTIONS behavior.
+        hass_inst._captured_loop_exceptions = exceptions  # type: ignore[attr-defined]
 
         await translation_helper.async_load_integrations(hass_inst, {ha.DOMAIN})
 
@@ -312,7 +320,7 @@ class _AtLevel:
         self._level = level
         self._prev: int | None = None
 
-    def __enter__(self) -> _AtLevel:
+    def __enter__(self) -> Self:
         self._prev = self._target.level
         self._target.setLevel(self._level)
         return self
@@ -351,3 +359,83 @@ def tmp_path() -> Generator[Path]:
     """Drop-in replacement for pytest's ``tmp_path`` fixture."""
     with tempfile.TemporaryDirectory() as td:
         yield Path(td)
+
+
+@dataclass
+class Captured:
+    """Captured stdout/stderr output."""
+
+    out: str
+    err: str
+
+
+class CapFd:
+    """Python-level capture of ``sys.stdout`` / ``sys.stderr``.
+
+    Named for parity with pytest's ``capfd`` and usable as a drop-in by
+    ported tests. The underlying mechanism is ``sys.stdout``/``sys.stderr``
+    reassignment rather than fd-level ``dup2`` because Tryke's own
+    test-output capture replaces ``sys.stderr`` before the fixture runs;
+    an fd-level dup2 would land in Tryke's capture, not ours. This
+    means ``CapFd`` does not catch writes from subprocesses or C
+    extensions that bypass ``sys.*``. The HA tests that use this fixture
+    only exercise Python-level ``print(..., file=sys.stderr)``.
+    """
+
+    def __init__(self) -> None:
+        """Initialize with empty buffers and no saved streams."""
+        self._out_buf = _StringSink()
+        self._err_buf = _StringSink()
+        self._saved_out: Any = None
+        self._saved_err: Any = None
+
+    def start(self) -> None:
+        """Redirect ``sys.stdout`` and ``sys.stderr`` to in-memory buffers."""
+        self._saved_out = sys.stdout
+        self._saved_err = sys.stderr
+        sys.stdout = self._out_buf  # type: ignore[assignment]
+        sys.stderr = self._err_buf  # type: ignore[assignment]
+
+    def stop(self) -> None:
+        """Restore the original ``sys.stdout`` / ``sys.stderr``."""
+        sys.stdout = self._saved_out
+        sys.stderr = self._saved_err
+
+    def readouterr(self) -> Captured:
+        """Return captured stdout/stderr and clear the buffers."""
+        out = self._out_buf.drain()
+        err = self._err_buf.drain()
+        return Captured(out=out, err=err)
+
+
+class _StringSink:
+    """Minimal text sink matching the ``sys.stderr`` write interface."""
+
+    def __init__(self) -> None:
+        self._parts: list[str] = []
+
+    def write(self, s: str) -> int:
+        self._parts.append(s)
+        return len(s)
+
+    def flush(self) -> None:
+        return None
+
+    def isatty(self) -> bool:
+        return False
+
+    def drain(self) -> str:
+        value = "".join(self._parts)
+        self._parts.clear()
+        return value
+
+
+@fixture
+def capfd() -> Generator[CapFd]:
+    """Drop-in replacement for pytest's ``capfd`` fixture."""
+    cap = CapFd()
+    cap.start()
+    try:
+        yield cap
+    finally:
+        cap.stop()
