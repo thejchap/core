@@ -81,6 +81,7 @@ async def hass(
     recorder tripwire, IGNORE_UNCAUGHT_EXCEPTIONS bypass, and
     fixture_setup signal; those return when their consumers migrate.
     """
+    del hass_storage  # side-effect fixture; storage patch already active
     loop = asyncio.get_running_loop()
 
     exceptions: list[BaseException] = []
@@ -99,6 +100,69 @@ async def hass(
 
     async with async_test_home_assistant(
         loop, load_registries, config_dir=hass_config_dir
+    ) as hass_inst:
+        orig_exception_handler = loop.get_exception_handler()
+        loop.set_exception_handler(exc_handle)
+        frame.async_setup(hass_inst)
+
+        await translation_helper.async_load_integrations(hass_inst, {ha.DOMAIN})
+
+        yield hass_inst
+
+        loaded_entries = [
+            entry
+            for entry in hass_inst.config_entries.async_entries()
+            if entry.state is ConfigEntryState.LOADED
+        ]
+        if loaded_entries:
+            await asyncio.gather(
+                *(
+                    create_eager_task(
+                        hass_inst.config_entries.async_unload(config_entry.entry_id),
+                        loop=hass_inst.loop,
+                    )
+                    for config_entry in loaded_entries
+                )
+            )
+
+        await hass_inst.async_stop(force=True)
+
+    for ex in exceptions:
+        raise ex
+
+
+@fixture
+async def hass_unloaded(
+    hass_config_dir: str = Depends(hass_config_dir),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
+) -> AsyncGenerator[HomeAssistant]:
+    """Create a hass instance with registries NOT pre-loaded.
+
+    Equivalent to the pytest pattern
+    ``@pytest.mark.parametrize("load_registries", [False])``.
+    Tests that need to populate hass_storage manually and call
+    ``<registry>.async_load(hass)`` themselves should depend on this
+    fixture instead of ``hass``.
+    """
+    del hass_storage  # side-effect fixture; storage patch already active
+    loop = asyncio.get_running_loop()
+
+    exceptions: list[BaseException] = []
+
+    def exc_handle(loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
+        if "exception" in context:
+            exceptions.append(context["exception"])
+        else:
+            exceptions.append(
+                Exception(
+                    "Received exception handler without exception, "
+                    f"but with message: {context['message']}"
+                )
+            )
+        orig_exception_handler(loop, context)
+
+    async with async_test_home_assistant(
+        loop, False, config_dir=hass_config_dir
     ) as hass_inst:
         orig_exception_handler = loop.get_exception_handler()
         loop.set_exception_handler(exc_handle)

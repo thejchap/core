@@ -3,15 +3,23 @@
 from functools import partial
 from typing import Any
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
 from tests.common import async_capture_events, flush_store
+from tests.hass_fixtures import hass, hass_storage, hass_unloaded, issue_registry
 
 
-async def test_load_save_issues(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def load_save_issues(hass: HomeAssistant = Depends(hass)) -> None:
     """Make sure that we can load/save data correctly."""
     issues = [
         {
@@ -61,6 +69,7 @@ async def test_load_save_issues(hass: HomeAssistant) -> None:
         },
     ]
 
+    await ir.async_load(hass)
     events = async_capture_events(hass, ir.EVENT_REPAIRS_ISSUE_REGISTRY_UPDATED)
 
     for issue in issues:
@@ -79,40 +88,28 @@ async def test_load_save_issues(hass: HomeAssistant) -> None:
 
     await hass.async_block_till_done()
 
-    assert len(events) == 4
-    assert events[0].data == {
-        "action": "create",
-        "domain": "test",
-        "issue_id": "issue_1",
-    }
-    assert events[1].data == {
-        "action": "create",
-        "domain": "test",
-        "issue_id": "issue_2",
-    }
-    assert events[2].data == {
-        "action": "create",
-        "domain": "test",
-        "issue_id": "issue_3",
-    }
-    assert events[3].data == {
-        "action": "create",
-        "domain": "test",
-        "issue_id": "issue_4",
-    }
+    expect(len(events)).to_equal(4)
+    expect(events[0].data).to_equal(
+        {"action": "create", "domain": "test", "issue_id": "issue_1"}
+    )
+    expect(events[1].data).to_equal(
+        {"action": "create", "domain": "test", "issue_id": "issue_2"}
+    )
+    expect(events[2].data).to_equal(
+        {"action": "create", "domain": "test", "issue_id": "issue_3"}
+    )
+    expect(events[3].data).to_equal(
+        {"action": "create", "domain": "test", "issue_id": "issue_4"}
+    )
 
     ir.async_ignore_issue(hass, issues[0]["domain"], issues[0]["issue_id"], True)
     await hass.async_block_till_done()
 
-    assert len(events) == 5
-    assert events[4].data == {
-        "action": "update",
-        "domain": "test",
-        "issue_id": "issue_1",
-    }
+    expect(len(events)).to_equal(5)
+    expect(events[4].data).to_equal(
+        {"action": "update", "domain": "test", "issue_id": "issue_1"}
+    )
 
-    # Update an issue by creating it again with the same value,
-    # no update event should be fired, as nothing changed.
     ir.async_create_issue(
         hass,
         issues[2]["domain"],
@@ -127,9 +124,8 @@ async def test_load_save_issues(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert len(events) == 5
+    expect(len(events)).to_equal(5)
 
-    # Update an issue by creating it again, url changed
     ir.async_create_issue(
         hass,
         issues[2]["domain"],
@@ -144,25 +140,21 @@ async def test_load_save_issues(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert len(events) == 6
-    assert events[5].data == {
-        "action": "update",
-        "domain": "test",
-        "issue_id": "issue_3",
-    }
+    expect(len(events)).to_equal(6)
+    expect(events[5].data).to_equal(
+        {"action": "update", "domain": "test", "issue_id": "issue_3"}
+    )
 
     ir.async_delete_issue(hass, issues[2]["domain"], issues[2]["issue_id"])
     await hass.async_block_till_done()
 
-    assert len(events) == 7
-    assert events[6].data == {
-        "action": "remove",
-        "domain": "test",
-        "issue_id": "issue_3",
-    }
+    expect(len(events)).to_equal(7)
+    expect(events[6].data).to_equal(
+        {"action": "remove", "domain": "test", "issue_id": "issue_3"}
+    )
 
     registry = hass.data[ir.DATA_REGISTRY]
-    assert len(registry.issues) == 3
+    expect(len(registry.issues)).to_equal(3)
     issue1 = registry.async_get_issue("test", "issue_1")
     issue2 = registry.async_get_issue("test", "issue_2")
     issue4 = registry.async_get_issue("test", "issue_4")
@@ -171,49 +163,54 @@ async def test_load_save_issues(hass: HomeAssistant) -> None:
     await flush_store(registry._store)
     await registry2.async_load()
 
-    assert list(registry.issues) == list(registry2.issues)
+    expect(list(registry.issues)).to_equal(list(registry2.issues))
 
     issue1_registry2 = registry2.async_get_issue("test", "issue_1")
-    assert issue1_registry2 == ir.IssueEntry(
-        active=False,
-        breaks_in_ha_version=None,
-        created=issue1.created,
-        data=None,
-        dismissed_version=issue1.dismissed_version,
-        domain=issue1.domain,
-        is_fixable=None,
-        is_persistent=issue1.is_persistent,
-        issue_domain=None,
-        issue_id=issue1.issue_id,
-        learn_more_url=None,
-        severity=None,
-        translation_key=None,
-        translation_placeholders=None,
+    expect(issue1_registry2).to_equal(
+        ir.IssueEntry(
+            active=False,
+            breaks_in_ha_version=None,
+            created=issue1.created,
+            data=None,
+            dismissed_version=issue1.dismissed_version,
+            domain=issue1.domain,
+            is_fixable=None,
+            is_persistent=issue1.is_persistent,
+            issue_domain=None,
+            issue_id=issue1.issue_id,
+            learn_more_url=None,
+            severity=None,
+            translation_key=None,
+            translation_placeholders=None,
+        )
     )
     issue2_registry2 = registry2.async_get_issue("test", "issue_2")
-    assert issue2_registry2 == ir.IssueEntry(
-        active=False,
-        breaks_in_ha_version=None,
-        created=issue2.created,
-        data=None,
-        dismissed_version=issue2.dismissed_version,
-        domain=issue2.domain,
-        is_fixable=None,
-        is_persistent=issue2.is_persistent,
-        issue_domain=None,
-        issue_id=issue2.issue_id,
-        learn_more_url=None,
-        severity=None,
-        translation_key=None,
-        translation_placeholders=None,
+    expect(issue2_registry2).to_equal(
+        ir.IssueEntry(
+            active=False,
+            breaks_in_ha_version=None,
+            created=issue2.created,
+            data=None,
+            dismissed_version=issue2.dismissed_version,
+            domain=issue2.domain,
+            is_fixable=None,
+            is_persistent=issue2.is_persistent,
+            issue_domain=None,
+            issue_id=issue2.issue_id,
+            learn_more_url=None,
+            severity=None,
+            translation_key=None,
+            translation_placeholders=None,
+        )
     )
     issue4_registry2 = registry2.async_get_issue("test", "issue_4")
-    assert issue4_registry2 == issue4
+    expect(issue4_registry2).to_equal(issue4)
 
 
-@pytest.mark.parametrize("load_registries", [False])
-async def test_load_save_issues_read_only(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def load_save_issues_read_only(
+    hass: HomeAssistant = Depends(hass_unloaded),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Make sure that we don't save data when opened in read-only mode."""
     hass_storage[ir.STORAGE_KEY] = {
@@ -265,26 +262,25 @@ async def test_load_save_issues_read_only(
 
     await hass.async_block_till_done()
 
-    assert len(events) == 1
-    assert events[0].data == {
-        "action": "create",
-        "domain": "test",
-        "issue_id": "issue_2",
-    }
+    expect(len(events)).to_equal(1)
+    expect(events[0].data).to_equal(
+        {"action": "create", "domain": "test", "issue_id": "issue_2"}
+    )
 
     registry = ir.async_get(hass)
-    assert len(registry.issues) == 2
+    expect(len(registry.issues)).to_equal(2)
 
     registry2 = ir.IssueRegistry(hass)
     await flush_store(registry._store)
     await registry2.async_load()
 
-    assert len(registry2.issues) == 1
+    expect(len(registry2.issues)).to_equal(1)
 
 
-@pytest.mark.parametrize("load_registries", [False])
-async def test_loading_issues_from_storage(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def loading_issues_from_storage(
+    hass: HomeAssistant = Depends(hass_unloaded),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test loading stored issues on start."""
     hass_storage[ir.STORAGE_KEY] = {
@@ -328,11 +324,14 @@ async def test_loading_issues_from_storage(
     await ir.async_load(hass)
 
     registry = hass.data[ir.DATA_REGISTRY]
-    assert len(registry.issues) == 3
+    expect(len(registry.issues)).to_equal(3)
 
 
-@pytest.mark.parametrize("load_registries", [False])
-async def test_migration_1_1(hass: HomeAssistant, hass_storage: dict[str, Any]) -> None:
+@test
+async def migration_1_1(
+    hass: HomeAssistant = Depends(hass_unloaded),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
+) -> None:
     """Test migration from version 1.1."""
     hass_storage[ir.STORAGE_KEY] = {
         "version": 1,
@@ -358,17 +357,16 @@ async def test_migration_1_1(hass: HomeAssistant, hass_storage: dict[str, Any]) 
     await ir.async_load(hass)
 
     registry = hass.data[ir.DATA_REGISTRY]
-    assert len(registry.issues) == 2
+    expect(len(registry.issues)).to_equal(2)
 
 
-async def test_get_or_create_thread_safety(
-    hass: HomeAssistant, issue_registry: ir.IssueRegistry
+@test
+async def get_or_create_thread_safety(
+    hass: HomeAssistant = Depends(hass),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry),
 ) -> None:
     """Test call async_get_or_create_from a thread."""
-    with pytest.raises(
-        RuntimeError,
-        match="Detected code that calls issue_registry.async_get_or_create from a thread.",
-    ):
+    try:
         await hass.async_add_executor_job(
             partial(
                 ir.async_create_issue,
@@ -380,10 +378,19 @@ async def test_get_or_create_thread_safety(
                 translation_key="any",
             )
         )
+    except RuntimeError as err:
+        expect(
+            "Detected code that calls issue_registry.async_get_or_create from a thread"
+            in str(err)
+        ).to_be(True)
+    else:
+        expect("raised RuntimeError").to_equal("no exception")
 
 
-async def test_async_delete_issue_thread_safety(
-    hass: HomeAssistant, issue_registry: ir.IssueRegistry
+@test
+async def async_delete_issue_thread_safety(
+    hass: HomeAssistant = Depends(hass),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry),
 ) -> None:
     """Test call async_delete_issue from a thread."""
     ir.async_create_issue(
@@ -395,20 +402,26 @@ async def test_async_delete_issue_thread_safety(
         translation_key="any",
     )
 
-    with pytest.raises(
-        RuntimeError,
-        match="Detected code that calls issue_registry.async_delete from a thread.",
-    ):
+    try:
         await hass.async_add_executor_job(
             ir.async_delete_issue,
             hass,
             "any",
             "any",
         )
+    except RuntimeError as err:
+        expect(
+            "Detected code that calls issue_registry.async_delete from a thread"
+            in str(err)
+        ).to_be(True)
+    else:
+        expect("raised RuntimeError").to_equal("no exception")
 
 
-async def test_async_ignore_issue_thread_safety(
-    hass: HomeAssistant, issue_registry: ir.IssueRegistry
+@test
+async def async_ignore_issue_thread_safety(
+    hass: HomeAssistant = Depends(hass),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry),
 ) -> None:
     """Test call async_ignore_issue from a thread."""
     ir.async_create_issue(
@@ -420,10 +433,14 @@ async def test_async_ignore_issue_thread_safety(
         translation_key="any",
     )
 
-    with pytest.raises(
-        RuntimeError,
-        match="Detected code that calls issue_registry.async_ignore from a thread.",
-    ):
+    try:
         await hass.async_add_executor_job(
             ir.async_ignore_issue, hass, "any", "any", True
         )
+    except RuntimeError as err:
+        expect(
+            "Detected code that calls issue_registry.async_ignore from a thread"
+            in str(err)
+        ).to_be(True)
+    else:
+        expect("raised RuntimeError").to_equal("no exception")

@@ -1,5 +1,7 @@
 """Test the group helper."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.const import ATTR_ENTITY_ID, ATTR_GROUP_ENTITIES, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er, group
@@ -10,9 +12,17 @@ from homeassistant.helpers.group import (
 )
 
 from tests.common import MockEntity, MockEntityPlatform
+from tests.hass_fixtures import entity_registry, hass
 
 
-async def test_expand_entity_ids(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def expand_entity_ids(hass: HomeAssistant = Depends(hass)) -> None:
     """Test expand_entity_ids method."""
     hass.states.async_set("light.Bowl", STATE_ON)
     hass.states.async_set("light.Ceiling", STATE_OFF)
@@ -20,21 +30,20 @@ async def test_expand_entity_ids(hass: HomeAssistant) -> None:
         "group.init_group", STATE_ON, {ATTR_ENTITY_ID: ["light.bowl", "light.ceiling"]}
     )
     state = hass.states.get("group.init_group")
-    assert state is not None
-    assert state.attributes[ATTR_ENTITY_ID] == ["light.bowl", "light.ceiling"]
+    expect(state).not_.to_be_none()
+    expect(state.attributes[ATTR_ENTITY_ID]).to_equal(["light.bowl", "light.ceiling"])
 
-    assert sorted(group.expand_entity_ids(hass, ["group.init_group"])) == [
-        "light.bowl",
-        "light.ceiling",
-    ]
-    assert sorted(group.expand_entity_ids(hass, ["group.INIT_group"])) == [
-        "light.bowl",
-        "light.ceiling",
-    ]
+    expect(sorted(group.expand_entity_ids(hass, ["group.init_group"]))).to_equal(
+        ["light.bowl", "light.ceiling"]
+    )
+    expect(sorted(group.expand_entity_ids(hass, ["group.INIT_group"]))).to_equal(
+        ["light.bowl", "light.ceiling"]
+    )
 
 
-async def test_expand_entity_ids_does_not_return_duplicates(
-    hass: HomeAssistant,
+@test
+async def expand_entity_ids_does_not_return_duplicates(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test that expand_entity_ids does not return duplicates."""
     hass.states.async_set("light.Bowl", STATE_ON)
@@ -43,16 +52,17 @@ async def test_expand_entity_ids_does_not_return_duplicates(
         "group.init_group", STATE_ON, {ATTR_ENTITY_ID: ["light.bowl", "light.ceiling"]}
     )
 
-    assert sorted(
-        group.expand_entity_ids(hass, ["group.init_group", "light.Ceiling"])
-    ) == ["light.bowl", "light.ceiling"]
+    expect(
+        sorted(group.expand_entity_ids(hass, ["group.init_group", "light.Ceiling"]))
+    ).to_equal(["light.bowl", "light.ceiling"])
 
-    assert sorted(
-        group.expand_entity_ids(hass, ["light.bowl", "group.init_group"])
-    ) == ["light.bowl", "light.ceiling"]
+    expect(
+        sorted(group.expand_entity_ids(hass, ["light.bowl", "group.init_group"]))
+    ).to_equal(["light.bowl", "light.ceiling"])
 
 
-async def test_expand_entity_ids_recursive(hass: HomeAssistant) -> None:
+@test
+async def expand_entity_ids_recursive(hass: HomeAssistant = Depends(hass)) -> None:
     """Test expand_entity_ids method with a group that contains itself."""
     hass.states.async_set("light.Bowl", STATE_ON)
     hass.states.async_set("light.Ceiling", STATE_OFF)
@@ -66,18 +76,21 @@ async def test_expand_entity_ids_recursive(hass: HomeAssistant) -> None:
         {ATTR_ENTITY_ID: ["group.init_group", "light.ceiling"]},
     )
 
-    assert sorted(group.expand_entity_ids(hass, ["group.rec_group"])) == [
-        "light.bowl",
-        "light.ceiling",
-    ]
+    expect(sorted(group.expand_entity_ids(hass, ["group.rec_group"]))).to_equal(
+        ["light.bowl", "light.ceiling"]
+    )
 
 
-async def test_expand_entity_ids_ignores_non_strings(hass: HomeAssistant) -> None:
+@test
+async def expand_entity_ids_ignores_non_strings(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test that non string elements in lists are ignored."""
-    assert group.expand_entity_ids(hass, [5, True]) == []
+    expect(group.expand_entity_ids(hass, [5, True])).to_equal([])
 
 
-async def test_get_entity_ids(hass: HomeAssistant) -> None:
+@test
+async def get_entity_ids(hass: HomeAssistant = Depends(hass)) -> None:
     """Test get_entity_ids method."""
     hass.states.async_set("light.Bowl", STATE_ON)
     hass.states.async_set("light.Ceiling", STATE_OFF)
@@ -85,37 +98,46 @@ async def test_get_entity_ids(hass: HomeAssistant) -> None:
         "group.init_group", STATE_ON, {ATTR_ENTITY_ID: ["light.bowl", "light.ceiling"]}
     )
 
-    assert sorted(group.get_entity_ids(hass, "group.init_group")) == [
-        "light.bowl",
-        "light.ceiling",
-    ]
+    expect(sorted(group.get_entity_ids(hass, "group.init_group"))).to_equal(
+        ["light.bowl", "light.ceiling"]
+    )
 
 
-async def test_get_entity_ids_with_domain_filter(hass: HomeAssistant) -> None:
+@test
+async def get_entity_ids_with_domain_filter(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test if get_entity_ids works with a domain_filter."""
     hass.states.async_set("switch.AC", STATE_OFF)
     hass.states.async_set(
         "group.mixed_group", STATE_ON, {ATTR_ENTITY_ID: ["light.bowl", "switch.ac"]}
     )
 
-    assert group.get_entity_ids(hass, "group.mixed_group", domain_filter="switch") == [
-        "switch.ac"
-    ]
+    expect(
+        group.get_entity_ids(hass, "group.mixed_group", domain_filter="switch")
+    ).to_equal(["switch.ac"])
 
 
-async def test_get_entity_ids_with_non_existing_group_name(hass: HomeAssistant) -> None:
+@test
+async def get_entity_ids_with_non_existing_group_name(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test get_entity_ids with a non existing group."""
-    assert group.get_entity_ids(hass, "non_existing") == []
+    expect(group.get_entity_ids(hass, "non_existing")).to_equal([])
 
 
-async def test_get_entity_ids_with_non_group_state(hass: HomeAssistant) -> None:
+@test
+async def get_entity_ids_with_non_group_state(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test get_entity_ids with a non group state."""
-    assert group.get_entity_ids(hass, "switch.AC") == []
+    expect(group.get_entity_ids(hass, "switch.AC")).to_equal([])
 
 
-async def test_get_group_entities(hass: HomeAssistant) -> None:
+@test
+async def get_group_entities_(hass: HomeAssistant = Depends(hass)) -> None:
     """Test get_group_entities returns registered group entities."""
-    assert get_group_entities(hass) == {}
+    expect(get_group_entities(hass)).to_equal({})
 
     platform = MockEntityPlatform(hass, domain="light", platform_name="test")
 
@@ -126,11 +148,14 @@ async def test_get_group_entities(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     group_entities = get_group_entities(hass)
-    assert "light.test_group" in group_entities
-    assert group_entities["light.test_group"] is ent
+    expect("light.test_group" in group_entities).to_be(True)
+    expect(group_entities["light.test_group"] is ent).to_be(True)
 
 
-async def test_group_entity_removed_from_registry(hass: HomeAssistant) -> None:
+@test
+async def group_entity_removed_from_registry(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test group entity is removed from get_group_entities on removal."""
     platform = MockEntityPlatform(hass, domain="light", platform_name="test")
 
@@ -139,16 +164,17 @@ async def test_group_entity_removed_from_registry(hass: HomeAssistant) -> None:
 
     await platform.async_add_entities([ent])
     await hass.async_block_till_done()
-    assert "light.test_group" in get_group_entities(hass)
+    expect("light.test_group" in get_group_entities(hass)).to_be(True)
 
     await platform.async_remove_entity(ent.entity_id)
     await hass.async_block_till_done()
-    assert "light.test_group" not in get_group_entities(hass)
+    expect("light.test_group" not in get_group_entities(hass)).to_be(True)
 
 
-async def test_group_entity_id_changed_in_registry(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+@test
+async def group_entity_id_changed_in_registry(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test get_group_entities reflects new key when group entity ID is changed."""
     platform = MockEntityPlatform(hass, domain="light", platform_name="test")
@@ -159,20 +185,21 @@ async def test_group_entity_id_changed_in_registry(
     await platform.async_add_entities([ent])
     await hass.async_block_till_done()
 
-    assert "light.old_id" in get_group_entities(hass)
+    expect("light.old_id" in get_group_entities(hass)).to_be(True)
 
     entity_registry.async_update_entity("light.old_id", new_entity_id="light.new_id")
     await hass.async_block_till_done()
 
     group_entities = get_group_entities(hass)
-    assert "light.old_id" not in group_entities
-    assert "light.new_id" in group_entities
+    expect("light.old_id" not in group_entities).to_be(True)
+    expect("light.new_id" in group_entities).to_be(True)
 
     expanded = group.expand_entity_ids(hass, ["light.new_id"])
-    assert sorted(expanded) == ["light.bulb1", "light.bulb2"]
+    expect(sorted(expanded)).to_equal(["light.bulb1", "light.bulb2"])
 
 
-async def test_multiple_group_entities(hass: HomeAssistant) -> None:
+@test
+async def multiple_group_entities(hass: HomeAssistant = Depends(hass)) -> None:
     """Test multiple group entities can be registered and work independently."""
     platform = MockEntityPlatform(hass, domain="light", platform_name="test")
 
@@ -186,17 +213,20 @@ async def test_multiple_group_entities(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     group_entities = get_group_entities(hass)
-    assert "light.group1" in group_entities
-    assert "light.group2" in group_entities
+    expect("light.group1" in group_entities).to_be(True)
+    expect("light.group2" in group_entities).to_be(True)
 
     expanded1 = group.expand_entity_ids(hass, ["light.group1"])
     expanded2 = group.expand_entity_ids(hass, ["light.group2"])
 
-    assert sorted(expanded1) == ["light.a", "light.b"]
-    assert sorted(expanded2) == ["light.c", "light.d"]
+    expect(sorted(expanded1)).to_equal(["light.a", "light.b"])
+    expect(sorted(expanded2)).to_equal(["light.c", "light.d"])
 
 
-async def test_generic_group_member_entity_ids(hass: HomeAssistant) -> None:
+@test
+async def generic_group_member_entity_ids(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test GenericGroup member_entity_ids property."""
     platform = MockEntityPlatform(hass, domain="light", platform_name="test")
 
@@ -206,10 +236,13 @@ async def test_generic_group_member_entity_ids(hass: HomeAssistant) -> None:
     await platform.async_add_entities([ent])
     await hass.async_block_till_done()
 
-    assert ent.group.member_entity_ids == ["light.bulb1", "light.bulb2"]
+    expect(ent.group.member_entity_ids).to_equal(["light.bulb1", "light.bulb2"])
 
 
-async def test_expand_entity_ids_with_generic_group(hass: HomeAssistant) -> None:
+@test
+async def expand_entity_ids_with_generic_group(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test expand_entity_ids with GenericGroup entities."""
     platform = MockEntityPlatform(hass, domain="light", platform_name="test")
 
@@ -224,11 +257,12 @@ async def test_expand_entity_ids_with_generic_group(hass: HomeAssistant) -> None
     hass.states.async_set("light.lamp3", STATE_ON)
 
     expanded = group.expand_entity_ids(hass, ["light.living_room_group"])
-    assert sorted(expanded) == ["light.lamp1", "light.lamp2", "light.lamp3"]
+    expect(sorted(expanded)).to_equal(["light.lamp1", "light.lamp2", "light.lamp3"])
 
 
-async def test_expand_entity_ids_with_generic_group_recursive(
-    hass: HomeAssistant,
+@test
+async def expand_entity_ids_with_generic_group_recursive(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test expand_entity_ids with nested GenericGroup entities."""
     platform = MockEntityPlatform(hass, domain="light", platform_name="test")
@@ -243,11 +277,12 @@ async def test_expand_entity_ids_with_generic_group_recursive(
     await hass.async_block_till_done()
 
     expanded = group.expand_entity_ids(hass, ["light.outer_group"])
-    assert sorted(expanded) == ["light.lamp1", "light.lamp2", "light.lamp3"]
+    expect(sorted(expanded)).to_equal(["light.lamp1", "light.lamp2", "light.lamp3"])
 
 
-async def test_expand_entity_ids_with_generic_group_self_reference(
-    hass: HomeAssistant,
+@test
+async def expand_entity_ids_with_generic_group_self_reference(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test expand_entity_ids handles GenericGroup with self-reference."""
     platform = MockEntityPlatform(hass, domain="light", platform_name="test")
@@ -261,10 +296,13 @@ async def test_expand_entity_ids_with_generic_group_self_reference(
     await hass.async_block_till_done()
 
     expanded = group.expand_entity_ids(hass, ["light.self_ref_group"])
-    assert sorted(expanded) == ["light.bulb1", "light.bulb2"]
+    expect(sorted(expanded)).to_equal(["light.bulb1", "light.bulb2"])
 
 
-async def test_generic_group_attribute_in_state(hass: HomeAssistant) -> None:
+@test
+async def generic_group_attribute_in_state(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test ATTR_GROUP_ENTITIES is included in GenericGroup state."""
     platform = MockEntityPlatform(hass, domain="light", platform_name="test")
 
@@ -275,14 +313,17 @@ async def test_generic_group_attribute_in_state(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     state = hass.states.get("light.group_with_attrs")
-    assert state is not None
-    assert ATTR_GROUP_ENTITIES in state.attributes
-    assert state.attributes[ATTR_GROUP_ENTITIES] == ["light.lamp1", "light.lamp2"]
+    expect(state).not_.to_be_none()
+    expect(ATTR_GROUP_ENTITIES in state.attributes).to_be(True)
+    expect(state.attributes[ATTR_GROUP_ENTITIES]).to_equal(
+        ["light.lamp1", "light.lamp2"]
+    )
 
 
-async def test_integration_specific_group_member_entity_ids(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+@test
+async def integration_specific_group_member_entity_ids(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test IntegrationSpecificGroup resolves entity IDs from unique IDs."""
     entity_registry.async_get_or_create(
@@ -300,12 +341,15 @@ async def test_integration_specific_group_member_entity_ids(
     await platform.async_add_entities([ent])
     await hass.async_block_till_done()
 
-    assert sorted(ent.group.member_entity_ids) == ["light.member1", "light.member2"]
+    expect(sorted(ent.group.member_entity_ids)).to_equal(
+        ["light.member1", "light.member2"]
+    )
 
 
-async def test_integration_specific_group_missing_entities(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+@test
+async def integration_specific_group_missing_entities(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test IntegrationSpecificGroup handles missing entities."""
     entity_registry.async_get_or_create(
@@ -322,12 +366,13 @@ async def test_integration_specific_group_missing_entities(
     await platform.async_add_entities([ent])
     await hass.async_block_till_done()
 
-    assert ent.group.member_entity_ids == ["light.member1"]
+    expect(ent.group.member_entity_ids).to_equal(["light.member1"])
 
 
-async def test_integration_specific_group_member_unique_ids_setter(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+@test
+async def integration_specific_group_member_unique_ids_setter(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test IntegrationSpecificGroup member_unique_ids setter clears cache."""
     entity_registry.async_get_or_create(
@@ -347,16 +392,19 @@ async def test_integration_specific_group_member_unique_ids_setter(
 
     await platform.async_add_entities([ent])
     await hass.async_block_till_done()
-    assert ent.group.member_entity_ids == ["light.member1"]
+    expect(ent.group.member_entity_ids).to_equal(["light.member1"])
 
     ent.group.member_unique_ids = ["unique_2", "unique_3"]
 
-    assert sorted(ent.group.member_entity_ids) == ["light.member2", "light.member3"]
+    expect(sorted(ent.group.member_entity_ids)).to_equal(
+        ["light.member2", "light.member3"]
+    )
 
 
-async def test_integration_specific_group_member_added(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+@test
+async def integration_specific_group_member_added(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test IntegrationSpecificGroup updates when member is added to registry."""
     entity_registry.async_get_or_create(
@@ -370,19 +418,22 @@ async def test_integration_specific_group_member_added(
 
     await platform.async_add_entities([ent])
     await hass.async_block_till_done()
-    assert ent.group.member_entity_ids == ["light.member1"]
+    expect(ent.group.member_entity_ids).to_equal(["light.member1"])
 
     entity_registry.async_get_or_create(
         "light", "test", "unique_2", suggested_object_id="member2"
     )
     await hass.async_block_till_done()
 
-    assert sorted(ent.group.member_entity_ids) == ["light.member1", "light.member2"]
+    expect(sorted(ent.group.member_entity_ids)).to_equal(
+        ["light.member1", "light.member2"]
+    )
 
 
-async def test_integration_specific_group_member_removed(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+@test
+async def integration_specific_group_member_removed(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test IntegrationSpecificGroup updates when member is removed from registry."""
     entry1 = entity_registry.async_get_or_create(
@@ -400,17 +451,20 @@ async def test_integration_specific_group_member_removed(
     await platform.async_add_entities([ent])
     await hass.async_block_till_done()
 
-    assert sorted(ent.group.member_entity_ids) == ["light.member1", "light.member2"]
+    expect(sorted(ent.group.member_entity_ids)).to_equal(
+        ["light.member1", "light.member2"]
+    )
 
     entity_registry.async_remove(entry1.entity_id)
     await hass.async_block_till_done()
 
-    assert ent.group.member_entity_ids == ["light.member2"]
+    expect(ent.group.member_entity_ids).to_equal(["light.member2"])
 
 
-async def test_integration_specific_group_member_renamed(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+@test
+async def integration_specific_group_member_renamed(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test IntegrationSpecificGroup updates when member entity_id is renamed."""
     entry = entity_registry.async_get_or_create(
@@ -424,17 +478,18 @@ async def test_integration_specific_group_member_renamed(
 
     await platform.async_add_entities([ent])
     await hass.async_block_till_done()
-    assert ent.group.member_entity_ids == ["light.original_name"]
+    expect(ent.group.member_entity_ids).to_equal(["light.original_name"])
 
     entity_registry.async_update_entity(entry.entity_id, new_entity_id="light.new_id")
     await hass.async_block_till_done()
 
-    assert ent.group.member_entity_ids == ["light.new_id"]
+    expect(ent.group.member_entity_ids).to_equal(["light.new_id"])
 
 
-async def test_integration_specific_group_attribute_in_state(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+@test
+async def integration_specific_group_attribute_in_state(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test ATTR_GROUP_ENTITIES is included in IntegrationSpecificGroup state."""
     entity_registry.async_get_or_create(
@@ -453,17 +508,17 @@ async def test_integration_specific_group_attribute_in_state(
     await hass.async_block_till_done()
 
     state = hass.states.get("light.int_group_attrs")
-    assert state is not None
-    assert ATTR_GROUP_ENTITIES in state.attributes
-    assert sorted(state.attributes[ATTR_GROUP_ENTITIES]) == [
-        "light.member1",
-        "light.member2",
-    ]
+    expect(state).not_.to_be_none()
+    expect(ATTR_GROUP_ENTITIES in state.attributes).to_be(True)
+    expect(sorted(state.attributes[ATTR_GROUP_ENTITIES])).to_equal(
+        ["light.member1", "light.member2"]
+    )
 
 
-async def test_expand_entity_ids_integration_specific_group_not_expanded(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+@test
+async def expand_entity_ids_integration_specific_group_not_expanded(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test expand_entity_ids doesn't expand IntegrationSpecificGroup."""
     entity_registry.async_get_or_create(
@@ -482,4 +537,4 @@ async def test_expand_entity_ids_integration_specific_group_not_expanded(
     await hass.async_block_till_done()
 
     expanded = group.expand_entity_ids(hass, ["light.int_specific_group"])
-    assert expanded == ["light.int_specific_group"]
+    expect(expanded).to_equal(["light.int_specific_group"])
