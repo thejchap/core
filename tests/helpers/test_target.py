@@ -1,6 +1,6 @@
 """Test service helpers."""
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.group import Group
 from homeassistant.const import (
@@ -34,6 +34,13 @@ from tests.common import (
     mock_device_registry,
     mock_registry,
 )
+from tests.hass_fixtures import hass
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
 
 
 async def set_states_and_check_target_events(
@@ -48,20 +55,24 @@ async def set_states_and_check_target_events(
         hass.states.async_set(entity_id, state)
     await hass.async_block_till_done()
 
-    assert len(events) == len(entities_to_assert_change)
+    expect(events).to_have_length(len(entities_to_assert_change))
     entities_seen = set()
     for event in events:
         state_change_event = event.state_change_event
         entities_seen.add(state_change_event.data["entity_id"])
-        assert state_change_event.data["new_state"].state == state
-        assert event.targeted_entity_ids == set(entities_to_assert_change)
-    assert entities_seen == set(entities_to_assert_change)
+        expect(state_change_event.data["new_state"].state).to_equal(state)
+        expect(event.targeted_entity_ids).to_equal(set(entities_to_assert_change))
+    expect(entities_seen).to_equal(set(entities_to_assert_change))
     events.clear()
 
 
-@pytest.fixture
-def registries_mock(hass: HomeAssistant) -> None:
-    """Mock including floor and area info."""
+def _install_registries_mock(hass: HomeAssistant) -> None:
+    """Mock including floor and area info.
+
+    Called from tests that need this shared registry state; kept as a
+    plain helper rather than an ``@fixture`` so it does not auto-apply
+    to every test in the module.
+    """
     hass.states.async_set("light.Bowl", STATE_ON)
     hass.states.async_set("light.Ceiling", STATE_OFF)
     hass.states.async_set("light.Kitchen", STATE_OFF)
@@ -307,177 +318,398 @@ def registries_mock(hass: HomeAssistant) -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("selector_config", "expand_group", "expected_selected"),
-    [
-        (
-            {
-                ATTR_ENTITY_ID: ENTITY_MATCH_NONE,
-                ATTR_AREA_ID: ENTITY_MATCH_NONE,
-                ATTR_FLOOR_ID: ENTITY_MATCH_NONE,
-                ATTR_LABEL_ID: ENTITY_MATCH_NONE,
+# Selector configs reused in the cartesian product of test.cases below.
+_SELECTOR_CASES: list[tuple[str, ConfigType, bool, target.SelectedEntities]] = [
+    (
+        "none_match",
+        {
+            ATTR_ENTITY_ID: ENTITY_MATCH_NONE,
+            ATTR_AREA_ID: ENTITY_MATCH_NONE,
+            ATTR_FLOOR_ID: ENTITY_MATCH_NONE,
+            ATTR_LABEL_ID: ENTITY_MATCH_NONE,
+        },
+        False,
+        target.SelectedEntities(),
+    ),
+    (
+        "single_entity_bowl",
+        {ATTR_ENTITY_ID: "light.bowl"},
+        False,
+        target.SelectedEntities(referenced={"light.bowl"}),
+    ),
+    (
+        "group_expand",
+        {ATTR_ENTITY_ID: "group.test"},
+        True,
+        target.SelectedEntities(referenced={"light.ceiling", "light.kitchen"}),
+    ),
+    (
+        "group_no_expand",
+        {ATTR_ENTITY_ID: "group.test"},
+        False,
+        target.SelectedEntities(referenced={"group.test"}),
+    ),
+    (
+        "own_area",
+        {ATTR_AREA_ID: "own-area"},
+        False,
+        target.SelectedEntities(
+            indirectly_referenced={"light.in_own_area"},
+            referenced_areas={"own-area"},
+            missing_areas={"own-area"},
+        ),
+    ),
+    (
+        "test_area_single",
+        {ATTR_AREA_ID: "test-area"},
+        False,
+        target.SelectedEntities(
+            indirectly_referenced={
+                "light.in_area",
+                "light.assigned_to_area",
             },
-            False,
-            target.SelectedEntities(),
+            referenced_areas={"test-area"},
+            referenced_devices={"device-test-area"},
         ),
-        (
-            {ATTR_ENTITY_ID: "light.bowl"},
-            False,
-            target.SelectedEntities(referenced={"light.bowl"}),
+    ),
+    (
+        "two_areas",
+        {ATTR_AREA_ID: ["test-area", "diff-area"]},
+        False,
+        target.SelectedEntities(
+            indirectly_referenced={
+                "light.in_area",
+                "light.diff_area",
+                "light.assigned_to_area",
+            },
+            referenced_areas={"test-area", "diff-area"},
+            referenced_devices={"device-diff-area", "device-test-area"},
+            missing_areas={"diff-area"},
         ),
-        (
-            {ATTR_ENTITY_ID: "group.test"},
-            True,
-            target.SelectedEntities(referenced={"light.ceiling", "light.kitchen"}),
+    ),
+    (
+        "device_no_area",
+        {ATTR_DEVICE_ID: "device-no-area-id"},
+        False,
+        target.SelectedEntities(
+            indirectly_referenced={"light.no_area"},
+            referenced_devices={"device-no-area-id"},
         ),
-        (
-            {ATTR_ENTITY_ID: "group.test"},
-            False,
-            target.SelectedEntities(referenced={"group.test"}),
+    ),
+    (
+        "device_area_a",
+        {ATTR_DEVICE_ID: "device-area-a-id"},
+        False,
+        target.SelectedEntities(
+            indirectly_referenced={"light.in_area_a", "light.in_area_b"},
+            referenced_devices={"device-area-a-id"},
         ),
-        (
-            {ATTR_AREA_ID: "own-area"},
-            False,
-            target.SelectedEntities(
-                indirectly_referenced={"light.in_own_area"},
-                referenced_areas={"own-area"},
-                missing_areas={"own-area"},
-            ),
+    ),
+    (
+        "single_floor",
+        {ATTR_FLOOR_ID: "test-floor"},
+        False,
+        target.SelectedEntities(
+            indirectly_referenced={"light.in_area", "light.assigned_to_area"},
+            referenced_devices={"device-test-area"},
+            referenced_areas={"test-area"},
+            missing_floors={"test-floor"},
         ),
-        (
-            {ATTR_AREA_ID: "test-area"},
-            False,
-            target.SelectedEntities(
-                indirectly_referenced={
-                    "light.in_area",
-                    "light.assigned_to_area",
-                },
-                referenced_areas={"test-area"},
-                referenced_devices={"device-test-area"},
-            ),
+    ),
+    (
+        "two_floors",
+        {ATTR_FLOOR_ID: ["test-floor", "floor-a"]},
+        False,
+        target.SelectedEntities(
+            indirectly_referenced={
+                "light.in_area",
+                "light.assigned_to_area",
+                "light.in_area_a",
+                "light.with_label1_from_device_diff_area",
+            },
+            referenced_devices={"device-area-a-id", "device-test-area"},
+            referenced_areas={"area-a", "test-area"},
+            missing_floors={"floor-a", "test-floor"},
         ),
-        (
-            {ATTR_AREA_ID: ["test-area", "diff-area"]},
-            False,
-            target.SelectedEntities(
-                indirectly_referenced={
-                    "light.in_area",
-                    "light.diff_area",
-                    "light.assigned_to_area",
-                },
-                referenced_areas={"test-area", "diff-area"},
-                referenced_devices={"device-diff-area", "device-test-area"},
-                missing_areas={"diff-area"},
-            ),
+    ),
+    (
+        "my_label",
+        {ATTR_LABEL_ID: "my-label"},
+        False,
+        target.SelectedEntities(
+            indirectly_referenced={
+                "light.with_my_label",
+                "light.config_with_my_label",
+                "light.diag_with_my_label",
+            },
+            missing_labels={"my-label"},
         ),
-        (
-            {ATTR_DEVICE_ID: "device-no-area-id"},
-            False,
-            target.SelectedEntities(
-                indirectly_referenced={"light.no_area"},
-                referenced_devices={"device-no-area-id"},
-            ),
+    ),
+    (
+        "label1",
+        {ATTR_LABEL_ID: "label1"},
+        False,
+        target.SelectedEntities(
+            indirectly_referenced={
+                "light.with_label1_from_device",
+                "light.with_label1_from_device_diff_area",
+                "light.with_labels_from_device",
+                "light.with_label1_and_label2_from_device",
+            },
+            referenced_devices={"device-has-label1-id", "device-has-labels-id"},
+            missing_labels={"label1"},
         ),
-        (
-            {ATTR_DEVICE_ID: "device-area-a-id"},
-            False,
-            target.SelectedEntities(
-                indirectly_referenced={"light.in_area_a", "light.in_area_b"},
-                referenced_devices={"device-area-a-id"},
-            ),
+    ),
+    (
+        "label2",
+        {ATTR_LABEL_ID: ["label2"]},
+        False,
+        target.SelectedEntities(
+            indirectly_referenced={
+                "light.with_labels_from_device",
+                "light.with_label1_and_label2_from_device",
+            },
+            referenced_devices={"device-has-label2-id", "device-has-labels-id"},
+            missing_labels={"label2"},
         ),
-        (
-            {ATTR_FLOOR_ID: "test-floor"},
-            False,
-            target.SelectedEntities(
-                indirectly_referenced={"light.in_area", "light.assigned_to_area"},
-                referenced_devices={"device-test-area"},
-                referenced_areas={"test-area"},
-                missing_floors={"test-floor"},
-            ),
+    ),
+    (
+        "label_area",
+        {ATTR_LABEL_ID: ["label_area"]},
+        False,
+        target.SelectedEntities(
+            indirectly_referenced={"light.with_labels_from_device"},
+            referenced_devices={"device-has-labels-id"},
+            referenced_areas={"area-with-labels"},
+            missing_labels={"label_area"},
         ),
-        (
-            {ATTR_FLOOR_ID: ["test-floor", "floor-a"]},
-            False,
-            target.SelectedEntities(
-                indirectly_referenced={
-                    "light.in_area",
-                    "light.assigned_to_area",
-                    "light.in_area_a",
-                    "light.with_label1_from_device_diff_area",
-                },
-                referenced_devices={"device-area-a-id", "device-test-area"},
-                referenced_areas={"area-a", "test-area"},
-                missing_floors={"floor-a", "test-floor"},
-            ),
-        ),
-        (
-            {ATTR_LABEL_ID: "my-label"},
-            False,
-            target.SelectedEntities(
-                indirectly_referenced={
-                    "light.with_my_label",
-                    "light.config_with_my_label",
-                    "light.diag_with_my_label",
-                },
-                missing_labels={"my-label"},
-            ),
-        ),
-        (
-            {ATTR_LABEL_ID: "label1"},
-            False,
-            target.SelectedEntities(
-                indirectly_referenced={
-                    "light.with_label1_from_device",
-                    "light.with_label1_from_device_diff_area",
-                    "light.with_labels_from_device",
-                    "light.with_label1_and_label2_from_device",
-                },
-                referenced_devices={"device-has-label1-id", "device-has-labels-id"},
-                missing_labels={"label1"},
-            ),
-        ),
-        (
-            {ATTR_LABEL_ID: ["label2"]},
-            False,
-            target.SelectedEntities(
-                indirectly_referenced={
-                    "light.with_labels_from_device",
-                    "light.with_label1_and_label2_from_device",
-                },
-                referenced_devices={"device-has-label2-id", "device-has-labels-id"},
-                missing_labels={"label2"},
-            ),
-        ),
-        (
-            {ATTR_LABEL_ID: ["label_area"]},
-            False,
-            target.SelectedEntities(
-                indirectly_referenced={"light.with_labels_from_device"},
-                referenced_devices={"device-has-labels-id"},
-                referenced_areas={"area-with-labels"},
-                missing_labels={"label_area"},
-            ),
-        ),
-    ],
+    ),
+]
+
+
+@test.cases(
+    test.case(
+        "TargetSelection_none_match",
+        selector_config=_SELECTOR_CASES[0][1],
+        expand_group=_SELECTOR_CASES[0][2],
+        expected_selected=_SELECTOR_CASES[0][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_single_entity_bowl",
+        selector_config=_SELECTOR_CASES[1][1],
+        expand_group=_SELECTOR_CASES[1][2],
+        expected_selected=_SELECTOR_CASES[1][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_group_expand",
+        selector_config=_SELECTOR_CASES[2][1],
+        expand_group=_SELECTOR_CASES[2][2],
+        expected_selected=_SELECTOR_CASES[2][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_group_no_expand",
+        selector_config=_SELECTOR_CASES[3][1],
+        expand_group=_SELECTOR_CASES[3][2],
+        expected_selected=_SELECTOR_CASES[3][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_own_area",
+        selector_config=_SELECTOR_CASES[4][1],
+        expand_group=_SELECTOR_CASES[4][2],
+        expected_selected=_SELECTOR_CASES[4][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_test_area_single",
+        selector_config=_SELECTOR_CASES[5][1],
+        expand_group=_SELECTOR_CASES[5][2],
+        expected_selected=_SELECTOR_CASES[5][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_two_areas",
+        selector_config=_SELECTOR_CASES[6][1],
+        expand_group=_SELECTOR_CASES[6][2],
+        expected_selected=_SELECTOR_CASES[6][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_device_no_area",
+        selector_config=_SELECTOR_CASES[7][1],
+        expand_group=_SELECTOR_CASES[7][2],
+        expected_selected=_SELECTOR_CASES[7][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_device_area_a",
+        selector_config=_SELECTOR_CASES[8][1],
+        expand_group=_SELECTOR_CASES[8][2],
+        expected_selected=_SELECTOR_CASES[8][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_single_floor",
+        selector_config=_SELECTOR_CASES[9][1],
+        expand_group=_SELECTOR_CASES[9][2],
+        expected_selected=_SELECTOR_CASES[9][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_two_floors",
+        selector_config=_SELECTOR_CASES[10][1],
+        expand_group=_SELECTOR_CASES[10][2],
+        expected_selected=_SELECTOR_CASES[10][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_my_label",
+        selector_config=_SELECTOR_CASES[11][1],
+        expand_group=_SELECTOR_CASES[11][2],
+        expected_selected=_SELECTOR_CASES[11][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_label1",
+        selector_config=_SELECTOR_CASES[12][1],
+        expand_group=_SELECTOR_CASES[12][2],
+        expected_selected=_SELECTOR_CASES[12][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_label2",
+        selector_config=_SELECTOR_CASES[13][1],
+        expand_group=_SELECTOR_CASES[13][2],
+        expected_selected=_SELECTOR_CASES[13][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelection_label_area",
+        selector_config=_SELECTOR_CASES[14][1],
+        expand_group=_SELECTOR_CASES[14][2],
+        expected_selected=_SELECTOR_CASES[14][3],
+        selection_class=target.TargetSelection,
+    ),
+    test.case(
+        "TargetSelectorData_none_match",
+        selector_config=_SELECTOR_CASES[0][1],
+        expand_group=_SELECTOR_CASES[0][2],
+        expected_selected=_SELECTOR_CASES[0][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_single_entity_bowl",
+        selector_config=_SELECTOR_CASES[1][1],
+        expand_group=_SELECTOR_CASES[1][2],
+        expected_selected=_SELECTOR_CASES[1][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_group_expand",
+        selector_config=_SELECTOR_CASES[2][1],
+        expand_group=_SELECTOR_CASES[2][2],
+        expected_selected=_SELECTOR_CASES[2][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_group_no_expand",
+        selector_config=_SELECTOR_CASES[3][1],
+        expand_group=_SELECTOR_CASES[3][2],
+        expected_selected=_SELECTOR_CASES[3][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_own_area",
+        selector_config=_SELECTOR_CASES[4][1],
+        expand_group=_SELECTOR_CASES[4][2],
+        expected_selected=_SELECTOR_CASES[4][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_test_area_single",
+        selector_config=_SELECTOR_CASES[5][1],
+        expand_group=_SELECTOR_CASES[5][2],
+        expected_selected=_SELECTOR_CASES[5][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_two_areas",
+        selector_config=_SELECTOR_CASES[6][1],
+        expand_group=_SELECTOR_CASES[6][2],
+        expected_selected=_SELECTOR_CASES[6][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_device_no_area",
+        selector_config=_SELECTOR_CASES[7][1],
+        expand_group=_SELECTOR_CASES[7][2],
+        expected_selected=_SELECTOR_CASES[7][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_device_area_a",
+        selector_config=_SELECTOR_CASES[8][1],
+        expand_group=_SELECTOR_CASES[8][2],
+        expected_selected=_SELECTOR_CASES[8][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_single_floor",
+        selector_config=_SELECTOR_CASES[9][1],
+        expand_group=_SELECTOR_CASES[9][2],
+        expected_selected=_SELECTOR_CASES[9][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_two_floors",
+        selector_config=_SELECTOR_CASES[10][1],
+        expand_group=_SELECTOR_CASES[10][2],
+        expected_selected=_SELECTOR_CASES[10][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_my_label",
+        selector_config=_SELECTOR_CASES[11][1],
+        expand_group=_SELECTOR_CASES[11][2],
+        expected_selected=_SELECTOR_CASES[11][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_label1",
+        selector_config=_SELECTOR_CASES[12][1],
+        expand_group=_SELECTOR_CASES[12][2],
+        expected_selected=_SELECTOR_CASES[12][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_label2",
+        selector_config=_SELECTOR_CASES[13][1],
+        expand_group=_SELECTOR_CASES[13][2],
+        expected_selected=_SELECTOR_CASES[13][3],
+        selection_class=target.TargetSelectorData,
+    ),
+    test.case(
+        "TargetSelectorData_label_area",
+        selector_config=_SELECTOR_CASES[14][1],
+        expand_group=_SELECTOR_CASES[14][2],
+        expected_selected=_SELECTOR_CASES[14][3],
+        selection_class=target.TargetSelectorData,
+    ),
 )
-@pytest.mark.parametrize(
-    "selection_class", [target.TargetSelection, target.TargetSelectorData]
-)
-@pytest.mark.usefixtures("registries_mock")
-async def test_extract_referenced_entity_ids(
-    hass: HomeAssistant,
+async def extract_referenced_entity_ids(
     selector_config: ConfigType,
     expand_group: bool,
     expected_selected: target.SelectedEntities,
-    selection_class,
+    selection_class: type,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test extract_entity_ids method."""
-    hass.states.async_set("light.Bowl", STATE_ON)
-    hass.states.async_set("light.Ceiling", STATE_OFF)
-    hass.states.async_set("light.Kitchen", STATE_OFF)
+    _install_registries_mock(hass)
 
-    assert await async_setup_component(hass, "group", {})
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
     await hass.async_block_till_done()
     await Group.async_create_group(
         hass,
@@ -491,16 +723,16 @@ async def test_extract_referenced_entity_ids(
     )
 
     target_selection = selection_class(selector_config)
-    assert (
+    expect(
         target.async_extract_referenced_entity_ids(
             hass, target_selection, expand_group=expand_group
         )
-        == expected_selected
-    )
+    ).to_equal(expected_selected)
 
 
-async def test_async_track_target_selector_state_change_event_empty_selector(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def async_track_target_selector_state_change_event_empty_selector(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test async_track_target_selector_state_change_event with empty selector."""
 
@@ -508,17 +740,19 @@ async def test_async_track_target_selector_state_change_event_empty_selector(
     def state_change_callback(event):
         """Handle state change events."""
 
-    with pytest.raises(HomeAssistantError) as excinfo:
-        target.async_track_target_selector_state_change_event(
+    expect(
+        lambda: target.async_track_target_selector_state_change_event(
             hass, {}, state_change_callback
         )
-    assert str(excinfo.value) == (
-        "Target selector {} does not have any selectors defined"
+    ).to_raise(
+        HomeAssistantError,
+        match=r"Target selector \{\} does not have any selectors defined",
     )
 
 
-async def test_async_track_target_selector_state_change_event(
-    hass: HomeAssistant,
+@test
+async def async_track_target_selector_state_change_event(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test async_track_target_selector_state_change_event with multiple targets."""
     events: list[target.TargetStateChangedData] = []
@@ -676,8 +910,9 @@ async def test_async_track_target_selector_state_change_event(
     await set_states_and_check_events(targeted_entities, [])
 
 
-async def test_async_track_target_selector_state_change_event_filter(
-    hass: HomeAssistant,
+@test
+async def async_track_target_selector_state_change_event_filter(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test async_track_target_selector_state_change_event with entity filter."""
     events: list[target.TargetStateChangedData] = []
