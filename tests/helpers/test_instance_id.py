@@ -4,41 +4,58 @@ from json import JSONDecodeError
 from typing import Any
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import instance_id
 
+from tests.hass_fixtures import LogCapture, caplog, hass, hass_storage
 
-async def test_get_id_empty(hass: HomeAssistant, hass_storage: dict[str, Any]) -> None:
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def get_id_empty(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
+) -> None:
     """Get unique ID."""
     uuid = await instance_id.async_get(hass)
-    assert uuid is not None
+    expect(uuid).not_.to_be_none()
     # Assert it's stored
-    assert hass_storage["core.uuid"]["data"]["uuid"] == uuid
+    expect(hass_storage["core.uuid"]["data"]["uuid"]).to_equal(uuid)
 
 
-async def test_get_id_load_fail(
-    hass: HomeAssistant, hass_storage: dict[str, Any], caplog: pytest.LogCaptureFixture
+@test
+async def get_id_load_fail(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Migrate existing file with error."""
     hass_storage["core.uuid"] = None  # Invalid, will make store.async_load raise
 
     uuid = await instance_id.async_get(hass)
 
-    assert uuid is not None
+    expect(uuid).not_.to_be_none()
 
     # Assert it's stored
-    assert hass_storage["core.uuid"]["data"]["uuid"] == uuid
+    expect(hass_storage["core.uuid"]["data"]["uuid"]).to_equal(uuid)
 
-    assert (
+    expect(
         "Could not read hass instance ID from 'core.uuid' or '.uuid', a "
         "new instance ID will be generated" in caplog.text
-    )
+    ).to_be(True)
 
 
-async def test_get_id_migrate(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def get_id_migrate(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Migrate existing file."""
     with (
@@ -48,17 +65,20 @@ async def test_get_id_migrate(
     ):
         uuid = await instance_id.async_get(hass)
 
-    assert uuid == "1234"
+    expect(uuid).to_equal("1234")
 
     # Assert it's stored
-    assert hass_storage["core.uuid"]["data"]["uuid"] == uuid
+    expect(hass_storage["core.uuid"]["data"]["uuid"]).to_equal(uuid)
 
     # assert old deleted
-    assert len(mock_remove.mock_calls) == 1
+    expect(len(mock_remove.mock_calls)).to_equal(1)
 
 
-async def test_get_id_migrate_fail(
-    hass: HomeAssistant, hass_storage: dict[str, Any], caplog: pytest.LogCaptureFixture
+@test
+async def get_id_migrate_fail(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Migrate existing file with error."""
     with (
@@ -71,27 +91,29 @@ async def test_get_id_migrate_fail(
     ):
         uuid = await instance_id.async_get(hass)
 
-    assert uuid is not None
+    expect(uuid).not_.to_be_none()
 
     # Assert it's stored
-    assert hass_storage["core.uuid"]["data"]["uuid"] == uuid
+    expect(hass_storage["core.uuid"]["data"]["uuid"]).to_equal(uuid)
 
     # assert old not deleted
-    assert len(mock_remove.mock_calls) == 0
+    expect(len(mock_remove.mock_calls)).to_equal(0)
 
-    assert (
+    expect(
         "Could not read hass instance ID from 'core.uuid' or '.uuid', a "
         "new instance ID will be generated" in caplog.text
-    )
+    ).to_be(True)
 
 
-async def test_async_recreate(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def async_recreate(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test recreating instance ID."""
     uuid1 = await instance_id.async_get(hass)
     uuid2 = await instance_id.async_recreate(hass)
-    assert uuid1 != uuid2
+    expect(uuid1 != uuid2).to_be(True)
 
     # Assert it's stored
-    assert hass_storage["core.uuid"]["data"]["uuid"] == uuid2
+    expect(hass_storage["core.uuid"]["data"]["uuid"]).to_equal(uuid2)
