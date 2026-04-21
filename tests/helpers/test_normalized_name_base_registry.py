@@ -1,60 +1,62 @@
 """Tests for the normalized name base registry helper."""
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.helpers.normalized_name_base_registry import (
     NormalizedNameBaseRegistryEntry,
     NormalizedNameBaseRegistryItems,
-    normalize_name,
+    normalize_name as _normalize_name,
 )
 
 
-@pytest.fixture
-def registry_items() -> NormalizedNameBaseRegistryItems:
+@fixture
+def _registry_items() -> NormalizedNameBaseRegistryItems:
     """Fixture for registry items."""
     return NormalizedNameBaseRegistryItems[NormalizedNameBaseRegistryEntry]()
 
 
-def test_normalize_name() -> None:
+@test
+def normalize_name() -> None:
     """Test normalize_name."""
-    assert normalize_name("Hello World") == "helloworld"
-    assert normalize_name("HELLO WORLD") == "helloworld"
-    assert normalize_name("  Hello   World  ") == "helloworld"
+    expect(_normalize_name("Hello World")).to_equal("helloworld")
+    expect(_normalize_name("HELLO WORLD")).to_equal("helloworld")
+    expect(_normalize_name("  Hello   World  ")).to_equal("helloworld")
 
 
-def test_registry_items(
-    registry_items: NormalizedNameBaseRegistryItems[NormalizedNameBaseRegistryEntry],
+@test
+def registry_items(
+    registry_items: NormalizedNameBaseRegistryItems[
+        NormalizedNameBaseRegistryEntry
+    ] = Depends(_registry_items),
 ) -> None:
     """Test registry items."""
     entry = NormalizedNameBaseRegistryEntry(name="Hello World")
     registry_items["key"] = entry
-    assert registry_items["key"] == entry
-    assert list(registry_items.values()) == [entry]
-    assert registry_items.get_by_name("Hello World") == entry
+    expect(registry_items["key"]).to_equal(entry)
+    expect(list(registry_items.values())).to_equal([entry])
+    expect(registry_items.get_by_name("Hello World")).to_equal(entry)
 
-    # test update entry
     entry2 = NormalizedNameBaseRegistryEntry(name="Hello World 2")
     registry_items["key"] = entry2
-    assert registry_items["key"] == entry2
-    assert list(registry_items.values()) == [entry2]
-    assert registry_items.get_by_name("Hello World 2") == entry2
+    expect(registry_items["key"]).to_equal(entry2)
+    expect(list(registry_items.values())).to_equal([entry2])
+    expect(registry_items.get_by_name("Hello World 2")).to_equal(entry2)
 
-    # test delete entry
     del registry_items["key"]
-    assert "key" not in registry_items
-    assert not registry_items.values()
+    expect("key" not in registry_items).to_be(True)
+    expect(not registry_items.values()).to_be(True)
 
 
-def test_key_already_in_use(
-    registry_items: NormalizedNameBaseRegistryItems[NormalizedNameBaseRegistryEntry],
+@test
+def key_already_in_use(
+    registry_items: NormalizedNameBaseRegistryItems[
+        NormalizedNameBaseRegistryEntry
+    ] = Depends(_registry_items),
 ) -> None:
     """Test key already in use."""
     entry = NormalizedNameBaseRegistryEntry(name="Hello World")
     registry_items["key"] = entry
 
-    # should raise ValueError if we update a
-    # key with a entry with the same normalized name
     entry = NormalizedNameBaseRegistryEntry(name="Hello World 2")
     registry_items["key2"] = entry
-    with pytest.raises(ValueError):
-        registry_items["key"] = entry
+    expect(lambda: registry_items.__setitem__("key", entry)).to_raise(ValueError)
