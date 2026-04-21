@@ -27,7 +27,17 @@ from tryke import Depends, fixture
 from homeassistant.config_entries import ConfigEntryState
 import homeassistant.core as ha
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import frame, translation as translation_helper
+from homeassistant.helpers import (
+    area_registry as ar,
+    category_registry as cr,
+    device_registry as dr,
+    entity_registry as er,
+    floor_registry as fr,
+    frame,
+    issue_registry as ir,
+    label_registry as lr,
+    translation as translation_helper,
+)
 from homeassistant.util import dt as dt_util  # noqa: F401  (side effects on import)
 from homeassistant.util.async_ import create_eager_task
 
@@ -125,6 +135,48 @@ def aioclient_mock() -> Generator[AiohttpClientMocker]:
     """Mock aioclient calls."""
     with mock_aiohttp_client() as mock_session:
         yield mock_session
+
+
+@fixture
+def area_registry(hass: HomeAssistant = Depends(hass)) -> ar.AreaRegistry:
+    """Return the area registry from the current hass instance."""
+    return ar.async_get(hass)
+
+
+@fixture
+def category_registry(hass: HomeAssistant = Depends(hass)) -> cr.CategoryRegistry:
+    """Return the category registry from the current hass instance."""
+    return cr.async_get(hass)
+
+
+@fixture
+def device_registry(hass: HomeAssistant = Depends(hass)) -> dr.DeviceRegistry:
+    """Return the device registry from the current hass instance."""
+    return dr.async_get(hass)
+
+
+@fixture
+def entity_registry(hass: HomeAssistant = Depends(hass)) -> er.EntityRegistry:
+    """Return the entity registry from the current hass instance."""
+    return er.async_get(hass)
+
+
+@fixture
+def floor_registry(hass: HomeAssistant = Depends(hass)) -> fr.FloorRegistry:
+    """Return the floor registry from the current hass instance."""
+    return fr.async_get(hass)
+
+
+@fixture
+def issue_registry(hass: HomeAssistant = Depends(hass)) -> ir.IssueRegistry:
+    """Return the issue registry from the current hass instance."""
+    return ir.async_get(hass)
+
+
+@fixture
+def label_registry(hass: HomeAssistant = Depends(hass)) -> lr.LabelRegistry:
+    """Return the label registry from the current hass instance."""
+    return lr.async_get(hass)
 
 
 class LogCapture:

@@ -5,7 +5,7 @@ from types import ModuleType
 from typing import Any
 from unittest.mock import Mock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import loader
 from homeassistant.const import EVENT_COMPONENT_LOADED
@@ -17,9 +17,19 @@ from homeassistant.helpers.integration_platform import (
 from homeassistant.setup import ATTR_COMPONENT
 
 from tests.common import mock_platform
+from tests.hass_fixtures import LogCapture, caplog, hass
 
 
-async def test_process_integration_platforms_with_wait(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def process_integration_platforms_with_wait(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test processing integrations."""
     loaded_platform = Mock()
     mock_platform(hass, "loaded.platform_to_check", loaded_platform)
@@ -39,27 +49,26 @@ async def test_process_integration_platforms_with_wait(hass: HomeAssistant) -> N
     await async_process_integration_platforms(
         hass, "platform_to_check", _process_platform, wait_for_platforms=True
     )
-    # No block till done here, we want to make sure it waits for the platform
 
-    assert len(processed) == 1
-    assert processed[0][0] == "loaded"
-    assert processed[0][1] == loaded_platform
-
-    hass.bus.async_fire(EVENT_COMPONENT_LOADED, {ATTR_COMPONENT: "event"})
-    await hass.async_block_till_done()
-
-    assert len(processed) == 2
-    assert processed[1][0] == "event"
-    assert processed[1][1] == event_platform
+    expect(len(processed)).to_equal(1)
+    expect(processed[0][0]).to_equal("loaded")
+    expect(processed[0][1]).to_equal(loaded_platform)
 
     hass.bus.async_fire(EVENT_COMPONENT_LOADED, {ATTR_COMPONENT: "event"})
     await hass.async_block_till_done()
 
-    # Firing again should not check again
-    assert len(processed) == 2
+    expect(len(processed)).to_equal(2)
+    expect(processed[1][0]).to_equal("event")
+    expect(processed[1][1]).to_equal(event_platform)
+
+    hass.bus.async_fire(EVENT_COMPONENT_LOADED, {ATTR_COMPONENT: "event"})
+    await hass.async_block_till_done()
+
+    expect(len(processed)).to_equal(2)
 
 
-async def test_process_integration_platforms(hass: HomeAssistant) -> None:
+@test
+async def process_integration_platforms(hass: HomeAssistant = Depends(hass)) -> None:
     """Test processing integrations."""
     loaded_platform = Mock()
     mock_platform(hass, "loaded.platform_to_check", loaded_platform)
@@ -81,26 +90,27 @@ async def test_process_integration_platforms(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert len(processed) == 1
-    assert processed[0][0] == "loaded"
-    assert processed[0][1] == loaded_platform
+    expect(len(processed)).to_equal(1)
+    expect(processed[0][0]).to_equal("loaded")
+    expect(processed[0][1]).to_equal(loaded_platform)
 
     hass.bus.async_fire(EVENT_COMPONENT_LOADED, {ATTR_COMPONENT: "event"})
     await hass.async_block_till_done()
 
-    assert len(processed) == 2
-    assert processed[1][0] == "event"
-    assert processed[1][1] == event_platform
+    expect(len(processed)).to_equal(2)
+    expect(processed[1][0]).to_equal("event")
+    expect(processed[1][1]).to_equal(event_platform)
 
     hass.bus.async_fire(EVENT_COMPONENT_LOADED, {ATTR_COMPONENT: "event"})
     await hass.async_block_till_done()
 
-    # Firing again should not check again
-    assert len(processed) == 2
+    expect(len(processed)).to_equal(2)
 
 
-async def test_process_integration_platforms_import_fails(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def process_integration_platforms_import_fails(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test processing integrations when one fails to import."""
     loaded_platform = Mock()
@@ -127,25 +137,28 @@ async def test_process_integration_platforms_import_fails(
         )
         await hass.async_block_till_done()
 
-    assert len(processed) == 0
-    assert "Unexpected error importing platform_to_check for loaded" in caplog.text
+    expect(len(processed)).to_equal(0)
+    expect(
+        "Unexpected error importing platform_to_check for loaded" in caplog.text
+    ).to_be(True)
 
     hass.bus.async_fire(EVENT_COMPONENT_LOADED, {ATTR_COMPONENT: "event"})
     await hass.async_block_till_done()
 
-    assert len(processed) == 1
-    assert processed[0][0] == "event"
-    assert processed[0][1] == event_platform
+    expect(len(processed)).to_equal(1)
+    expect(processed[0][0]).to_equal("event")
+    expect(processed[0][1]).to_equal(event_platform)
 
     hass.bus.async_fire(EVENT_COMPONENT_LOADED, {ATTR_COMPONENT: "event"})
     await hass.async_block_till_done()
 
-    # Firing again should not check again
-    assert len(processed) == 1
+    expect(len(processed)).to_equal(1)
 
 
-async def test_process_integration_platforms_import_fails_after_registered(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def process_integration_platforms_import_fails_after_registered(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test processing integrations when one fails to import."""
     loaded_platform = Mock()
@@ -168,9 +181,9 @@ async def test_process_integration_platforms_import_fails_after_registered(
     )
     await hass.async_block_till_done()
 
-    assert len(processed) == 1
-    assert processed[0][0] == "loaded"
-    assert processed[0][1] == loaded_platform
+    expect(len(processed)).to_equal(1)
+    expect(processed[0][0]).to_equal("loaded")
+    expect(processed[0][1]).to_equal(loaded_platform)
 
     event_integration = await loader.async_get_integration(hass, "event")
     with (
@@ -180,8 +193,10 @@ async def test_process_integration_platforms_import_fails_after_registered(
         hass.bus.async_fire(EVENT_COMPONENT_LOADED, {ATTR_COMPONENT: "event"})
         await hass.async_block_till_done()
 
-    assert len(processed) == 1
-    assert "Unexpected error importing integration platforms for event" in caplog.text
+    expect(len(processed)).to_equal(1)
+    expect(
+        "Unexpected error importing integration platforms for event" in caplog.text
+    ).to_be(True)
 
 
 @callback
@@ -199,12 +214,14 @@ async def _process_platform_coro(
     raise HomeAssistantError("Non-compliant platform")
 
 
-@pytest.mark.no_fail_on_log_exception
-@pytest.mark.parametrize(
-    "process_platform", [_process_platform_callback, _process_platform_coro]
+@test.cases(
+    test.case("_process_platform_callback", process_platform=_process_platform_callback),
+    test.case("_process_platform_coro", process_platform=_process_platform_coro),
 )
-async def test_process_integration_platforms_non_compliant(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture, process_platform: Callable
+async def process_integration_platforms_non_compliant(
+    process_platform: Callable,
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test processing integrations using with a non-compliant platform."""
     loaded_platform = Mock()
@@ -221,26 +238,28 @@ async def test_process_integration_platforms_non_compliant(
     )
     await hass.async_block_till_done()
 
-    assert len(processed) == 0
-    assert "Exception in " in caplog.text
-    assert "platform_to_check" in caplog.text
-    assert "Non-compliant platform" in caplog.text
-    assert "loaded_unique_880" in caplog.text
+    expect(len(processed)).to_equal(0)
+    expect("Exception in " in caplog.text).to_be(True)
+    expect("platform_to_check" in caplog.text).to_be(True)
+    expect("Non-compliant platform" in caplog.text).to_be(True)
+    expect("loaded_unique_880" in caplog.text).to_be(True)
     caplog.clear()
 
     hass.bus.async_fire(EVENT_COMPONENT_LOADED, {ATTR_COMPONENT: "event_unique_990"})
     await hass.async_block_till_done()
 
-    assert "Exception in " in caplog.text
-    assert "platform_to_check" in caplog.text
-    assert "Non-compliant platform" in caplog.text
-    assert "event_unique_990" in caplog.text
+    expect("Exception in " in caplog.text).to_be(True)
+    expect("platform_to_check" in caplog.text).to_be(True)
+    expect("Non-compliant platform" in caplog.text).to_be(True)
+    expect("event_unique_990" in caplog.text).to_be(True)
 
-    assert len(processed) == 0
+    expect(len(processed)).to_equal(0)
 
 
-async def test_broken_integration(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def broken_integration(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test handling an integration with a broken or missing manifest."""
     Mock()
@@ -262,13 +281,12 @@ async def test_broken_integration(
     )
     await hass.async_block_till_done()
 
-    # This should never actually happen as the component cannot be
-    # in hass.config.components without a loaded manifest
-    assert len(processed) == 0
+    expect(len(processed)).to_equal(0)
 
 
-async def test_process_integration_platforms_no_integrations(
-    hass: HomeAssistant,
+@test
+async def process_integration_platforms_no_integrations(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test processing integrations when no integrations are loaded."""
     event_platform = Mock()
@@ -287,4 +305,4 @@ async def test_process_integration_platforms_no_integrations(
     )
     await hass.async_block_till_done()
 
-    assert len(processed) == 0
+    expect(len(processed)).to_equal(0)
