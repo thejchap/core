@@ -6,7 +6,7 @@ from datetime import timedelta
 import json
 import logging
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
@@ -15,11 +15,20 @@ from homeassistant.helpers import entity, entity_registry as er
 from homeassistant.helpers.entity_platform import EntityPlatform
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import entity_registry, hass
 from tests.helpers.template.helpers import assert_result_info, render, render_to_info
 
 
-async def test_integration_entities(
-    hass: HomeAssistant, entity_registry: er.EntityRegistry
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def integration_entities(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test integration_entities function."""
     # test entities for untitled config entry
@@ -30,7 +39,7 @@ async def test_integration_entities(
     )
     info = render_to_info(hass, "{{ integration_entities('') }}")
     assert_result_info(info, [])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # test entities for given config entry title
     config_entry = MockConfigEntry(domain="mock", title="Mock bridge 2")
@@ -40,7 +49,7 @@ async def test_integration_entities(
     )
     info = render_to_info(hass, "{{ integration_entities('Mock bridge 2') }}")
     assert_result_info(info, [entity_entry.entity_id])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # test entities for given non unique config entry title
     config_entry = MockConfigEntry(domain="mock", title="Not unique")
@@ -57,7 +66,7 @@ async def test_integration_entities(
     assert_result_info(
         info, [entity_entry_not_unique_1.entity_id, entity_entry_not_unique_2.entity_id]
     )
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # test integration entities not in entity registry
     mock_entity = entity.Entity()
@@ -75,16 +84,18 @@ async def test_integration_entities(
     await mock_entity.async_internal_added_to_hass()
     info = render_to_info(hass, "{{ integration_entities('entryless_integration') }}")
     assert_result_info(info, ["light.test_entity"])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test non existing integration/entry title
     info = render_to_info(hass, "{{ integration_entities('abc123') }}")
     assert_result_info(info, [])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
 
-async def test_config_entry_id(
-    hass: HomeAssistant, entity_registry: er.EntityRegistry
+@test
+async def config_entry_id(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test config_entry_id function."""
     config_entry = MockConfigEntry(domain="light", title="Some integration")
@@ -95,7 +106,7 @@ async def test_config_entry_id(
 
     info = render_to_info(hass, "{{ 'sensor.fail' | config_entry_id }}")
     assert_result_info(info, None)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     info = render_to_info(hass, "{{ 56 | config_entry_id }}")
     assert_result_info(info, None)
@@ -107,12 +118,13 @@ async def test_config_entry_id(
         hass, f"{{{{ config_entry_id('{entity_entry.entity_id}') }}}}"
     )
     assert_result_info(info, config_entry.entry_id)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
 
-async def test_config_entry_attr(hass: HomeAssistant) -> None:
+@test
+async def config_entry_attr(hass: HomeAssistant = Depends(hass)) -> None:
     """Test config entry attr."""
-    info = {
+    info: dict[str, object] = {
         "domain": "mock_light",
         "title": "mock title",
         "source": config_entries.SOURCE_BLUETOOTH,
@@ -125,29 +137,35 @@ async def test_config_entry_attr(hass: HomeAssistant) -> None:
     info["state"] = config_entries.ConfigEntryState.NOT_LOADED
 
     for key, value in info.items():
-        assert render(
-            hass,
-            "{{ config_entry_attr('" + config_entry.entry_id + "', '" + key + "') }}",
-            parse_result=False,
-        ) == str(value)
+        expect(
+            render(
+                hass,
+                "{{ config_entry_attr('"
+                + config_entry.entry_id
+                + "', '"
+                + key
+                + "') }}",
+                parse_result=False,
+            )
+        ).to_equal(str(value))
 
-    for config_entry_id, key in (
+    for config_entry_id_val, key in (
         (config_entry.entry_id, "invalid_key"),
         (56, "domain"),
     ):
-        with pytest.raises(TemplateError):
-            render(
+        expect(
+            lambda cid=config_entry_id_val, k=key: render(
                 hass,
                 "{{ config_entry_attr("
-                + json.dumps(config_entry_id)
+                + json.dumps(cid)
                 + ", '"
-                + key
+                + k
                 + "') }}",
             )
+        ).to_raise(TemplateError)
 
-    assert (
+    expect(
         render(
             hass, "{{ config_entry_attr('invalid_id', 'domain') }}", parse_result=False
         )
-        == "None"
-    )
+    ).to_equal("None")
