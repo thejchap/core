@@ -2,32 +2,37 @@
 
 from unittest.mock import patch
 
+from tryke import expect, test
+
 from script import gen_requirements_all
 
 
-def test_overrides_normalized() -> None:
+@test
+def overrides_normalized() -> None:
     """Test override lists are using normalized package names."""
     for req in gen_requirements_all.EXCLUDED_REQUIREMENTS_ALL:
-        assert req == gen_requirements_all._normalize_package_name(req)
+        expect(req).to_equal(gen_requirements_all._normalize_package_name(req))
     for req in gen_requirements_all.INCLUDED_REQUIREMENTS_WHEELS:
-        assert req == gen_requirements_all._normalize_package_name(req)
+        expect(req).to_equal(gen_requirements_all._normalize_package_name(req))
     for overrides in gen_requirements_all.OVERRIDDEN_REQUIREMENTS_ACTIONS.values():
         for req in overrides["exclude"]:
-            assert req == gen_requirements_all._normalize_package_name(req)
+            expect(req).to_equal(gen_requirements_all._normalize_package_name(req))
         for req in overrides["include"]:
-            assert req == gen_requirements_all._normalize_package_name(req)
+            expect(req).to_equal(gen_requirements_all._normalize_package_name(req))
 
 
-def test_include_overrides_subsets() -> None:
+@test
+def include_overrides_subsets() -> None:
     """Test packages in include override lists are present in the exclude list."""
     for req in gen_requirements_all.INCLUDED_REQUIREMENTS_WHEELS:
-        assert req in gen_requirements_all.EXCLUDED_REQUIREMENTS_ALL
+        expect(req in gen_requirements_all.EXCLUDED_REQUIREMENTS_ALL).to_be(True)
     for overrides in gen_requirements_all.OVERRIDDEN_REQUIREMENTS_ACTIONS.values():
         for req in overrides["include"]:
-            assert req in gen_requirements_all.EXCLUDED_REQUIREMENTS_ALL
+            expect(req in gen_requirements_all.EXCLUDED_REQUIREMENTS_ALL).to_be(True)
 
 
-def test_requirement_override_markers() -> None:
+@test
+def requirement_override_markers() -> None:
     """Test override markers are applied to the correct requirements."""
     data = {
         "pytest": {
@@ -39,13 +44,11 @@ def test_requirement_override_markers() -> None:
     with patch.dict(
         gen_requirements_all.OVERRIDDEN_REQUIREMENTS_ACTIONS, data, clear=True
     ):
-        assert (
+        expect(
             gen_requirements_all.process_action_requirement(
                 "env-canada==0.8.0", "pytest"
             )
-            == "env-canada==0.8.0;python_version<'3.13'"
-        )
-        assert (
+        ).to_equal("env-canada==0.8.0;python_version<'3.13'")
+        expect(
             gen_requirements_all.process_action_requirement("other==1.0", "pytest")
-            == "other==1.0"
-        )
+        ).to_equal("other==1.0")

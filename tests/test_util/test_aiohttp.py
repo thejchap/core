@@ -1,11 +1,12 @@
 """Tests for our aiohttp mocker."""
 
-import pytest
+from tryke import expect, test
 
 from .aiohttp import AiohttpClientMocker
 
 
-async def test_matching_url() -> None:
+@test
+async def matching_url() -> None:
     """Test we can match urls."""
     mocker = AiohttpClientMocker()
     mocker.get("http://example.com")
@@ -13,8 +14,14 @@ async def test_matching_url() -> None:
 
     mocker.clear_requests()
 
-    with pytest.raises(AssertionError):
-        await mocker.match_request("get", "http://example.com/")
+    async def _expect_raises() -> None:
+        try:
+            await mocker.match_request("get", "http://example.com/")
+        except AssertionError:
+            return
+        raise AssertionError("expected AssertionError")
+
+    await _expect_raises()
 
     mocker.clear_requests()
 
