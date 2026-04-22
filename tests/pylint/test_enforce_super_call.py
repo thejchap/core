@@ -11,24 +11,30 @@ from pylint.interfaces import INFERENCE
 from pylint.testutils import MessageTest
 from pylint.testutils.unittest_linter import UnittestLinter
 from pylint.utils.ast_walker import ASTWalker
-import pytest
+from tryke import Depends, fixture, test
 
 from . import assert_adds_messages, assert_no_messages
+from .fixtures import hass_enforce_super_call, linter, super_call_checker
 
 
-@pytest.mark.parametrize(
-    "code",
-    [
-        pytest.param(
-            """
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test.cases(
+    test.case(
+        "no_parent",
+        code="""
     class Entity:
         async def async_added_to_hass(self) -> None:
             pass
     """,
-            id="no_parent",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "empty_parent_implementation",
+        code="""
     class Entity:
         async def async_added_to_hass(self) -> None:
             \"\"\"Some docstring.\"\"\"
@@ -37,10 +43,10 @@ from . import assert_adds_messages, assert_no_messages
         async def async_added_to_hass(self) -> None:
             x = 2
         """,
-            id="empty_parent_implementation",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "empty_parent_implementation2",
+        code="""
     class Entity:
         async def async_added_to_hass(self) -> None:
             \"\"\"Some docstring.\"\"\"
@@ -50,10 +56,10 @@ from . import assert_adds_messages, assert_no_messages
         async def async_added_to_hass(self) -> None:
             x = 2
         """,
-            id="empty_parent_implementation2",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "correct_super_call",
+        code="""
     class Entity:
         async def async_added_to_hass(self) -> None:
             x = 2
@@ -62,10 +68,10 @@ from . import assert_adds_messages, assert_no_messages
         async def async_added_to_hass(self) -> None:
             await super().async_added_to_hass()
         """,
-            id="correct_super_call",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "super_call_in_return",
+        code="""
     class Entity:
         async def async_added_to_hass(self) -> None:
             x = 2
@@ -74,10 +80,10 @@ from . import assert_adds_messages, assert_no_messages
         async def async_added_to_hass(self) -> None:
             return await super().async_added_to_hass()
         """,
-            id="super_call_in_return",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "super_call_not_async",
+        code="""
     class Entity:
         def added_to_hass(self) -> None:
             x = 2
@@ -86,10 +92,10 @@ from . import assert_adds_messages, assert_no_messages
         def added_to_hass(self) -> None:
             super().added_to_hass()
         """,
-            id="super_call_not_async",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "multiple_inheritance",
+        code="""
     class Entity:
         async def async_added_to_hass(self) -> None:
             \"\"\"\"\"\"
@@ -102,22 +108,20 @@ from . import assert_adds_messages, assert_no_messages
         async def async_added_to_hass(self) -> None:
             await super().async_added_to_hass()
         """,
-            id="multiple_inheritance",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "not_a_method",
+        code="""
         async def async_added_to_hass() -> None:
             x = 2
         """,
-            id="not_a_method",
-        ),
-    ],
+    ),
 )
-def test_enforce_super_call(
-    linter: UnittestLinter,
-    hass_enforce_super_call: ModuleType,
-    super_call_checker: BaseChecker,
+def enforce_super_call(
     code: str,
+    linter: UnittestLinter = Depends(linter),
+    hass_enforce_super_call: ModuleType = Depends(hass_enforce_super_call),
+    super_call_checker: BaseChecker = Depends(super_call_checker),
 ) -> None:
     """Good test cases."""
     root_node = astroid.parse(code, "homeassistant.components.pylint_test")
@@ -135,11 +139,10 @@ def test_enforce_super_call(
         walker.walk(root_node)
 
 
-@pytest.mark.parametrize(
-    ("code", "node_idx"),
-    [
-        pytest.param(
-            """
+@test.cases(
+    test.case(
+        "no_super_call",
+        code="""
     class Entity:
         def added_to_hass(self) -> None:
             x = 2
@@ -148,11 +151,11 @@ def test_enforce_super_call(
         def added_to_hass(self) -> None:
             x = 3
     """,
-            1,
-            id="no_super_call",
-        ),
-        pytest.param(
-            """
+        node_idx=1,
+    ),
+    test.case(
+        "no_super_call_async",
+        code="""
     class Entity:
         async def async_added_to_hass(self) -> None:
             x = 2
@@ -161,11 +164,11 @@ def test_enforce_super_call(
         async def async_added_to_hass(self) -> None:
             x = 3
     """,
-            1,
-            id="no_super_call_async",
-        ),
-        pytest.param(
-            """
+        node_idx=1,
+    ),
+    test.case(
+        "explicit_call_to_base_implementation",
+        code="""
     class Entity:
         async def async_added_to_hass(self) -> None:
             x = 2
@@ -174,11 +177,11 @@ def test_enforce_super_call(
         async def async_added_to_hass(self) -> None:
             await Entity.async_added_to_hass()
     """,
-            1,
-            id="explicit_call_to_base_implementation",
-        ),
-        pytest.param(
-            """
+        node_idx=1,
+    ),
+    test.case(
+        "multiple_inheritance",
+        code="""
     class Entity:
         async def async_added_to_hass(self) -> None:
             \"\"\"\"\"\"
@@ -191,17 +194,15 @@ def test_enforce_super_call(
         async def async_added_to_hass(self) -> None:
             x = 3
     """,
-            2,
-            id="multiple_inheritance",
-        ),
-    ],
+        node_idx=2,
+    ),
 )
-def test_enforce_super_call_bad(
-    linter: UnittestLinter,
-    hass_enforce_super_call: ModuleType,
-    super_call_checker: BaseChecker,
+def enforce_super_call_bad(
     code: str,
     node_idx: int,
+    linter: UnittestLinter = Depends(linter),
+    hass_enforce_super_call: ModuleType = Depends(hass_enforce_super_call),
+    super_call_checker: BaseChecker = Depends(super_call_checker),
 ) -> None:
     """Bad test cases."""
     root_node = astroid.parse(code, "homeassistant.components.pylint_test")

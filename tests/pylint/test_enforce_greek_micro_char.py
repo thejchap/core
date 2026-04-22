@@ -6,38 +6,40 @@ import astroid
 from pylint.checkers import BaseChecker
 from pylint.testutils.unittest_linter import UnittestLinter
 from pylint.utils.ast_walker import ASTWalker
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from . import assert_no_messages
+from .fixtures import enforce_greek_micro_char_checker, linter
 
 
-@pytest.mark.parametrize(
-    "code",
-    [
-        pytest.param(
-            # Test using the correct μ-sign \u03bc with annotation
-            """
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test.cases(
+    test.case(
+        "good_const_with_annotation",
+        code="""
         CONCENTRATION_MICROGRAMS_PER_CUBIC_METER: Final = "μg/m³"
         """,
-            id="good_const_with_annotation",
-        ),
-        pytest.param(
-            # Test using the correct μ-sign \u03bc with annotation using unicode encoding
-            """
+    ),
+    test.case(
+        "good_unicode_const_with_annotation",
+        code="""
         CONCENTRATION_MICROGRAMS_PER_CUBIC_METER: Final = "\u03bcg/m³"
         """,
-            id="good_unicode_const_with_annotation",
-        ),
-        pytest.param(
-            # Test using the correct μ-sign \u03bc without annotation
-            """
+    ),
+    test.case(
+        "good_const_without_annotation",
+        code="""
         CONCENTRATION_MICROGRAMS_PER_CUBIC_METER = "μg/m³"
         """,
-            id="good_const_without_annotation",
-        ),
-        pytest.param(
-            # Test using the correct μ-sign \u03bc in a StrEnum class
-            """
+    ),
+    test.case(
+        "good_str_enum",
+        code="""
             class UnitOfElectricPotential(StrEnum):
                 \"\"\"Electric potential units.\"\"\"
 
@@ -47,11 +49,10 @@ from . import assert_no_messages
                 KILOVOLT = "kV"
                 MEGAVOLT = "MV"
         """,
-            id="good_str_enum",
-        ),
-        pytest.param(
-            # Test using the correct μ-sign \u03bc in a sensor description dict
-            """
+    ),
+    test.case(
+        "good_sensor_description",
+        code="""
             SENSOR_DESCRIPTION = {
                 "radiation_rate": AranetSensorEntityDescription(
                     key="radiation_rate",
@@ -67,14 +68,14 @@ from . import assert_no_messages
                 "value_with_bad_mu_should_pass": "µ"
             }
         """,
-            id="good_sensor_description",
-        ),
-    ],
+    ),
 )
-def test_enforce_greek_micro_char(
-    linter: UnittestLinter,
-    enforce_greek_micro_char_checker: BaseChecker,
+def enforce_greek_micro_char(
     code: str,
+    linter: UnittestLinter = Depends(linter),
+    enforce_greek_micro_char_checker: BaseChecker = Depends(
+        enforce_greek_micro_char_checker
+    ),
 ) -> None:
     """Good test cases."""
     root_node = astroid.parse(code, "homeassistant.components.pylint_test")
@@ -85,37 +86,28 @@ def test_enforce_greek_micro_char(
         walker.walk(root_node)
 
 
-@pytest.mark.parametrize(
-    "code",
-    [
-        pytest.param(
-            # Test we can detect the legacy coding of μ \u00b5
-            # instead of recommended coding of μ \u03bc" with annotation
-            """
+@test.cases(
+    test.case(
+        "bad_const_with_annotation",
+        code="""
             CONCENTRATION_MICROGRAMS_PER_CUBIC_METER: Final = "µg/m³"
         """,
-            id="bad_const_with_annotation",
-        ),
-        pytest.param(
-            # Test we can detect the unicode variant of the legacy coding of μ \u00b5
-            # instead of recommended coding of μ \u03bc" with annotation
-            """
+    ),
+    test.case(
+        "bad_unicode_const_with_annotation",
+        code="""
             CONCENTRATION_MICROGRAMS_PER_CUBIC_METER: Final = "\u00b5g/m³"
         """,
-            id="bad_unicode_const_with_annotation",
-        ),
-        pytest.param(
-            # Test we can detect the legacy coding of μ \u00b5
-            # instead of recommended coding of μ \u03bc" without annotation
-            """
+    ),
+    test.case(
+        "bad_const_without_annotation",
+        code="""
             CONCENTRATION_MICROGRAMS_PER_CUBIC_METER = "µg/m³"
         """,
-            id="bad_const_without_annotation",
-        ),
-        pytest.param(
-            # Test we can detect the legacy coding of μ \u00b5
-            # instead of recommended coding of μ \u03bc" in a StrEnum class
-            """
+    ),
+    test.case(
+        "bad_str_enum",
+        code="""
             class UnitOfElectricPotential(StrEnum):
                 \"\"\"Electric potential units.\"\"\"
 
@@ -125,12 +117,10 @@ def test_enforce_greek_micro_char(
                 KILOVOLT = "kV"
                 MEGAVOLT = "MV"
         """,
-            id="bad_str_enum",
-        ),
-        pytest.param(
-            # Test we can detect the legacy coding of μ \u00b5
-            # instead of recommended coding of μ \u03bc" in a sensor description dict
-            """
+    ),
+    test.case(
+        "bad_sensor_description",
+        code="""
             SENSOR_DESCRIPTION = {
                 "radiation_rate": AranetSensorEntityDescription(
                     key="radiation_rate",
@@ -143,14 +133,14 @@ def test_enforce_greek_micro_char(
                 ),
             }
         """,
-            id="bad_sensor_description",
-        ),
-    ],
+    ),
 )
-def test_enforce_greek_micro_char_assign_bad(
-    linter: UnittestLinter,
-    enforce_greek_micro_char_checker: BaseChecker,
+def enforce_greek_micro_char_assign_bad(
     code: str,
+    linter: UnittestLinter = Depends(linter),
+    enforce_greek_micro_char_checker: BaseChecker = Depends(
+        enforce_greek_micro_char_checker
+    ),
 ) -> None:
     """Bad assignment test cases."""
     root_node = astroid.parse(code, "homeassistant.components.pylint_test")
@@ -159,6 +149,6 @@ def test_enforce_greek_micro_char_assign_bad(
 
     walker.walk(root_node)
     messages = linter.release_messages()
-    assert len(messages) == 1
+    expect(len(messages)).to_equal(1).fatal()
     message = next(iter(messages))
-    assert message.msg_id == "hass-enforce-greek-micro-char"
+    expect(message.msg_id).to_equal("hass-enforce-greek-micro-char")

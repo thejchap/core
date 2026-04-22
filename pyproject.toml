@@ -446,16 +446,18 @@ max-line-length-suggestions = 72
 [tool.tryke]
 # Pytest used testpaths = ["tests"]; Tryke has no testpaths, so we exclude
 # everything else and invoke as `tryke test tests` (or a subslice).
+# Leading "/" anchors to repo root so top-level "pylint" is excluded but
+# "tests/pylint/" is not.
 exclude = [
-  ".git",
-  ".venv",
-  ".migration",
-  "homeassistant",
-  "homeassistant.egg-info",
-  "machine",
-  "pylint",
-  "rootfs",
-  "script",
+  "/.git",
+  "/.venv",
+  "/.migration",
+  "/homeassistant",
+  "/homeassistant.egg-info",
+  "/machine",
+  "/pylint",
+  "/rootfs",
+  "/script",
   "tests/testing_config",
 ]
 

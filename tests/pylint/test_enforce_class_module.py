@@ -8,26 +8,20 @@ from pylint.interfaces import UNDEFINED
 from pylint.testutils import MessageTest
 from pylint.testutils.unittest_linter import UnittestLinter
 from pylint.utils.ast_walker import ASTWalker
-import pytest
+from tryke import Depends, fixture, test
 
 from . import assert_adds_messages, assert_no_messages
+from .fixtures import enforce_class_module_checker, linter
 
-
-@pytest.mark.parametrize(
-    "code",
-    [
-        pytest.param(
-            """
+_SIMPLE_CODE = """
     class DataUpdateCoordinator:
         pass
 
     class TestCoordinator(DataUpdateCoordinator):
         pass
-    """,
-            id="simple",
-        ),
-        pytest.param(
-            """
+    """
+
+_NESTED_CODE = """
     class DataUpdateCoordinator:
         pass
 
@@ -36,23 +30,42 @@ from . import assert_adds_messages, assert_no_messages
 
     class TestCoordinator2(TestCoordinator):
         pass
-    """,
-            id="nested",
-        ),
-    ],
+    """
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test.cases(
+    test.case(
+        "simple_coordinator_module",
+        code=_SIMPLE_CODE,
+        path="homeassistant.components.pylint_test.coordinator",
+    ),
+    test.case(
+        "simple_my_coordinator_submodule",
+        code=_SIMPLE_CODE,
+        path="homeassistant.components.pylint_test.coordinator.my_coordinator",
+    ),
+    test.case(
+        "nested_coordinator_module",
+        code=_NESTED_CODE,
+        path="homeassistant.components.pylint_test.coordinator",
+    ),
+    test.case(
+        "nested_my_coordinator_submodule",
+        code=_NESTED_CODE,
+        path="homeassistant.components.pylint_test.coordinator.my_coordinator",
+    ),
 )
-@pytest.mark.parametrize(
-    "path",
-    [
-        "homeassistant.components.pylint_test.coordinator",
-        "homeassistant.components.pylint_test.coordinator.my_coordinator",
-    ],
-)
-def test_enforce_class_module_good(
-    linter: UnittestLinter,
-    enforce_class_module_checker: BaseChecker,
+def enforce_class_module_good(
     code: str,
     path: str,
+    linter: UnittestLinter = Depends(linter),
+    enforce_class_module_checker: BaseChecker = Depends(enforce_class_module_checker),
 ) -> None:
     """Good test cases."""
     root_node = astroid.parse(code, path)
@@ -63,19 +76,19 @@ def test_enforce_class_module_good(
         walker.walk(root_node)
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "homeassistant.components.sensor",
-        "homeassistant.components.sensor.entity",
-        "homeassistant.components.pylint_test.sensor",
-        "homeassistant.components.pylint_test.sensor.entity",
-    ],
+@test.cases(
+    test.case("sensor", path="homeassistant.components.sensor"),
+    test.case("sensor_entity", path="homeassistant.components.sensor.entity"),
+    test.case("pylint_test_sensor", path="homeassistant.components.pylint_test.sensor"),
+    test.case(
+        "pylint_test_sensor_entity",
+        path="homeassistant.components.pylint_test.sensor.entity",
+    ),
 )
-def test_enforce_class_platform_good(
-    linter: UnittestLinter,
-    enforce_class_module_checker: BaseChecker,
+def enforce_class_platform_good(
     path: str,
+    linter: UnittestLinter = Depends(linter),
+    enforce_class_module_checker: BaseChecker = Depends(enforce_class_module_checker),
 ) -> None:
     """Good test cases."""
     code = """
@@ -99,19 +112,25 @@ def test_enforce_class_platform_good(
         walker.walk(root_node)
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "homeassistant.components.pylint_test",
-        "homeassistant.components.pylint_test.my_coordinator",
-        "homeassistant.components.pylint_test.coordinator_other",
-        "homeassistant.components.pylint_test.sensor",
-    ],
+@test.cases(
+    test.case("pylint_test", path="homeassistant.components.pylint_test"),
+    test.case(
+        "pylint_test_my_coordinator",
+        path="homeassistant.components.pylint_test.my_coordinator",
+    ),
+    test.case(
+        "pylint_test_coordinator_other",
+        path="homeassistant.components.pylint_test.coordinator_other",
+    ),
+    test.case(
+        "pylint_test_sensor",
+        path="homeassistant.components.pylint_test.sensor",
+    ),
 )
-def test_enforce_class_module_bad_simple(
-    linter: UnittestLinter,
-    enforce_class_module_checker: BaseChecker,
+def enforce_class_module_bad_simple(
     path: str,
+    linter: UnittestLinter = Depends(linter),
+    enforce_class_module_checker: BaseChecker = Depends(enforce_class_module_checker),
 ) -> None:
     """Bad test case with coordinator extending directly."""
     root_node = astroid.parse(
@@ -159,19 +178,25 @@ def test_enforce_class_module_bad_simple(
         walker.walk(root_node)
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "homeassistant.components.pylint_test",
-        "homeassistant.components.pylint_test.my_coordinator",
-        "homeassistant.components.pylint_test.coordinator_other",
-        "homeassistant.components.pylint_test.sensor",
-    ],
+@test.cases(
+    test.case("pylint_test", path="homeassistant.components.pylint_test"),
+    test.case(
+        "pylint_test_my_coordinator",
+        path="homeassistant.components.pylint_test.my_coordinator",
+    ),
+    test.case(
+        "pylint_test_coordinator_other",
+        path="homeassistant.components.pylint_test.coordinator_other",
+    ),
+    test.case(
+        "pylint_test_sensor",
+        path="homeassistant.components.pylint_test.sensor",
+    ),
 )
-def test_enforce_class_module_bad_nested(
-    linter: UnittestLinter,
-    enforce_class_module_checker: BaseChecker,
+def enforce_class_module_bad_nested(
     path: str,
+    linter: UnittestLinter = Depends(linter),
+    enforce_class_module_checker: BaseChecker = Depends(enforce_class_module_checker),
 ) -> None:
     """Bad test case with nested coordinators."""
     root_node = astroid.parse(
@@ -216,18 +241,17 @@ def test_enforce_class_module_bad_nested(
         walker.walk(root_node)
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "homeassistant.components.sensor",
-        "homeassistant.components.sensor.entity",
-        "homeassistant.components.pylint_test.entity",
-    ],
+@test.cases(
+    test.case("sensor", path="homeassistant.components.sensor"),
+    test.case("sensor_entity", path="homeassistant.components.sensor.entity"),
+    test.case(
+        "pylint_test_entity", path="homeassistant.components.pylint_test.entity"
+    ),
 )
-def test_enforce_entity_good(
-    linter: UnittestLinter,
-    enforce_class_module_checker: BaseChecker,
+def enforce_entity_good(
     path: str,
+    linter: UnittestLinter = Depends(linter),
+    enforce_class_module_checker: BaseChecker = Depends(enforce_class_module_checker),
 ) -> None:
     """Good test cases."""
     code = """
@@ -245,18 +269,20 @@ def test_enforce_entity_good(
         walker.walk(root_node)
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "homeassistant.components.pylint_test",
-        "homeassistant.components.pylint_test.select",
-        "homeassistant.components.pylint_test.select.entity",
-    ],
+@test.cases(
+    test.case("pylint_test", path="homeassistant.components.pylint_test"),
+    test.case(
+        "pylint_test_select", path="homeassistant.components.pylint_test.select"
+    ),
+    test.case(
+        "pylint_test_select_entity",
+        path="homeassistant.components.pylint_test.select.entity",
+    ),
 )
-def test_enforce_entity_bad(
-    linter: UnittestLinter,
-    enforce_class_module_checker: BaseChecker,
+def enforce_entity_bad(
     path: str,
+    linter: UnittestLinter = Depends(linter),
+    enforce_class_module_checker: BaseChecker = Depends(enforce_class_module_checker),
 ) -> None:
     """Good test cases."""
     code = """

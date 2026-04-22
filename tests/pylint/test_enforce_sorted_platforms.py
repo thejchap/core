@@ -8,68 +8,74 @@ from pylint.interfaces import UNDEFINED
 from pylint.testutils import MessageTest
 from pylint.testutils.unittest_linter import UnittestLinter
 from pylint.utils.ast_walker import ASTWalker
-import pytest
+from tryke import Depends, fixture, test
 
 from . import assert_adds_messages, assert_no_messages
+from .fixtures import enforce_sorted_platforms_checker, linter
 
 
-@pytest.mark.parametrize(
-    "code",
-    [
-        pytest.param(
-            """
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test.cases(
+    test.case(
+        "one_platform",
+        code="""
         PLATFORMS = [Platform.SENSOR]
         """,
-            id="one_platform",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "multiple_platforms",
+        code="""
         PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR]
         """,
-            id="multiple_platforms",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "typed_on_platform",
+        code="""
         PLATFORMS: list[str] = [Platform.SENSOR]
         """,
-            id="typed_on_platform",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "typed_multiple_platform",
+        code="""
         PLATFORMS: list[str] = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR]
         """,
-            id="typed_multiple_platform",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "private_one_platform",
+        code="""
         _PLATFORMS = [Platform.SENSOR]
         """,
-            id="private_one_platform",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "private_multiple_platforms",
+        code="""
         _PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR]
         """,
-            id="private_multiple_platforms",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "private_typed_one_platform",
+        code="""
         _PLATFORMS: list[str] = [Platform.SENSOR]
         """,
-            id="private_typed_one_platform",
-        ),
-        pytest.param(
-            """
+    ),
+    test.case(
+        "private_typed_multiple_platforms",
+        code="""
         _PLATFORMS: list[str] = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR]
         """,
-            id="private_typed_multiple_platforms",
-        ),
-    ],
+    ),
 )
-def test_enforce_sorted_platforms(
-    linter: UnittestLinter,
-    enforce_sorted_platforms_checker: BaseChecker,
+def enforce_sorted_platforms(
     code: str,
+    linter: UnittestLinter = Depends(linter),
+    enforce_sorted_platforms_checker: BaseChecker = Depends(
+        enforce_sorted_platforms_checker
+    ),
 ) -> None:
     """Good test cases."""
     root_node = astroid.parse(code, "homeassistant.components.pylint_test")
@@ -80,9 +86,12 @@ def test_enforce_sorted_platforms(
         walker.walk(root_node)
 
 
-def test_enforce_sorted_platforms_bad(
-    linter: UnittestLinter,
-    enforce_sorted_platforms_checker: BaseChecker,
+@test
+def enforce_sorted_platforms_bad(
+    linter: UnittestLinter = Depends(linter),
+    enforce_sorted_platforms_checker: BaseChecker = Depends(
+        enforce_sorted_platforms_checker
+    ),
 ) -> None:
     """Bad test case."""
     assign_node = astroid.extract_node(
@@ -108,9 +117,12 @@ def test_enforce_sorted_platforms_bad(
         enforce_sorted_platforms_checker.visit_assign(assign_node)
 
 
-def test_enforce_sorted_platforms_bad_typed(
-    linter: UnittestLinter,
-    enforce_sorted_platforms_checker: BaseChecker,
+@test
+def enforce_sorted_platforms_bad_typed(
+    linter: UnittestLinter = Depends(linter),
+    enforce_sorted_platforms_checker: BaseChecker = Depends(
+        enforce_sorted_platforms_checker
+    ),
 ) -> None:
     """Bad typed test case."""
     assign_node = astroid.extract_node(
@@ -136,9 +148,12 @@ def test_enforce_sorted_platforms_bad_typed(
         enforce_sorted_platforms_checker.visit_annassign(assign_node)
 
 
-def test_enforce_sorted_private_platforms_bad(
-    linter: UnittestLinter,
-    enforce_sorted_platforms_checker: BaseChecker,
+@test
+def enforce_sorted_private_platforms_bad(
+    linter: UnittestLinter = Depends(linter),
+    enforce_sorted_platforms_checker: BaseChecker = Depends(
+        enforce_sorted_platforms_checker
+    ),
 ) -> None:
     """Bad test case for private _PLATFORMS."""
     assign_node = astroid.extract_node(
@@ -164,9 +179,12 @@ def test_enforce_sorted_private_platforms_bad(
         enforce_sorted_platforms_checker.visit_assign(assign_node)
 
 
-def test_enforce_sorted_private_platforms_bad_typed(
-    linter: UnittestLinter,
-    enforce_sorted_platforms_checker: BaseChecker,
+@test
+def enforce_sorted_private_platforms_bad_typed(
+    linter: UnittestLinter = Depends(linter),
+    enforce_sorted_platforms_checker: BaseChecker = Depends(
+        enforce_sorted_platforms_checker
+    ),
 ) -> None:
     """Bad typed test case for private _PLATFORMS."""
     assign_node = astroid.extract_node(

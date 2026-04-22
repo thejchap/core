@@ -8,12 +8,23 @@ from pylint.interfaces import UNDEFINED
 from pylint.testutils import MessageTest
 from pylint.testutils.unittest_linter import UnittestLinter
 from pylint.utils.ast_walker import ASTWalker
-import pytest
+from tryke import Depends, fixture, test
 
 from . import assert_adds_messages, assert_no_messages
+from .fixtures import decorator_checker, linter
 
 
-def test_good_callback(linter: UnittestLinter, decorator_checker: BaseChecker) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+def good_callback(
+    linter: UnittestLinter = Depends(linter),
+    decorator_checker: BaseChecker = Depends(decorator_checker),
+) -> None:
     """Test good `@callback` decorator."""
     code = """
     from homeassistant.core import callback
@@ -33,7 +44,11 @@ def test_good_callback(linter: UnittestLinter, decorator_checker: BaseChecker) -
         walker.walk(root_node)
 
 
-def test_bad_callback(linter: UnittestLinter, decorator_checker: BaseChecker) -> None:
+@test
+def bad_callback(
+    linter: UnittestLinter = Depends(linter),
+    decorator_checker: BaseChecker = Depends(decorator_checker),
+) -> None:
     """Test bad `@callback` decorator."""
     code = """
     from homeassistant.core import callback
@@ -65,34 +80,87 @@ def test_bad_callback(linter: UnittestLinter, decorator_checker: BaseChecker) ->
         walker.walk(root_node)
 
 
-@pytest.mark.parametrize(
-    ("keywords", "path"),
-    [
-        ('scope="function"', "tests.test_bootstrap"),
-        ('scope="class"', "tests.test_bootstrap"),
-        ('scope="module"', "tests.test_bootstrap"),
-        ('scope="package"', "tests.test_bootstrap"),
-        ('scope="session", autouse=True', "tests.test_bootstrap"),
-        ('scope="function"', "tests.components.conftest"),
-        ('scope="class"', "tests.components.conftest"),
-        ('scope="module"', "tests.components.conftest"),
-        ('scope="package"', "tests.components.conftest"),
-        ('scope="session", autouse=True', "tests.components.conftest"),
-        (
-            'scope="session", autouse=find_spec("zeroconf") is not None',
-            "tests.components.conftest",
-        ),
-        ('scope="function"', "tests.components.pylint_tests.conftest"),
-        ('scope="class"', "tests.components.pylint_tests.conftest"),
-        ('scope="module"', "tests.components.pylint_tests.conftest"),
-        ('scope="package"', "tests.components.pylint_tests.conftest"),
-        ('scope="function"', "tests.components.pylint_test"),
-        ('scope="class"', "tests.components.pylint_test"),
-        ('scope="module"', "tests.components.pylint_test"),
-    ],
+@test.cases(
+    test.case("function_bootstrap", keywords='scope="function"', path="tests.test_bootstrap"),
+    test.case("class_bootstrap", keywords='scope="class"', path="tests.test_bootstrap"),
+    test.case("module_bootstrap", keywords='scope="module"', path="tests.test_bootstrap"),
+    test.case("package_bootstrap", keywords='scope="package"', path="tests.test_bootstrap"),
+    test.case(
+        "session_autouse_bootstrap",
+        keywords='scope="session", autouse=True',
+        path="tests.test_bootstrap",
+    ),
+    test.case(
+        "function_components_conftest",
+        keywords='scope="function"',
+        path="tests.components.conftest",
+    ),
+    test.case(
+        "class_components_conftest",
+        keywords='scope="class"',
+        path="tests.components.conftest",
+    ),
+    test.case(
+        "module_components_conftest",
+        keywords='scope="module"',
+        path="tests.components.conftest",
+    ),
+    test.case(
+        "package_components_conftest",
+        keywords='scope="package"',
+        path="tests.components.conftest",
+    ),
+    test.case(
+        "session_autouse_components_conftest",
+        keywords='scope="session", autouse=True',
+        path="tests.components.conftest",
+    ),
+    test.case(
+        "session_autouse_findspec_components_conftest",
+        keywords='scope="session", autouse=find_spec("zeroconf") is not None',
+        path="tests.components.conftest",
+    ),
+    test.case(
+        "function_pylint_tests_conftest",
+        keywords='scope="function"',
+        path="tests.components.pylint_tests.conftest",
+    ),
+    test.case(
+        "class_pylint_tests_conftest",
+        keywords='scope="class"',
+        path="tests.components.pylint_tests.conftest",
+    ),
+    test.case(
+        "module_pylint_tests_conftest",
+        keywords='scope="module"',
+        path="tests.components.pylint_tests.conftest",
+    ),
+    test.case(
+        "package_pylint_tests_conftest",
+        keywords='scope="package"',
+        path="tests.components.pylint_tests.conftest",
+    ),
+    test.case(
+        "function_pylint_test",
+        keywords='scope="function"',
+        path="tests.components.pylint_test",
+    ),
+    test.case(
+        "class_pylint_test",
+        keywords='scope="class"',
+        path="tests.components.pylint_test",
+    ),
+    test.case(
+        "module_pylint_test",
+        keywords='scope="module"',
+        path="tests.components.pylint_test",
+    ),
 )
-def test_good_fixture(
-    linter: UnittestLinter, decorator_checker: BaseChecker, keywords: str, path: str
+def good_fixture(
+    keywords: str,
+    path: str,
+    linter: UnittestLinter = Depends(linter),
+    decorator_checker: BaseChecker = Depends(decorator_checker),
 ) -> None:
     """Test good `@pytest.fixture` decorator."""
     code = f"""
@@ -119,16 +187,15 @@ def test_good_fixture(
         walker.walk(root_node)
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "tests.components.pylint_test",
-        "tests.components.pylint_test.conftest",
-        "tests.components.pylint_test.module",
-    ],
+@test.cases(
+    test.case("pylint_test", path="tests.components.pylint_test"),
+    test.case("pylint_test_conftest", path="tests.components.pylint_test.conftest"),
+    test.case("pylint_test_module", path="tests.components.pylint_test.module"),
 )
-def test_bad_fixture_session_scope(
-    linter: UnittestLinter, decorator_checker: BaseChecker, path: str
+def bad_fixture_session_scope(
+    path: str,
+    linter: UnittestLinter = Depends(linter),
+    decorator_checker: BaseChecker = Depends(decorator_checker),
 ) -> None:
     """Test bad `@pytest.fixture` decorator."""
     code = """
@@ -167,15 +234,14 @@ def test_bad_fixture_session_scope(
         walker.walk(root_node)
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        "tests.components.pylint_test",
-        "tests.components.pylint_test.module",
-    ],
+@test.cases(
+    test.case("pylint_test", path="tests.components.pylint_test"),
+    test.case("pylint_test_module", path="tests.components.pylint_test.module"),
 )
-def test_bad_fixture_package_scope(
-    linter: UnittestLinter, decorator_checker: BaseChecker, path: str
+def bad_fixture_package_scope(
+    path: str,
+    linter: UnittestLinter = Depends(linter),
+    decorator_checker: BaseChecker = Depends(decorator_checker),
 ) -> None:
     """Test bad `@pytest.fixture` decorator."""
     code = """
@@ -214,22 +280,33 @@ def test_bad_fixture_package_scope(
         walker.walk(root_node)
 
 
-@pytest.mark.parametrize(
-    "keywords",
-    [
-        'scope="session"',
-        'scope="session", autouse=False',
-    ],
+@test.cases(
+    test.case(
+        "session_bootstrap",
+        keywords='scope="session"',
+        path="tests.test_bootstrap",
+    ),
+    test.case(
+        "session_autouse_false_bootstrap",
+        keywords='scope="session", autouse=False',
+        path="tests.test_bootstrap",
+    ),
+    test.case(
+        "session_components_conftest",
+        keywords='scope="session"',
+        path="tests.components.conftest",
+    ),
+    test.case(
+        "session_autouse_false_components_conftest",
+        keywords='scope="session", autouse=False',
+        path="tests.components.conftest",
+    ),
 )
-@pytest.mark.parametrize(
-    "path",
-    [
-        "tests.test_bootstrap",
-        "tests.components.conftest",
-    ],
-)
-def test_bad_fixture_autouse(
-    linter: UnittestLinter, decorator_checker: BaseChecker, keywords: str, path: str
+def bad_fixture_autouse(
+    keywords: str,
+    path: str,
+    linter: UnittestLinter = Depends(linter),
+    decorator_checker: BaseChecker = Depends(decorator_checker),
 ) -> None:
     """Test bad `@pytest.fixture` decorator."""
     code = f"""
