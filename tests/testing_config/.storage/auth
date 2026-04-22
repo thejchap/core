@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "auth",
+  "data": {
+    "users": [
+      {
+        "id": "74529a4d7d104abfaa50ad82c9e33622",
+        "group_ids": [
+          "system-admin"
+        ],
+        "is_owner": false,
+        "is_active": true,
+        "name": "Test Name",
+        "system_generated": false,
+        "local_only": false
+      }
+    ],
+    "groups": [
+      {
+        "id": "system-admin",
+        "name": "Administrators"
+      },
+      {
+        "id": "system-users",
+        "name": "Users"
+      },
+      {
+        "id": "system-read-only",
+        "name": "Read Only"
+      }
+    ],
+    "credentials": [
+      {
+        "id": "8baa1840d8854ebe89c545d1d242360d",
+        "user_id": "74529a4d7d104abfaa50ad82c9e33622",
+        "auth_provider_type": "insecure_example",
+        "auth_provider_id": null,
+        "data": {
+          "username": "user-test"
+        }
+      }
+    ],
+    "refresh_tokens": []
+  }
+}

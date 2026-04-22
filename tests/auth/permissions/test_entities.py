@@ -1,7 +1,7 @@
 """Tests for entity permissions."""
 
-import pytest
 import voluptuous as vol
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.auth.permissions.entities import (
     ENTITY_POLICY_SCHEMA,
@@ -12,145 +12,165 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntry
 
 from tests.common import RegistryEntryWithDefaults, mock_device_registry, mock_registry
+from tests.hass_fixtures import hass
 
 
-def test_entities_none() -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+def entities_none() -> None:
     """Test entity ID policy."""
     policy = None
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is False
+    expect(compiled("light.kitchen", "read")).to_be(False)
 
 
-def test_entities_empty() -> None:
+@test
+def entities_empty() -> None:
     """Test entity ID policy."""
     policy = {}
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is False
+    expect(compiled("light.kitchen", "read")).to_be(False)
 
 
-def test_entities_false() -> None:
+@test
+def entities_false() -> None:
     """Test entity ID policy."""
     policy = False
-    with pytest.raises(vol.Invalid):
-        ENTITY_POLICY_SCHEMA(policy)
+    expect(lambda: ENTITY_POLICY_SCHEMA(policy)).to_raise(vol.Invalid)
 
 
-def test_entities_true() -> None:
+@test
+def entities_true() -> None:
     """Test entity ID policy."""
     policy = True
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is True
+    expect(compiled("light.kitchen", "read")).to_be(True)
 
 
-def test_entities_domains_true() -> None:
+@test
+def entities_domains_true() -> None:
     """Test entity ID policy."""
     policy = {"domains": True}
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is True
+    expect(compiled("light.kitchen", "read")).to_be(True)
 
 
-def test_entities_domains_domain_true() -> None:
+@test
+def entities_domains_domain_true() -> None:
     """Test entity ID policy."""
     policy = {"domains": {"light": True}}
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is True
-    assert compiled("switch.kitchen", "read") is False
+    expect(compiled("light.kitchen", "read")).to_be(True)
+    expect(compiled("switch.kitchen", "read")).to_be(False)
 
 
-def test_entities_domains_domain_false() -> None:
+@test
+def entities_domains_domain_false() -> None:
     """Test entity ID policy."""
     policy = {"domains": {"light": False}}
-    with pytest.raises(vol.Invalid):
-        ENTITY_POLICY_SCHEMA(policy)
+    expect(lambda: ENTITY_POLICY_SCHEMA(policy)).to_raise(vol.Invalid)
 
 
-def test_entities_entity_ids_true() -> None:
+@test
+def entities_entity_ids_true() -> None:
     """Test entity ID policy."""
     policy = {"entity_ids": True}
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is True
+    expect(compiled("light.kitchen", "read")).to_be(True)
 
 
-def test_entities_entity_ids_false() -> None:
+@test
+def entities_entity_ids_false() -> None:
     """Test entity ID policy."""
     policy = {"entity_ids": False}
-    with pytest.raises(vol.Invalid):
-        ENTITY_POLICY_SCHEMA(policy)
+    expect(lambda: ENTITY_POLICY_SCHEMA(policy)).to_raise(vol.Invalid)
 
 
-def test_entities_entity_ids_entity_id_true() -> None:
+@test
+def entities_entity_ids_entity_id_true() -> None:
     """Test entity ID policy."""
     policy = {"entity_ids": {"light.kitchen": True}}
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is True
-    assert compiled("switch.kitchen", "read") is False
+    expect(compiled("light.kitchen", "read")).to_be(True)
+    expect(compiled("switch.kitchen", "read")).to_be(False)
 
 
-def test_entities_entity_ids_entity_id_false() -> None:
+@test
+def entities_entity_ids_entity_id_false() -> None:
     """Test entity ID policy."""
     policy = {"entity_ids": {"light.kitchen": False}}
-    with pytest.raises(vol.Invalid):
-        ENTITY_POLICY_SCHEMA(policy)
+    expect(lambda: ENTITY_POLICY_SCHEMA(policy)).to_raise(vol.Invalid)
 
 
-def test_entities_control_only() -> None:
+@test
+def entities_control_only() -> None:
     """Test policy granting control only."""
     policy = {"entity_ids": {"light.kitchen": {"read": True}}}
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is True
-    assert compiled("light.kitchen", "control") is False
-    assert compiled("light.kitchen", "edit") is False
+    expect(compiled("light.kitchen", "read")).to_be(True)
+    expect(compiled("light.kitchen", "control")).to_be(False)
+    expect(compiled("light.kitchen", "edit")).to_be(False)
 
 
-def test_entities_read_control() -> None:
+@test
+def entities_read_control() -> None:
     """Test policy granting control only."""
     policy = {"domains": {"light": {"read": True, "control": True}}}
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is True
-    assert compiled("light.kitchen", "control") is True
-    assert compiled("light.kitchen", "edit") is False
+    expect(compiled("light.kitchen", "read")).to_be(True)
+    expect(compiled("light.kitchen", "control")).to_be(True)
+    expect(compiled("light.kitchen", "edit")).to_be(False)
 
 
-def test_entities_all_allow() -> None:
+@test
+def entities_all_allow() -> None:
     """Test policy allowing all entities."""
     policy = {"all": True}
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is True
-    assert compiled("light.kitchen", "control") is True
-    assert compiled("switch.kitchen", "read") is True
+    expect(compiled("light.kitchen", "read")).to_be(True)
+    expect(compiled("light.kitchen", "control")).to_be(True)
+    expect(compiled("switch.kitchen", "read")).to_be(True)
 
 
-def test_entities_all_read() -> None:
+@test
+def entities_all_read() -> None:
     """Test policy applying read to all entities."""
     policy = {"all": {"read": True}}
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is True
-    assert compiled("light.kitchen", "control") is False
-    assert compiled("switch.kitchen", "read") is True
+    expect(compiled("light.kitchen", "read")).to_be(True)
+    expect(compiled("light.kitchen", "control")).to_be(False)
+    expect(compiled("switch.kitchen", "read")).to_be(True)
 
 
-def test_entities_all_control() -> None:
+@test
+def entities_all_control() -> None:
     """Test entity ID policy applying control to all."""
     policy = {"all": {"control": True}}
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is False
-    assert compiled("light.kitchen", "control") is True
-    assert compiled("switch.kitchen", "read") is False
-    assert compiled("switch.kitchen", "control") is True
+    expect(compiled("light.kitchen", "read")).to_be(False)
+    expect(compiled("light.kitchen", "control")).to_be(True)
+    expect(compiled("switch.kitchen", "read")).to_be(False)
+    expect(compiled("switch.kitchen", "control")).to_be(True)
 
 
-def test_entities_device_id_boolean(hass: HomeAssistant) -> None:
+@test
+async def entities_device_id_boolean(hass: HomeAssistant = Depends(hass)) -> None:
     """Test entity ID policy applying control on device id."""
     entity_registry = mock_registry(
         hass,
@@ -176,21 +196,23 @@ def test_entities_device_id_boolean(hass: HomeAssistant) -> None:
     compiled = compile_entities(
         policy, PermissionLookup(entity_registry, device_registry)
     )
-    assert compiled("test_domain.allowed", "read") is True
-    assert compiled("test_domain.allowed", "control") is False
-    assert compiled("test_domain.not_allowed", "read") is False
-    assert compiled("test_domain.not_allowed", "control") is False
+    expect(compiled("test_domain.allowed", "read")).to_be(True)
+    expect(compiled("test_domain.allowed", "control")).to_be(False)
+    expect(compiled("test_domain.not_allowed", "read")).to_be(False)
+    expect(compiled("test_domain.not_allowed", "control")).to_be(False)
 
 
-def test_entities_areas_true() -> None:
+@test
+def entities_areas_true() -> None:
     """Test entity ID policy for areas."""
     policy = {"area_ids": True}
     ENTITY_POLICY_SCHEMA(policy)
     compiled = compile_entities(policy, None)
-    assert compiled("light.kitchen", "read") is True
+    expect(compiled("light.kitchen", "read")).to_be(True)
 
 
-def test_entities_areas_area_true(hass: HomeAssistant) -> None:
+@test
+async def entities_areas_area_true(hass: HomeAssistant = Depends(hass)) -> None:
     """Test entity ID policy for areas with specific area."""
     entity_registry = mock_registry(
         hass,
@@ -212,7 +234,7 @@ def test_entities_areas_area_true(hass: HomeAssistant) -> None:
     compiled = compile_entities(
         policy, PermissionLookup(entity_registry, device_registry)
     )
-    assert compiled("light.kitchen", "read") is True
-    assert compiled("light.kitchen", "control") is True
-    assert compiled("light.kitchen", "edit") is False
-    assert compiled("switch.kitchen", "read") is False
+    expect(compiled("light.kitchen", "read")).to_be(True)
+    expect(compiled("light.kitchen", "control")).to_be(True)
+    expect(compiled("light.kitchen", "edit")).to_be(False)
+    expect(compiled("switch.kitchen", "read")).to_be(False)
