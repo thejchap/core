@@ -3,8 +3,20 @@
 from pathlib import Path
 from unittest.mock import patch
 
+from tryke import expect, test
+
 from script.hassfest.core_files import EXTRA_BASE_PLATFORMS, validate
 from script.hassfest.model import Config, Integration
+
+
+def _make_config() -> Config:
+    """Build a fresh Config for each test."""
+    return Config(
+        root=Path(".").absolute(),
+        specific_integrations=None,
+        action="validate",
+        requirements=True,
+    )
 
 
 def _create_integration(
@@ -28,7 +40,8 @@ def _create_core_files_yaml(base_platforms: list[str]) -> dict:
     }
 
 
-def test_skip_specific_integrations() -> None:
+@test
+def skip_specific_integrations() -> None:
     """Test that validation is skipped for specific integrations."""
     config = Config(
         root=Path(".").absolute(),
@@ -36,17 +49,18 @@ def test_skip_specific_integrations() -> None:
         action="validate",
         requirements=False,
     )
-    # Should not raise or add errors — it just returns early
     validate({}, config)
-    assert not config.errors
+    expect(bool(config.errors)).to_be(False)
 
 
-def test_valid_alignment(config: Config) -> None:
+@test
+def valid_alignment() -> None:
     """Test no errors when base_platforms matches entity platforms."""
+    config = _make_config()
     integrations = {
         "sensor": _create_integration(config, "sensor", "entity"),
         "light": _create_integration(config, "light", "entity"),
-        "tag": _create_integration(config, "tag", "entity"),  # excluded
+        "tag": _create_integration(config, "tag", "entity"),
         "mqtt": _create_integration(config, "mqtt", "hub"),
     }
 
@@ -55,31 +69,33 @@ def test_valid_alignment(config: Config) -> None:
     with patch("script.hassfest.core_files.load_yaml_dict", return_value=core_files):
         validate(integrations, config)
 
-    assert not config.errors
+    expect(bool(config.errors)).to_be(False)
 
 
-def test_missing_entity_platform(config: Config) -> None:
+@test
+def missing_entity_platform() -> None:
     """Test error when an entity platform is missing from base_platforms."""
+    config = _make_config()
     integrations = {
         "sensor": _create_integration(config, "sensor", "entity"),
         "light": _create_integration(config, "light", "entity"),
     }
 
-    # light is missing from base_platforms
     core_files = _create_core_files_yaml(["sensor", *EXTRA_BASE_PLATFORMS])
 
     with patch("script.hassfest.core_files.load_yaml_dict", return_value=core_files):
         validate(integrations, config)
 
-    assert len(config.errors) == 1
-    assert (
-        config.errors[0].error
-        == "Entity platform 'light' is missing from base_platforms in .core_files.yaml"
+    expect(len(config.errors)).to_equal(1)
+    expect(config.errors[0].error).to_equal(
+        "Entity platform 'light' is missing from base_platforms in .core_files.yaml"
     )
 
 
-def test_unexpected_entry(config: Config) -> None:
+@test
+def unexpected_entry() -> None:
     """Test error when base_platforms contains a non-entity-platform entry."""
+    config = _make_config()
     integrations = {
         "sensor": _create_integration(config, "sensor", "entity"),
     }
@@ -91,8 +107,7 @@ def test_unexpected_entry(config: Config) -> None:
     with patch("script.hassfest.core_files.load_yaml_dict", return_value=core_files):
         validate(integrations, config)
 
-    assert len(config.errors) == 1
-    assert (
-        config.errors[0].error
-        == "'unknown_thing' in base_platforms in .core_files.yaml is not an entity platform or in EXTRA_BASE_PLATFORMS"
+    expect(len(config.errors)).to_equal(1)
+    expect(config.errors[0].error).to_equal(
+        "'unknown_thing' in base_platforms in .core_files.yaml is not an entity platform or in EXTRA_BASE_PLATFORMS"
     )

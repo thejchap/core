@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
+from tryke import expect, test
 
 from homeassistant.util.yaml.loader import parse_yaml
 from script.hassfest import conditions
-from script.hassfest.model import Config
+from script.hassfest.model import Config, Integration
 
 from . import get_integration
 
@@ -118,13 +118,19 @@ CONDITION_DESCRIPTIONS = {
 }
 
 
-@pytest.mark.usefixtures("mock_core_integration")
-def test_validate(config: Config) -> None:
+@test
+def validate() -> None:
     """Test validate version with no key."""
+    config = Config(
+        root=Path(".").absolute(),
+        specific_integrations=None,
+        action="validate",
+        requirements=True,
+    )
 
     def _load_yaml(fname, secrets=None):
         domain, yaml_file = fname.split("/")
-        assert yaml_file == CONDITION_DESCRIPTION_FILENAME
+        expect(yaml_file).to_equal(CONDITION_DESCRIPTION_FILENAME).fatal()
 
         condition_descriptions = CONDITION_DESCRIPTIONS[domain][yaml_file]
         with io.StringIO(condition_descriptions) as file:
@@ -136,25 +142,26 @@ def test_validate(config: Config) -> None:
 
         return json.dumps(CONDITION_DESCRIPTIONS[domain][filename])
 
-    integrations = {
-        domain: get_integration(domain, config) for domain in CONDITION_DESCRIPTIONS
-    }
+    with patch.object(Integration, "core", return_value=True):
+        integrations = {
+            domain: get_integration(domain, config) for domain in CONDITION_DESCRIPTIONS
+        }
 
-    with (
-        patch("script.hassfest.conditions.grep_dir", return_value=True),
-        patch("pathlib.Path.is_file", return_value=True),
-        patch("pathlib.Path.read_text", _patched_path_read_text),
-        patch("annotatedyaml.loader.load_yaml", side_effect=_load_yaml),
-    ):
-        conditions.validate(integrations, config)
-
-    assert not config.errors
-
-    for domain, description in CONDITION_DESCRIPTIONS.items():
-        assert len(integrations[domain].errors) == len(description["errors"]), (
-            f"Domain '{domain}' has unexpected errors: {integrations[domain].errors}"
-        )
-        for error, expected_error in zip(
-            integrations[domain].errors, description["errors"], strict=True
+        with (
+            patch("script.hassfest.conditions.grep_dir", return_value=True),
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.read_text", _patched_path_read_text),
+            patch("annotatedyaml.loader.load_yaml", side_effect=_load_yaml),
         ):
-            assert expected_error in error.error
+            conditions.validate(integrations, config)
+
+        expect(bool(config.errors)).to_be(False)
+
+        for domain, description in CONDITION_DESCRIPTIONS.items():
+            expect(len(integrations[domain].errors)).to_equal(
+                len(description["errors"])
+            )
+            for error, expected_error in zip(
+                integrations[domain].errors, description["errors"], strict=True
+            ):
+                expect(expected_error in error.error).to_be(True)

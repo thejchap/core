@@ -2,13 +2,13 @@
 
 import ast
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from script.hassfest.dependencies import ImportCollector
 
 
-@pytest.fixture
-def mock_collector():
+@fixture
+def mock_collector() -> ImportCollector:
     """Fixture with import collector that adds all referenced nodes."""
     collector = ImportCollector(None)
     collector.unfiltered_referenced = set()
@@ -16,7 +16,8 @@ def mock_collector():
     return collector
 
 
-def test_child_import(mock_collector) -> None:
+@test
+def child_import(mock_collector: ImportCollector = Depends(mock_collector)) -> None:
     """Test detecting a child_import reference."""
     mock_collector.visit(
         ast.parse(
@@ -26,10 +27,11 @@ from homeassistant.components import child_import
 """
         )
     )
-    assert mock_collector.unfiltered_referenced == {"child_import"}
+    expect(mock_collector.unfiltered_referenced).to_equal({"child_import"})
 
 
-def test_subimport(mock_collector) -> None:
+@test
+def subimport(mock_collector: ImportCollector = Depends(mock_collector)) -> None:
     """Test detecting a subimport reference."""
     mock_collector.visit(
         ast.parse(
@@ -39,10 +41,13 @@ from homeassistant.components.subimport.smart_home import EVENT_ALEXA_SMART_HOME
 """
         )
     )
-    assert mock_collector.unfiltered_referenced == {"subimport"}
+    expect(mock_collector.unfiltered_referenced).to_equal({"subimport"})
 
 
-def test_child_import_field(mock_collector) -> None:
+@test
+def child_import_field(
+    mock_collector: ImportCollector = Depends(mock_collector),
+) -> None:
     """Test detecting a child_import_field reference."""
     mock_collector.visit(
         ast.parse(
@@ -52,10 +57,11 @@ from homeassistant.components.child_import_field import bla
 """
         )
     )
-    assert mock_collector.unfiltered_referenced == {"child_import_field"}
+    expect(mock_collector.unfiltered_referenced).to_equal({"child_import_field"})
 
 
-def test_renamed_absolute(mock_collector) -> None:
+@test
+def renamed_absolute(mock_collector: ImportCollector = Depends(mock_collector)) -> None:
     """Test detecting a renamed_absolute reference."""
     mock_collector.visit(
         ast.parse(
@@ -65,10 +71,11 @@ import homeassistant.components.renamed_absolute as hue
 """
         )
     )
-    assert mock_collector.unfiltered_referenced == {"renamed_absolute"}
+    expect(mock_collector.unfiltered_referenced).to_equal({"renamed_absolute"})
 
 
-def test_all_imports(mock_collector) -> None:
+@test
+def all_imports(mock_collector: ImportCollector = Depends(mock_collector)) -> None:
     """Test all imports together."""
     mock_collector.visit(
         ast.parse(
@@ -84,9 +91,11 @@ import homeassistant.components.renamed_absolute as hue
 """
         )
     )
-    assert mock_collector.unfiltered_referenced == {
-        "child_import",
-        "subimport",
-        "child_import_field",
-        "renamed_absolute",
-    }
+    expect(mock_collector.unfiltered_referenced).to_equal(
+        {
+            "child_import",
+            "subimport",
+            "child_import_field",
+            "renamed_absolute",
+        }
+    )
