@@ -1,35 +1,41 @@
 """Tests for the auth models."""
 
+from tryke import expect, test
+
 from homeassistant.auth import models, permissions
 
 
-def test_owner_fetching_owner_permissions() -> None:
+@test
+def owner_fetching_owner_permissions() -> None:
     """Test we fetch the owner permissions for an owner user."""
     group = models.Group(name="Test Group", policy={})
     owner = models.User(
         name="Test User", perm_lookup=None, groups=[group], is_owner=True
     )
-    assert owner.permissions is permissions.OwnerPermissions
+    expect(owner.permissions is permissions.OwnerPermissions).to_be(True)
 
 
-def test_permissions_merged() -> None:
+@test
+def permissions_merged() -> None:
     """Test we merge the groups permissions."""
     group = models.Group(
         name="Test Group", policy={"entities": {"domains": {"switch": True}}}
     )
     group2 = models.Group(
-        name="Test Group", policy={"entities": {"entity_ids": {"light.kitchen": True}}}
+        name="Test Group",
+        policy={"entities": {"entity_ids": {"light.kitchen": True}}},
     )
     user = models.User(name="Test User", perm_lookup=None, groups=[group, group2])
     # Make sure we cache instance
-    assert user.permissions is user.permissions
+    expect(user.permissions is user.permissions).to_be(True)
 
-    assert user.permissions.check_entity("switch.bla", "read") is True
-    assert user.permissions.check_entity("light.kitchen", "read") is True
-    assert user.permissions.check_entity("light.not_kitchen", "read") is False
+    expect(user.permissions.check_entity("switch.bla", "read")).to_be(True)
+    expect(user.permissions.check_entity("light.kitchen", "read")).to_be(True)
+    expect(user.permissions.check_entity("light.not_kitchen", "read")).to_be(False)
 
 
-def test_cache_cleared_on_group_change() -> None:
+@test
+def cache_cleared_on_group_change() -> None:
     """Test we clear the cache when a group changes."""
     group = models.Group(
         name="Test Group", policy={"entities": {"domains": {"switch": True}}}
@@ -41,23 +47,23 @@ def test_cache_cleared_on_group_change() -> None:
         name="Test User", perm_lookup=None, groups=[group], is_active=True
     )
     # Make sure we cache instance
-    assert user.permissions is user.permissions
+    expect(user.permissions is user.permissions).to_be(True)
 
     # Make sure we cache is_admin
-    assert user.is_admin is user.is_admin
-    assert user.is_active is True
+    expect(user.is_admin is user.is_admin).to_be(True)
+    expect(user.is_active).to_be(True)
 
     user.groups = []
-    assert user.groups == []
-    assert user.is_admin is False
+    expect(user.groups).to_equal([])
+    expect(user.is_admin).to_be(False)
 
     user.is_owner = True
-    assert user.is_admin is True
+    expect(user.is_admin).to_be(True)
     user.is_owner = False
 
-    assert user.is_admin is False
+    expect(user.is_admin).to_be(False)
     user.groups = [admin_group]
-    assert user.is_admin is True
+    expect(user.is_admin).to_be(True)
 
     user.is_active = False
-    assert user.is_admin is False
+    expect(user.is_admin).to_be(False)
