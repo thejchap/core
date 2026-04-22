@@ -4,7 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from freezegun import freeze_time
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.season.const import (
     DOMAIN,
@@ -25,6 +25,8 @@ from homeassistant.helpers.entity_component import async_update_entity
 from homeassistant.util.dt import UTC
 
 from tests.common import MockConfigEntry
+from tests.components.season._fixtures import mock_config_entry
+from tests.hass_fixtures import device_registry, entity_registry, hass
 
 HEMISPHERE_NORTHERN = {
     "homeassistant": {"latitude": 48.864716, "longitude": 2.349014},
@@ -41,49 +43,70 @@ HEMISPHERE_EQUATOR = {
     "sensor": {"platform": "season", "type": "astronomical"},
 }
 
-HEMISPHERE_EMPTY = {
-    "homeassistant": {},
-    "sensor": {"platform": "season", "type": "meteorological"},
-}
 
-NORTHERN_PARAMETERS = [
-    (TYPE_ASTRONOMICAL, datetime(2017, 9, 3, 0, 0, tzinfo=UTC), STATE_SUMMER),
-    (TYPE_METEOROLOGICAL, datetime(2017, 8, 13, 0, 0, tzinfo=UTC), STATE_SUMMER),
-    (TYPE_ASTRONOMICAL, datetime(2017, 9, 23, 0, 0, tzinfo=UTC), STATE_AUTUMN),
-    (TYPE_METEOROLOGICAL, datetime(2017, 9, 3, 0, 0, tzinfo=UTC), STATE_AUTUMN),
-    (TYPE_ASTRONOMICAL, datetime(2017, 12, 25, 0, 0, tzinfo=UTC), STATE_WINTER),
-    (TYPE_METEOROLOGICAL, datetime(2017, 12, 3, 0, 0, tzinfo=UTC), STATE_WINTER),
-    (TYPE_ASTRONOMICAL, datetime(2017, 4, 1, 0, 0, tzinfo=UTC), STATE_SPRING),
-    (TYPE_METEOROLOGICAL, datetime(2017, 3, 3, 0, 0, tzinfo=UTC), STATE_SPRING),
-]
-
-SOUTHERN_PARAMETERS = [
-    (TYPE_ASTRONOMICAL, datetime(2017, 12, 25, 0, 0, tzinfo=UTC), STATE_SUMMER),
-    (TYPE_METEOROLOGICAL, datetime(2017, 12, 3, 0, 0, tzinfo=UTC), STATE_SUMMER),
-    (TYPE_ASTRONOMICAL, datetime(2017, 4, 1, 0, 0, tzinfo=UTC), STATE_AUTUMN),
-    (TYPE_METEOROLOGICAL, datetime(2017, 3, 3, 0, 0, tzinfo=UTC), STATE_AUTUMN),
-    (TYPE_ASTRONOMICAL, datetime(2017, 9, 3, 0, 0, tzinfo=UTC), STATE_WINTER),
-    (TYPE_METEOROLOGICAL, datetime(2017, 8, 13, 0, 0, tzinfo=UTC), STATE_WINTER),
-    (TYPE_ASTRONOMICAL, datetime(2017, 9, 23, 0, 0, tzinfo=UTC), STATE_SPRING),
-    (TYPE_METEOROLOGICAL, datetime(2017, 9, 3, 0, 0, tzinfo=UTC), STATE_SPRING),
-]
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
 
 
-def idfn(val):
-    """Provide IDs for pytest parametrize."""
-    if isinstance(val, (datetime)):
-        return val.strftime("%Y%m%d")
-    return None
-
-
-@pytest.mark.parametrize(("type", "day", "expected"), NORTHERN_PARAMETERS, ids=idfn)
-async def test_season_northern_hemisphere(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    mock_config_entry: MockConfigEntry,
+@test.cases(
+    test.case(
+        "astronomical_20170903_summer",
+        type=TYPE_ASTRONOMICAL,
+        day=datetime(2017, 9, 3, 0, 0, tzinfo=UTC),
+        expected=STATE_SUMMER,
+    ),
+    test.case(
+        "meteorological_20170813_summer",
+        type=TYPE_METEOROLOGICAL,
+        day=datetime(2017, 8, 13, 0, 0, tzinfo=UTC),
+        expected=STATE_SUMMER,
+    ),
+    test.case(
+        "astronomical_20170923_autumn",
+        type=TYPE_ASTRONOMICAL,
+        day=datetime(2017, 9, 23, 0, 0, tzinfo=UTC),
+        expected=STATE_AUTUMN,
+    ),
+    test.case(
+        "meteorological_20170903_autumn",
+        type=TYPE_METEOROLOGICAL,
+        day=datetime(2017, 9, 3, 0, 0, tzinfo=UTC),
+        expected=STATE_AUTUMN,
+    ),
+    test.case(
+        "astronomical_20171225_winter",
+        type=TYPE_ASTRONOMICAL,
+        day=datetime(2017, 12, 25, 0, 0, tzinfo=UTC),
+        expected=STATE_WINTER,
+    ),
+    test.case(
+        "meteorological_20171203_winter",
+        type=TYPE_METEOROLOGICAL,
+        day=datetime(2017, 12, 3, 0, 0, tzinfo=UTC),
+        expected=STATE_WINTER,
+    ),
+    test.case(
+        "astronomical_20170401_spring",
+        type=TYPE_ASTRONOMICAL,
+        day=datetime(2017, 4, 1, 0, 0, tzinfo=UTC),
+        expected=STATE_SPRING,
+    ),
+    test.case(
+        "meteorological_20170303_spring",
+        type=TYPE_METEOROLOGICAL,
+        day=datetime(2017, 3, 3, 0, 0, tzinfo=UTC),
+        expected=STATE_SPRING,
+    ),
+)
+async def season_northern_hemisphere(
     type: str,
     day: datetime,
     expected: str,
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that season should be summer."""
     hass.config.latitude = HEMISPHERE_NORTHERN["homeassistant"]["latitude"]
@@ -97,26 +120,77 @@ async def test_season_northern_hemisphere(
         await hass.async_block_till_done()
 
     state = hass.states.get("sensor.season")
-    assert state
-    assert state.state == expected
-    assert state.attributes[ATTR_DEVICE_CLASS] == SensorDeviceClass.ENUM
-    assert state.attributes[ATTR_OPTIONS] == ["spring", "summer", "autumn", "winter"]
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal(expected)
+    expect(state.attributes[ATTR_DEVICE_CLASS]).to_equal(SensorDeviceClass.ENUM)
+    expect(state.attributes[ATTR_OPTIONS]).to_equal(
+        ["spring", "summer", "autumn", "winter"]
+    )
 
     entry = entity_registry.async_get("sensor.season")
-    assert entry
-    assert entry.unique_id == mock_config_entry.entry_id
-    assert entry.translation_key == "season"
+    expect(entry is not None).to_be(True)
+    expect(entry.unique_id).to_equal(mock_config_entry.entry_id)
+    expect(entry.translation_key).to_equal("season")
 
 
-@pytest.mark.parametrize(("type", "day", "expected"), SOUTHERN_PARAMETERS, ids=idfn)
-async def test_season_southern_hemisphere(
-    hass: HomeAssistant,
-    device_registry: dr.DeviceRegistry,
-    entity_registry: er.EntityRegistry,
-    mock_config_entry: MockConfigEntry,
+@test.cases(
+    test.case(
+        "astronomical_20171225_summer",
+        type=TYPE_ASTRONOMICAL,
+        day=datetime(2017, 12, 25, 0, 0, tzinfo=UTC),
+        expected=STATE_SUMMER,
+    ),
+    test.case(
+        "meteorological_20171203_summer",
+        type=TYPE_METEOROLOGICAL,
+        day=datetime(2017, 12, 3, 0, 0, tzinfo=UTC),
+        expected=STATE_SUMMER,
+    ),
+    test.case(
+        "astronomical_20170401_autumn",
+        type=TYPE_ASTRONOMICAL,
+        day=datetime(2017, 4, 1, 0, 0, tzinfo=UTC),
+        expected=STATE_AUTUMN,
+    ),
+    test.case(
+        "meteorological_20170303_autumn",
+        type=TYPE_METEOROLOGICAL,
+        day=datetime(2017, 3, 3, 0, 0, tzinfo=UTC),
+        expected=STATE_AUTUMN,
+    ),
+    test.case(
+        "astronomical_20170903_winter",
+        type=TYPE_ASTRONOMICAL,
+        day=datetime(2017, 9, 3, 0, 0, tzinfo=UTC),
+        expected=STATE_WINTER,
+    ),
+    test.case(
+        "meteorological_20170813_winter",
+        type=TYPE_METEOROLOGICAL,
+        day=datetime(2017, 8, 13, 0, 0, tzinfo=UTC),
+        expected=STATE_WINTER,
+    ),
+    test.case(
+        "astronomical_20170923_spring",
+        type=TYPE_ASTRONOMICAL,
+        day=datetime(2017, 9, 23, 0, 0, tzinfo=UTC),
+        expected=STATE_SPRING,
+    ),
+    test.case(
+        "meteorological_20170903_spring",
+        type=TYPE_METEOROLOGICAL,
+        day=datetime(2017, 9, 3, 0, 0, tzinfo=UTC),
+        expected=STATE_SPRING,
+    ),
+)
+async def season_southern_hemisphere(
     type: str,
     day: datetime,
     expected: str,
+    hass: HomeAssistant = Depends(hass),
+    device_registry: dr.DeviceRegistry = Depends(device_registry),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that season should be summer."""
     hass.config.latitude = HEMISPHERE_SOUTHERN["homeassistant"]["latitude"]
@@ -130,28 +204,32 @@ async def test_season_southern_hemisphere(
         await hass.async_block_till_done()
 
     state = hass.states.get("sensor.season")
-    assert state
-    assert state.state == expected
-    assert state.attributes[ATTR_DEVICE_CLASS] == SensorDeviceClass.ENUM
-    assert state.attributes[ATTR_OPTIONS] == ["spring", "summer", "autumn", "winter"]
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal(expected)
+    expect(state.attributes[ATTR_DEVICE_CLASS]).to_equal(SensorDeviceClass.ENUM)
+    expect(state.attributes[ATTR_OPTIONS]).to_equal(
+        ["spring", "summer", "autumn", "winter"]
+    )
 
     entry = entity_registry.async_get("sensor.season")
-    assert entry
-    assert entry.unique_id == mock_config_entry.entry_id
-    assert entry.translation_key == "season"
+    expect(entry is not None).to_be(True)
+    expect(entry.unique_id).to_equal(mock_config_entry.entry_id)
+    expect(entry.translation_key).to_equal("season")
 
-    assert entry.device_id
+    expect(bool(entry.device_id)).to_be(True)
     device_entry = device_registry.async_get(entry.device_id)
-    assert device_entry
-    assert device_entry.identifiers == {(DOMAIN, mock_config_entry.entry_id)}
-    assert device_entry.name == "Season"
-    assert device_entry.entry_type is dr.DeviceEntryType.SERVICE
+    expect(device_entry is not None).to_be(True)
+    expect(device_entry.identifiers).to_equal(
+        {(DOMAIN, mock_config_entry.entry_id)}
+    )
+    expect(device_entry.entry_type).to_equal(dr.DeviceEntryType.SERVICE)
 
 
-async def test_season_equator(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    mock_config_entry: MockConfigEntry,
+@test
+async def season_equator(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that season should be unknown for equator."""
     hass.config.latitude = HEMISPHERE_EQUATOR["homeassistant"]["latitude"]
@@ -162,18 +240,19 @@ async def test_season_equator(
         await hass.async_block_till_done()
 
     state = hass.states.get("sensor.season")
-    assert state
-    assert state.state == STATE_UNKNOWN
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal(STATE_UNKNOWN)
 
     entry = entity_registry.async_get("sensor.season")
-    assert entry
-    assert entry.unique_id == mock_config_entry.entry_id
+    expect(entry is not None).to_be(True)
+    expect(entry.unique_id).to_equal(mock_config_entry.entry_id)
 
 
-async def test_season_local_midnight(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    mock_config_entry: MockConfigEntry,
+@test
+async def season_local_midnight(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that season changes at local midnight, not UTC."""
     await hass.config.async_set_time_zone("Australia/Sydney")
@@ -195,8 +274,8 @@ async def test_season_local_midnight(
         await hass.async_block_till_done()
 
     state = hass.states.get("sensor.season")
-    assert state
-    assert state.state == STATE_SUMMER
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal(STATE_SUMMER)
 
     # Exactly midnight local time (autumn)
     midnight = datetime(2017, 3, 1, 0, 0, 0, tzinfo=sydney_tz)
@@ -206,5 +285,5 @@ async def test_season_local_midnight(
         await hass.async_block_till_done()
 
     state = hass.states.get("sensor.season")
-    assert state
-    assert state.state == STATE_AUTUMN
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal(STATE_AUTUMN)
