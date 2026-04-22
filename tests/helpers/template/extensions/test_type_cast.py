@@ -4,150 +4,181 @@ from __future__ import annotations
 
 import math
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import TemplateError
 
+from tests.hass_fixtures import hass
 from tests.helpers.template.helpers import render
 
 
-def test_float_function(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def float_function(hass: HomeAssistant = Depends(hass)) -> None:
     """Test float function."""
     hass.states.async_set("sensor.temperature", "12")
 
-    assert render(hass, "{{ float(states.sensor.temperature.state) }}") == 12.0
+    expect(render(hass, "{{ float(states.sensor.temperature.state) }}")).to_equal(
+        12.0
+    )
 
-    assert render(hass, "{{ float(states.sensor.temperature.state) > 11 }}") is True
+    expect(
+        render(hass, "{{ float(states.sensor.temperature.state) > 11 }}")
+    ).to_be(True)
 
     # Test handling of invalid input
-    with pytest.raises(TemplateError):
-        render(hass, "{{ float('forgiving') }}")
+    expect(lambda: render(hass, "{{ float('forgiving') }}")).to_raise(TemplateError)
 
     # Test handling of default return value
-    assert render(hass, "{{ float('bad', 1) }}") == 1
-    assert render(hass, "{{ float('bad', default=1) }}") == 1
+    expect(render(hass, "{{ float('bad', 1) }}")).to_equal(1)
+    expect(render(hass, "{{ float('bad', default=1) }}")).to_equal(1)
 
 
-def test_float_filter(hass: HomeAssistant) -> None:
+@test
+async def float_filter(hass: HomeAssistant = Depends(hass)) -> None:
     """Test float filter."""
     hass.states.async_set("sensor.temperature", "12")
 
-    assert render(hass, "{{ states.sensor.temperature.state | float }}") == 12.0
-    assert render(hass, "{{ states.sensor.temperature.state | float > 11 }}") is True
+    expect(render(hass, "{{ states.sensor.temperature.state | float }}")).to_equal(
+        12.0
+    )
+    expect(
+        render(hass, "{{ states.sensor.temperature.state | float > 11 }}")
+    ).to_be(True)
 
     # Test handling of invalid input
-    with pytest.raises(TemplateError):
-        render(hass, "{{ 'bad' | float }}")
+    expect(lambda: render(hass, "{{ 'bad' | float }}")).to_raise(TemplateError)
 
     # Test handling of default return value
-    assert render(hass, "{{ 'bad' | float(1) }}") == 1
-    assert render(hass, "{{ 'bad' | float(default=1) }}") == 1
+    expect(render(hass, "{{ 'bad' | float(1) }}")).to_equal(1)
+    expect(render(hass, "{{ 'bad' | float(default=1) }}")).to_equal(1)
 
 
-def test_int_filter(hass: HomeAssistant) -> None:
+@test
+async def int_filter(hass: HomeAssistant = Depends(hass)) -> None:
     """Test int filter."""
     hass.states.async_set("sensor.temperature", "12.2")
-    assert render(hass, "{{ states.sensor.temperature.state | int }}") == 12
-    assert render(hass, "{{ states.sensor.temperature.state | int > 11 }}") is True
+    expect(render(hass, "{{ states.sensor.temperature.state | int }}")).to_equal(12)
+    expect(
+        render(hass, "{{ states.sensor.temperature.state | int > 11 }}")
+    ).to_be(True)
 
     hass.states.async_set("sensor.temperature", "0x10")
-    assert render(hass, "{{ states.sensor.temperature.state | int(base=16) }}") == 16
+    expect(
+        render(hass, "{{ states.sensor.temperature.state | int(base=16) }}")
+    ).to_equal(16)
 
     # Test handling of invalid input
-    with pytest.raises(TemplateError):
-        render(hass, "{{ 'bad' | int }}")
+    expect(lambda: render(hass, "{{ 'bad' | int }}")).to_raise(TemplateError)
 
     # Test handling of default return value
-    assert render(hass, "{{ 'bad' | int(1) }}") == 1
-    assert render(hass, "{{ 'bad' | int(default=1) }}") == 1
+    expect(render(hass, "{{ 'bad' | int(1) }}")).to_equal(1)
+    expect(render(hass, "{{ 'bad' | int(default=1) }}")).to_equal(1)
 
 
-def test_int_function(hass: HomeAssistant) -> None:
+@test
+async def int_function(hass: HomeAssistant = Depends(hass)) -> None:
     """Test int filter."""
     hass.states.async_set("sensor.temperature", "12.2")
-    assert render(hass, "{{ int(states.sensor.temperature.state) }}") == 12
-    assert render(hass, "{{ int(states.sensor.temperature.state) > 11 }}") is True
+    expect(render(hass, "{{ int(states.sensor.temperature.state) }}")).to_equal(12)
+    expect(
+        render(hass, "{{ int(states.sensor.temperature.state) > 11 }}")
+    ).to_be(True)
 
     hass.states.async_set("sensor.temperature", "0x10")
-    assert render(hass, "{{ int(states.sensor.temperature.state, base=16) }}") == 16
+    expect(
+        render(hass, "{{ int(states.sensor.temperature.state, base=16) }}")
+    ).to_equal(16)
 
     # Test handling of invalid input
-    with pytest.raises(TemplateError):
-        render(hass, "{{ int('bad') }}")
+    expect(lambda: render(hass, "{{ int('bad') }}")).to_raise(TemplateError)
 
     # Test handling of default return value
-    assert render(hass, "{{ int('bad', 1) }}") == 1
-    assert render(hass, "{{ int('bad', default=1) }}") == 1
+    expect(render(hass, "{{ int('bad', 1) }}")).to_equal(1)
+    expect(render(hass, "{{ int('bad', default=1) }}")).to_equal(1)
 
 
-def test_bool_function(hass: HomeAssistant) -> None:
+@test
+async def bool_function(hass: HomeAssistant = Depends(hass)) -> None:
     """Test bool function."""
-    assert render(hass, "{{ bool(true) }}") is True
-    assert render(hass, "{{ bool(false) }}") is False
-    assert render(hass, "{{ bool('on') }}") is True
-    assert render(hass, "{{ bool('off') }}") is False
-    with pytest.raises(TemplateError):
-        render(hass, "{{ bool('unknown') }}")
-    with pytest.raises(TemplateError):
-        render(hass, "{{ bool(none) }}")
-    assert render(hass, "{{ bool('unavailable', none) }}") is None
-    assert render(hass, "{{ bool('unavailable', default=none) }}") is None
+    expect(render(hass, "{{ bool(true) }}")).to_be(True)
+    expect(render(hass, "{{ bool(false) }}")).to_be(False)
+    expect(render(hass, "{{ bool('on') }}")).to_be(True)
+    expect(render(hass, "{{ bool('off') }}")).to_be(False)
+    expect(lambda: render(hass, "{{ bool('unknown') }}")).to_raise(TemplateError)
+    expect(lambda: render(hass, "{{ bool(none) }}")).to_raise(TemplateError)
+    expect(render(hass, "{{ bool('unavailable', none) }}")).to_be(None)
+    expect(render(hass, "{{ bool('unavailable', default=none) }}")).to_be(None)
 
 
-def test_bool_filter(hass: HomeAssistant) -> None:
+@test
+async def bool_filter(hass: HomeAssistant = Depends(hass)) -> None:
     """Test bool filter."""
-    assert render(hass, "{{ true | bool }}") is True
-    assert render(hass, "{{ false | bool }}") is False
-    assert render(hass, "{{ 'on' | bool }}") is True
-    assert render(hass, "{{ 'off' | bool }}") is False
-    with pytest.raises(TemplateError):
-        render(hass, "{{ 'unknown' | bool }}")
-    with pytest.raises(TemplateError):
-        render(hass, "{{ none | bool }}")
-    assert render(hass, "{{ 'unavailable' | bool(none) }}") is None
-    assert render(hass, "{{ 'unavailable' | bool(default=none) }}") is None
+    expect(render(hass, "{{ true | bool }}")).to_be(True)
+    expect(render(hass, "{{ false | bool }}")).to_be(False)
+    expect(render(hass, "{{ 'on' | bool }}")).to_be(True)
+    expect(render(hass, "{{ 'off' | bool }}")).to_be(False)
+    expect(lambda: render(hass, "{{ 'unknown' | bool }}")).to_raise(TemplateError)
+    expect(lambda: render(hass, "{{ none | bool }}")).to_raise(TemplateError)
+    expect(render(hass, "{{ 'unavailable' | bool(none) }}")).to_be(None)
+    expect(render(hass, "{{ 'unavailable' | bool(default=none) }}")).to_be(None)
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        (0, True),
-        (0.0, True),
-        ("0", True),
-        ("0.0", True),
-        (True, True),
-        (False, True),
-        ("True", False),
-        ("False", False),
-        (None, False),
-        ("None", False),
-        ("horse", False),
-        (math.pi, True),
-        (math.nan, False),
-        (math.inf, False),
-        ("nan", False),
-        ("inf", False),
-    ],
+@test.cases(
+    test.case("zero_int", value=0, expected=True),
+    test.case("zero_float", value=0.0, expected=True),
+    test.case("zero_str", value="0", expected=True),
+    test.case("zero_float_str", value="0.0", expected=True),
+    test.case("true", value=True, expected=True),
+    test.case("false", value=False, expected=True),
+    test.case("True_str", value="True", expected=False),
+    test.case("False_str", value="False", expected=False),
+    test.case("none", value=None, expected=False),
+    test.case("None_str", value="None", expected=False),
+    test.case("horse", value="horse", expected=False),
+    test.case("pi", value=math.pi, expected=True),
+    test.case("nan", value=math.nan, expected=False),
+    test.case("inf", value=math.inf, expected=False),
+    test.case("nan_str", value="nan", expected=False),
+    test.case("inf_str", value="inf", expected=False),
 )
-def test_isnumber(hass: HomeAssistant, value: object, expected: bool) -> None:
+async def isnumber(
+    value: object,
+    expected: bool,
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test is_number."""
-    assert render(hass, "{{ is_number(value) }}", {"value": value}) == expected
-    assert render(hass, "{{ value | is_number }}", {"value": value}) == expected
-    assert render(hass, "{{ value is is_number }}", {"value": value}) == expected
+    expect(render(hass, "{{ is_number(value) }}", {"value": value})).to_equal(
+        expected
+    )
+    expect(render(hass, "{{ value | is_number }}", {"value": value})).to_equal(
+        expected
+    )
+    expect(render(hass, "{{ value is is_number }}", {"value": value})).to_equal(
+        expected
+    )
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("hello", True),
-        (b"hello", True),
-        (bytearray(b"hello"), True),
-        (42, False),
-        ([1, 2], False),
-        (None, False),
-    ],
+@test.cases(
+    test.case("str", value="hello", expected=True),
+    test.case("bytes", value=b"hello", expected=True),
+    test.case("bytearray", value=bytearray(b"hello"), expected=True),
+    test.case("int", value=42, expected=False),
+    test.case("list", value=[1, 2], expected=False),
+    test.case("none", value=None, expected=False),
 )
-def test_string_like(hass: HomeAssistant, value: object, expected: bool) -> None:
+async def string_like(
+    value: object,
+    expected: bool,
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test string_like."""
-    assert render(hass, "{{ value is string_like }}", {"value": value}) == expected
+    expect(render(hass, "{{ value is string_like }}", {"value": value})).to_equal(
+        expected
+    )

@@ -2,27 +2,39 @@
 
 from __future__ import annotations
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import TemplateError
 
+from tests.hass_fixtures import hass
 from tests.helpers.template.helpers import render
 
 
-def test_version(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def version(hass: HomeAssistant = Depends(hass)) -> None:
     """Test version filter and function."""
     filter_result = render(hass, "{{ '2099.9.9' | version}}")
     function_result = render(hass, "{{ version('2099.9.9')}}")
-    assert filter_result == function_result == "2099.9.9"
+    expect(filter_result).to_equal("2099.9.9")
+    expect(function_result).to_equal("2099.9.9")
 
     filter_result = render(hass, "{{ '2099.9.9' | version < '2099.9.10' }}")
     function_result = render(hass, "{{ version('2099.9.9') < '2099.9.10' }}")
-    assert filter_result is function_result is True
+    expect(filter_result).to_be(True)
+    expect(function_result).to_be(True)
 
     filter_result = render(hass, "{{ '2099.9.9' | version == '2099.9.9' }}")
     function_result = render(hass, "{{ version('2099.9.9') == '2099.9.9' }}")
-    assert filter_result is function_result is True
+    expect(filter_result).to_be(True)
+    expect(function_result).to_be(True)
 
-    with pytest.raises(TemplateError):
-        render(hass, "{{ version(None) < '2099.9.10' }}")
+    expect(lambda: render(hass, "{{ version(None) < '2099.9.10' }}")).to_raise(
+        TemplateError
+    )
