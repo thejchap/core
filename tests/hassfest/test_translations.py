@@ -1,7 +1,10 @@
 """Tests for hassfest translations."""
 
-import pytest
+from pathlib import Path
+
 import voluptuous as vol
+
+from tryke import Depends, expect, fixture, test
 
 from script.hassfest import translations
 from script.hassfest.model import Config
@@ -9,12 +12,25 @@ from script.hassfest.model import Config
 from . import get_integration
 
 
-def test_string_with_no_placeholders_in_single_quotes() -> None:
+@fixture
+def config() -> Config:
+    """Fixture for hassfest Config."""
+    return Config(
+        root=Path(".").absolute(),
+        specific_integrations=None,
+        action="validate",
+        requirements=True,
+    )
+
+
+@test
+def string_with_no_placeholders_in_single_quotes() -> None:
     """Test string with no placeholders in single quotes."""
     schema = vol.Schema(translations.string_no_single_quoted_placeholders)
 
-    with pytest.raises(vol.Invalid):
-        schema("This has '{placeholder}' in single quotes")
+    expect(lambda: schema("This has '{placeholder}' in single quotes")).to_raise(
+        vol.Invalid
+    )
 
     for value in (
         'This has "{placeholder}" in double quotes',
@@ -408,52 +424,44 @@ SAMPLE_STRINGS = {
 }
 
 
-def test_gen_strings_schema(
-    config: Config,
+@test
+def gen_strings_schema(
+    config: Config = Depends(config),
 ) -> None:
     """Test gen_strings_schema validates all string types."""
     integration = get_integration("test_integration", config)
     schema = translations.gen_strings_schema(config, integration)
 
-    # Validate the sample strings - should not raise
     validated = schema(SAMPLE_STRINGS)
 
-    assert validated == SAMPLE_STRINGS
+    expect(validated).to_equal(SAMPLE_STRINGS)
 
 
-@pytest.mark.parametrize(
-    "translation_string",
-    [
-        "An example is: https://example.com.",
-        "www.example.com",
-        "http://example.com:8080",
-        "WWW.EXAMPLE.COM",
-        "HTTPS://www.example.com",
-    ],
+@test.cases(
+    test.case("https_example", translation_string="An example is: https://example.com."),
+    test.case("www_example", translation_string="www.example.com"),
+    test.case("http_example_port", translation_string="http://example.com:8080"),
+    test.case("www_upper", translation_string="WWW.EXAMPLE.COM"),
+    test.case("https_upper", translation_string="HTTPS://www.example.com"),
 )
-def test_no_placeholders_used_for_urls(translation_string: str) -> None:
+def no_placeholders_used_for_urls(translation_string: str) -> None:
     """Test that translation strings containing URLs are rejected."""
     schema = vol.Schema(translations.translation_value_validator)
 
-    with pytest.raises(vol.Invalid):
-        schema(translation_string)
+    expect(lambda: schema(translation_string)).to_raise(vol.Invalid)
 
 
-@pytest.mark.parametrize(
-    "translation_string",
-    [
-        "An example is: https://example.com.",
-        "www.example.com",
-        "http://example.com:8080",
-        "WWW.EXAMPLE.COM",
-        "HTTPS://www.example.com",
-    ],
+@test.cases(
+    test.case("https_example", translation_string="An example is: https://example.com."),
+    test.case("www_example", translation_string="www.example.com"),
+    test.case("http_example_port", translation_string="http://example.com:8080"),
+    test.case("www_upper", translation_string="WWW.EXAMPLE.COM"),
+    test.case("https_upper", translation_string="HTTPS://www.example.com"),
 )
-def test_allow_urls_in_translation_value(translation_string: str) -> None:
+def allow_urls_in_translation_value(translation_string: str) -> None:
     """Test that URLs are allowed when allow_urls=True."""
     schema = vol.Schema(
         translations.custom_translation_value_validator(allow_urls=True)
     )
 
-    # Should not raise
     schema(translation_string)
