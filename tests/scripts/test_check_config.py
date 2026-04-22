@@ -1,16 +1,18 @@
 """Test check_config script."""
 
+import contextlib
 import json
 import logging
 import os
+from collections.abc import Generator
 from unittest.mock import patch
 
-import pytest
+from tryke import expect, fixture, test
 
 from homeassistant.config import YAML_CONFIG_FILE
 from homeassistant.scripts import check_config
 
-from tests.common import get_test_config_dir
+from tests.common import get_test_config_dir, patch_yaml_files
 
 BASE_CONFIG = (
     "homeassistant:\n"
@@ -26,8 +28,8 @@ BASE_CONFIG = (
 BAD_CORE_CONFIG = "homeassistant:\n  unit_system: bad\n\n\n"
 
 
-@pytest.fixture(autouse=True)
-def reset_log_level():
+@fixture
+def _reset_log_level() -> Generator[None]:
     """Reset log level after each test case."""
     logger = logging.getLogger("homeassistant.loader")
     orig_level = logger.level
@@ -35,157 +37,152 @@ def reset_log_level():
     logger.setLevel(orig_level)
 
 
-@pytest.fixture(autouse=True)
-async def apply_stop_hass(stop_hass: None) -> None:
-    """Make sure all hass are stopped."""
-
-
-@pytest.fixture
-def mock_is_file():
-    """Mock is_file."""
-    # All files exist except for the old entity registry file
-    with patch(
-        "os.path.isfile", lambda path: not str(path).endswith("entity_registry.yaml")
+@contextlib.contextmanager
+def _mock_is_file_and_yaml(files: dict[str, str]) -> Generator[None]:
+    """Mock is_file and patch yaml files for check_config tests."""
+    with (
+        patch(
+            "os.path.isfile",
+            lambda path: not str(path).endswith("entity_registry.yaml"),
+        ),
+        patch_yaml_files(files),
     ):
         yield
 
 
-def normalize_yaml_files(check_dict):
+def normalize_yaml_files(check_dict: dict) -> list[str]:
     """Remove configuration path from ['yaml_files']."""
     root = get_test_config_dir()
     return [key.replace(root, "...") for key in sorted(check_dict["yaml_files"].keys())]
 
 
-@pytest.mark.parametrize("hass_config_yaml", [BAD_CORE_CONFIG])
-@pytest.mark.usefixtures("mock_is_file", "mock_hass_config_yaml")
-def test_bad_core_config() -> None:
+@test
+def bad_core_config() -> None:
     """Test a bad core config setup."""
-    res = check_config.check(get_test_config_dir())
-    assert res["except"].keys() == {"homeassistant"}
-    assert res["except"]["homeassistant"][1] == {"unit_system": "bad"}
-    assert res["warn"] == {}
+    with _mock_is_file_and_yaml({YAML_CONFIG_FILE: BAD_CORE_CONFIG}):
+        res = check_config.check(get_test_config_dir())
+    expect(res["except"].keys()).to_equal({"homeassistant"})
+    expect(res["except"]["homeassistant"][1]).to_equal({"unit_system": "bad"})
+    expect(res["warn"]).to_equal({})
 
 
-@pytest.mark.parametrize("hass_config_yaml", [BASE_CONFIG + "light:\n  platform: demo"])
-@pytest.mark.usefixtures("mock_is_file", "mock_hass_config_yaml")
-def test_config_platform_valid() -> None:
+@test
+def config_platform_valid() -> None:
     """Test a valid platform setup."""
-    res = check_config.check(get_test_config_dir())
-    assert res["components"].keys() == {"homeassistant", "light"}
-    assert res["components"]["light"] == [{"platform": "demo"}]
-    assert res["except"] == {}
-    assert res["secret_cache"] == {}
-    assert res["secrets"] == {}
-    assert res["warn"] == {}
-    assert len(res["yaml_files"]) == 1
+    with _mock_is_file_and_yaml(
+        {YAML_CONFIG_FILE: BASE_CONFIG + "light:\n  platform: demo"}
+    ):
+        res = check_config.check(get_test_config_dir())
+    expect(res["components"].keys()).to_equal({"homeassistant", "light"})
+    expect(res["components"]["light"]).to_equal([{"platform": "demo"}])
+    expect(res["except"]).to_equal({})
+    expect(res["secret_cache"]).to_equal({})
+    expect(res["secrets"]).to_equal({})
+    expect(res["warn"]).to_equal({})
+    expect(len(res["yaml_files"])).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("hass_config_yaml", "platforms", "error"),
-    [
-        (
-            BASE_CONFIG + "beer:",
-            {"homeassistant"},
-            "Integration error: beer - Integration 'beer' not found.",
+@test.cases(
+    test.case(
+        "missing_component",
+        yaml_suffix="beer:",
+        platforms={"homeassistant"},
+        error="Integration error: beer - Integration 'beer' not found.",
+    ),
+    test.case(
+        "missing_platform",
+        yaml_suffix="light:\n  platform: beer",
+        platforms={"homeassistant", "light"},
+        error=(
+            "Platform error 'light' from integration 'beer' - "
+            "Integration 'beer' not found."
         ),
-        (
-            BASE_CONFIG + "light:\n  platform: beer",
-            {"homeassistant", "light"},
-            (
-                "Platform error 'light' from integration 'beer' - "
-                "Integration 'beer' not found."
-            ),
-        ),
-    ],
+    ),
 )
-@pytest.mark.usefixtures("mock_is_file", "mock_hass_config_yaml")
-def test_component_platform_not_found(platforms: set[str], error: str) -> None:
+def component_platform_not_found(
+    yaml_suffix: str, platforms: set[str], error: str
+) -> None:
     """Test errors if component or platform not found."""
-    # Make sure they don't exist
-    res = check_config.check(get_test_config_dir())
-    assert res["components"].keys() == platforms
-    assert res["except"] == {}
-    assert res["secret_cache"] == {}
-    assert res["secrets"] == {}
-    assert res["warn"] == {check_config.WARNING_STR: [error]}
-    assert len(res["yaml_files"]) == 1
+    with _mock_is_file_and_yaml({YAML_CONFIG_FILE: BASE_CONFIG + yaml_suffix}):
+        res = check_config.check(get_test_config_dir())
+    expect(res["components"].keys()).to_equal(platforms)
+    expect(res["except"]).to_equal({})
+    expect(res["secret_cache"]).to_equal({})
+    expect(res["secrets"]).to_equal({})
+    expect(res["warn"]).to_equal({check_config.WARNING_STR: [error]})
+    expect(len(res["yaml_files"])).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    "hass_config_yaml_files",
-    [
-        {
-            get_test_config_dir(YAML_CONFIG_FILE): BASE_CONFIG
-            + "http:\n  cors_allowed_origins: !secret http_pw",
-            get_test_config_dir(
-                "secrets.yaml"
-            ): "logger: debug\nhttp_pw: http://google.com",
-        }
-    ],
-)
-@pytest.mark.usefixtures("mock_is_file", "mock_hass_config_yaml")
-def test_secrets() -> None:
+@test
+def secrets() -> None:
     """Test secrets config checking method."""
-    res = check_config.check(get_test_config_dir(), True)
-
-    assert res["except"] == {}
-    assert res["components"].keys() == {"homeassistant", "http"}
-    assert res["components"]["http"] == {
-        "cors_allowed_origins": ["http://google.com"],
-        "ip_ban_enabled": True,
-        "login_attempts_threshold": -1,
-        "server_port": 8123,
-        "ssl_profile": "modern",
-        "use_x_frame_options": True,
+    files = {
+        get_test_config_dir(YAML_CONFIG_FILE): BASE_CONFIG
+        + "http:\n  cors_allowed_origins: !secret http_pw",
+        get_test_config_dir("secrets.yaml"): "logger: debug\nhttp_pw: http://google.com",
     }
-    assert res["secret_cache"] == {
-        get_test_config_dir("secrets.yaml"): {"http_pw": "http://google.com"}
-    }
-    assert res["secrets"] == {"http_pw": "http://google.com"}
-    assert res["warn"] == {}
-    assert normalize_yaml_files(res) == [
-        ".../configuration.yaml",
-        ".../secrets.yaml",
-    ]
+    with _mock_is_file_and_yaml(files):
+        res = check_config.check(get_test_config_dir(), True)
+
+    expect(res["except"]).to_equal({})
+    expect(res["components"].keys()).to_equal({"homeassistant", "http"})
+    expect(res["components"]["http"]).to_equal(
+        {
+            "cors_allowed_origins": ["http://google.com"],
+            "ip_ban_enabled": True,
+            "login_attempts_threshold": -1,
+            "server_port": 8123,
+            "ssl_profile": "modern",
+            "use_x_frame_options": True,
+        }
+    )
+    expect(res["secret_cache"]).to_equal(
+        {get_test_config_dir("secrets.yaml"): {"http_pw": "http://google.com"}}
+    )
+    expect(res["secrets"]).to_equal({"http_pw": "http://google.com"})
+    expect(res["warn"]).to_equal({})
+    expect(normalize_yaml_files(res)).to_equal(
+        [".../configuration.yaml", ".../secrets.yaml"]
+    )
 
 
-@pytest.mark.parametrize(
-    "hass_config_yaml", [BASE_CONFIG + '  packages:\n    p1:\n      group: ["a"]']
-)
-@pytest.mark.usefixtures("mock_is_file", "mock_hass_config_yaml")
-def test_package_invalid() -> None:
+@test
+def package_invalid() -> None:
     """Test an invalid package."""
-    res = check_config.check(get_test_config_dir())
+    yaml = BASE_CONFIG + '  packages:\n    p1:\n      group: ["a"]'
+    with _mock_is_file_and_yaml({YAML_CONFIG_FILE: yaml}):
+        res = check_config.check(get_test_config_dir())
 
-    assert res["except"] == {}
-    assert res["components"].keys() == {"homeassistant"}
-    assert res["secret_cache"] == {}
-    assert res["secrets"] == {}
-    assert res["warn"].keys() == {"homeassistant.packages.p1.group"}
-    assert res["warn"]["homeassistant.packages.p1.group"][1] == {"group": ["a"]}
-    assert len(res["yaml_files"]) == 1
+    expect(res["except"]).to_equal({})
+    expect(res["components"].keys()).to_equal({"homeassistant"})
+    expect(res["secret_cache"]).to_equal({})
+    expect(res["secrets"]).to_equal({})
+    expect(res["warn"].keys()).to_equal({"homeassistant.packages.p1.group"})
+    expect(res["warn"]["homeassistant.packages.p1.group"][1]).to_equal(
+        {"group": ["a"]}
+    )
+    expect(len(res["yaml_files"])).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    "hass_config_yaml", [BASE_CONFIG + "automation: !include no.yaml"]
-)
-@pytest.mark.usefixtures("mock_hass_config_yaml")
-def test_bootstrap_error() -> None:
+@test
+def bootstrap_error() -> None:
     """Test a valid platform setup."""
-    res = check_config.check(get_test_config_dir(YAML_CONFIG_FILE))
+    with patch_yaml_files(
+        {YAML_CONFIG_FILE: BASE_CONFIG + "automation: !include no.yaml"}
+    ):
+        res = check_config.check(get_test_config_dir(YAML_CONFIG_FILE))
     err = res["except"].pop(check_config.ERROR_STR)
-    assert len(err) == 1
-    assert res["except"] == {}
-    assert res["components"] == {}  # No components, load failed
-    assert res["secret_cache"] == {}
-    assert res["secrets"] == {}
-    assert res["warn"] == {}
-    assert res["yaml_files"] == {}
+    expect(len(err)).to_equal(1)
+    expect(res["except"]).to_equal({})
+    expect(res["components"]).to_equal({})
+    expect(res["secret_cache"]).to_equal({})
+    expect(res["secrets"]).to_equal({})
+    expect(res["warn"]).to_equal({})
+    expect(res["yaml_files"]).to_equal({})
 
 
-@pytest.mark.parametrize("hass_config_yaml", [BASE_CONFIG])
-@pytest.mark.usefixtures("mock_is_file", "mock_hass_config_yaml")
-def test_run_json_flag_only() -> None:
+@test
+def run_json_flag_only() -> None:
     """Test that --json flag works independently."""
     with (
         patch("builtins.print") as mock_print,
@@ -203,37 +200,32 @@ def test_run_json_flag_only() -> None:
 
         exit_code = check_config.run(None)
 
-        # Should exit with code 1 (1 domain with errors)
-        assert exit_code == 1
+        expect(exit_code).to_equal(1)
 
-        # Should have printed JSON
-        assert mock_print.call_count == 1
+        expect(mock_print.call_count).to_equal(1)
         json_output = mock_print.call_args[0][0]
 
-        # Verify it's valid JSON
         parsed_json = json.loads(json_output)
 
-        # Verify JSON structure
-        assert "config_dir" in parsed_json
-        assert "total_errors" in parsed_json
-        assert "total_warnings" in parsed_json
-        assert "errors" in parsed_json
-        assert "warnings" in parsed_json
-        assert "components" in parsed_json
+        expect("config_dir" in parsed_json).to_be(True)
+        expect("total_errors" in parsed_json).to_be(True)
+        expect("total_warnings" in parsed_json).to_be(True)
+        expect("errors" in parsed_json).to_be(True)
+        expect("warnings" in parsed_json).to_be(True)
+        expect("components" in parsed_json).to_be(True)
 
-        # Verify JSON content
-        assert parsed_json["total_errors"] == 2  # 2 error messages
-        assert parsed_json["total_warnings"] == 1  # 1 warning message
-        assert parsed_json["errors"] == {"domain1": ["error1", "error2"]}
-        assert parsed_json["warnings"] == {"domain2": ["warning1"]}
-        assert set(parsed_json["components"]) == {"homeassistant", "light", "http"}
+        expect(parsed_json["total_errors"]).to_equal(2)
+        expect(parsed_json["total_warnings"]).to_equal(1)
+        expect(parsed_json["errors"]).to_equal({"domain1": ["error1", "error2"]})
+        expect(parsed_json["warnings"]).to_equal({"domain2": ["warning1"]})
+        expect(set(parsed_json["components"])).to_equal(
+            {"homeassistant", "light", "http"}
+        )
 
 
-@pytest.mark.parametrize("hass_config_yaml", [BASE_CONFIG])
-@pytest.mark.usefixtures("mock_is_file", "mock_hass_config_yaml")
-def test_run_fail_on_warnings_flag_only() -> None:
+@test
+def run_fail_on_warnings_flag_only() -> None:
     """Test that --fail-on-warnings flag works independently."""
-    # Test with warnings only
     with (
         patch.object(check_config, "check") as mock_check,
         patch("sys.argv", ["", "--fail-on-warnings"]),
@@ -248,9 +240,8 @@ def test_run_fail_on_warnings_flag_only() -> None:
         }
 
         exit_code = check_config.run(None)
-        assert exit_code == 1  # Should exit non-zero due to warnings
+        expect(exit_code).to_equal(1)
 
-    # Test with no warnings or errors
     with patch.object(check_config, "check") as mock_check:
         mock_check.return_value = {
             "except": {},
@@ -262,9 +253,8 @@ def test_run_fail_on_warnings_flag_only() -> None:
         }
 
         exit_code = check_config.run(["--fail-on-warnings"])
-        assert exit_code == 0  # Should exit zero when no warnings/errors
+        expect(exit_code).to_equal(0)
 
-    # Test with both errors and warnings
     with patch.object(check_config, "check") as mock_check:
         mock_check.return_value = {
             "except": {"domain1": ["error"]},
@@ -276,12 +266,11 @@ def test_run_fail_on_warnings_flag_only() -> None:
         }
 
         exit_code = check_config.run(["--fail-on-warnings"])
-        assert exit_code == 1  # max(1, 1) = 1
+        expect(exit_code).to_equal(1)
 
 
-@pytest.mark.parametrize("hass_config_yaml", [BASE_CONFIG])
-@pytest.mark.usefixtures("mock_is_file", "mock_hass_config_yaml")
-def test_run_json_output_structure() -> None:
+@test
+def run_json_output_structure() -> None:
     """Test JSON output contains all required fields with correct types."""
     with (
         patch("builtins.print") as mock_print,
@@ -302,10 +291,8 @@ def test_run_json_output_structure() -> None:
         json_output = mock_print.call_args[0][0]
         parsed_json = json.loads(json_output)
 
-        # Should exit with code 1 due to errors
-        assert exit_code == 1
+        expect(exit_code).to_equal(1)
 
-        # Test all required fields are present
         required_fields = [
             "config_dir",
             "total_errors",
@@ -315,106 +302,58 @@ def test_run_json_output_structure() -> None:
             "components",
         ]
         for field in required_fields:
-            assert field in parsed_json, f"Missing required field: {field}"
+            expect(field in parsed_json).to_be(True)
 
-        # Test field types and values
-        assert isinstance(parsed_json["config_dir"], str)
-        assert isinstance(parsed_json["total_errors"], int)
-        assert isinstance(parsed_json["total_warnings"], int)
-        assert isinstance(parsed_json["errors"], dict)
-        assert isinstance(parsed_json["warnings"], dict)
-        assert isinstance(parsed_json["components"], list)
+        expect(isinstance(parsed_json["config_dir"], str)).to_be(True)
+        expect(isinstance(parsed_json["total_errors"], int)).to_be(True)
+        expect(isinstance(parsed_json["total_warnings"], int)).to_be(True)
+        expect(isinstance(parsed_json["errors"], dict)).to_be(True)
+        expect(isinstance(parsed_json["warnings"], dict)).to_be(True)
+        expect(isinstance(parsed_json["components"], list)).to_be(True)
 
-        # Test counts are correct
-        assert parsed_json["total_errors"] == 2  # 2 items in domain1 list
-        assert parsed_json["total_warnings"] == 2  # 2 items in domain2 list
+        expect(parsed_json["total_errors"]).to_equal(2)
+        expect(parsed_json["total_warnings"]).to_equal(2)
 
-        # Test components is a list of strings
-        assert all(isinstance(comp, str) for comp in parsed_json["components"])
-        assert set(parsed_json["components"]) == {
-            "homeassistant",
-            "light",
-            "automation",
-        }
+        expect(all(isinstance(comp, str) for comp in parsed_json["components"])).to_be(
+            True
+        )
+        expect(set(parsed_json["components"])).to_equal(
+            {"homeassistant", "light", "automation"}
+        )
 
 
-def test_run_exit_code_logic() -> None:
+@test
+def run_exit_code_logic() -> None:
     """Test exit code logic for all flag combinations."""
     test_cases = [
-        # (errors, warnings, flags, expected_exit_code)
-        ({}, {}, [], 0),  # No errors, no warnings, no flags
-        ({}, {}, ["--json"], 0),  # No errors, no warnings, json only
-        (
-            {},
-            {},
-            ["--fail-on-warnings"],
-            0,
-        ),  # No errors, no warnings, fail-on-warnings only
-        (
-            {},
-            {},
-            ["--json", "--fail-on-warnings"],
-            0,
-        ),  # No errors, no warnings, both flags
-        (
-            {},
-            {"domain": ["warning"]},
-            [],
-            0,
-        ),  # Warnings only, no flags (backwards compatible)
-        ({}, {"domain": ["warning"]}, ["--json"], 0),  # Warnings only, json only
-        (
-            {},
-            {"domain": ["warning"]},
-            ["--fail-on-warnings"],
-            1,
-        ),  # Warnings only, fail-on-warnings
-        (
-            {},
-            {"domain": ["warning"]},
-            ["--json", "--fail-on-warnings"],
-            1,
-        ),  # Warnings only, both flags
-        ({"domain": ["error"]}, {}, [], 1),  # Errors only, no flags
-        ({"domain": ["error"]}, {}, ["--json"], 1),  # Errors only, json only
-        (
-            {"domain": ["error"]},
-            {},
-            ["--fail-on-warnings"],
-            1,
-        ),  # Errors only, fail-on-warnings
-        (
-            {"domain": ["error"]},
-            {},
-            ["--json", "--fail-on-warnings"],
-            1,
-        ),  # Errors only, both flags
-        ({"domain": ["error"]}, {"domain2": ["warning"]}, [], 1),  # Both, no flags
-        (
-            {"domain": ["error"]},
-            {"domain2": ["warning"]},
-            ["--json"],
-            1,
-        ),  # Both, json only
-        (
-            {"domain": ["error"]},
-            {"domain2": ["warning"]},
-            ["--fail-on-warnings"],
-            1,
-        ),  # Both, fail-on-warnings
+        ({}, {}, [], 0),
+        ({}, {}, ["--json"], 0),
+        ({}, {}, ["--fail-on-warnings"], 0),
+        ({}, {}, ["--json", "--fail-on-warnings"], 0),
+        ({}, {"domain": ["warning"]}, [], 0),
+        ({}, {"domain": ["warning"]}, ["--json"], 0),
+        ({}, {"domain": ["warning"]}, ["--fail-on-warnings"], 1),
+        ({}, {"domain": ["warning"]}, ["--json", "--fail-on-warnings"], 1),
+        ({"domain": ["error"]}, {}, [], 1),
+        ({"domain": ["error"]}, {}, ["--json"], 1),
+        ({"domain": ["error"]}, {}, ["--fail-on-warnings"], 1),
+        ({"domain": ["error"]}, {}, ["--json", "--fail-on-warnings"], 1),
+        ({"domain": ["error"]}, {"domain2": ["warning"]}, [], 1),
+        ({"domain": ["error"]}, {"domain2": ["warning"]}, ["--json"], 1),
+        ({"domain": ["error"]}, {"domain2": ["warning"]}, ["--fail-on-warnings"], 1),
         (
             {"domain": ["error"]},
             {"domain2": ["warning"]},
             ["--json", "--fail-on-warnings"],
             1,
-        ),  # Both, both flags
-        ({"d1": ["e1"], "d2": ["e2"]}, {}, [], 1),  # Multiple error domains, no flags
+        ),
+        ({"d1": ["e1"], "d2": ["e2"]}, {}, [], 1),
         (
             {"d1": ["e1"], "d2": ["e2"]},
             {"d3": ["w1"]},
             ["--fail-on-warnings"],
             1,
-        ),  # Multiple errors + warnings
+        ),
     ]
 
     for errors, warnings, flags, expected_exit in test_cases:
@@ -433,15 +372,11 @@ def test_run_exit_code_logic() -> None:
             }
 
             exit_code = check_config.run(None)
-            assert exit_code == expected_exit, (
-                f"Failed for errors={errors}, warnings={warnings}, flags={flags}. "
-                f"Expected {expected_exit}, got {exit_code}"
-            )
+            expect(exit_code).to_equal(expected_exit)
 
 
-@pytest.mark.parametrize("hass_config_yaml", [BASE_CONFIG])
-@pytest.mark.usefixtures("mock_is_file", "mock_hass_config_yaml")
-def test_run_human_readable_still_works() -> None:
+@test
+def run_human_readable_still_works() -> None:
     """Test that human-readable output still works without JSON flag."""
     with (
         patch("builtins.print") as mock_print,
@@ -458,19 +393,17 @@ def test_run_human_readable_still_works() -> None:
 
         check_config.run(None)
 
-        # Should print the "Testing configuration at" message
         printed_outputs = [
             call[0][0] if call[0] else "" for call in mock_print.call_args_list
         ]
         testing_message_found = any(
             "Testing configuration at" in output for output in printed_outputs
         )
-        assert testing_message_found, (
-            "Human-readable 'Testing configuration at' message not found"
-        )
+        expect(testing_message_found).to_be(True)
 
 
-def test_run_with_config_path() -> None:
+@test
+def run_with_config_path() -> None:
     """Test that config path is correctly included in JSON output."""
     test_config_path = "/custom/config/path"
     with (
@@ -492,15 +425,12 @@ def test_run_with_config_path() -> None:
         json_output = mock_print.call_args[0][0]
         parsed_json = json.loads(json_output)
 
-        # The config_dir should include the full path
         expected_path = os.path.join(os.getcwd(), test_config_path)
-        assert parsed_json["config_dir"] == expected_path
+        expect(parsed_json["config_dir"]).to_equal(expected_path)
 
 
-# Flag Interaction Tests
-
-
-def test_unknown_arguments_with_json() -> None:
+@test
+def unknown_arguments_with_json() -> None:
     """Test that unknown arguments are handled properly with JSON flag."""
     with (
         patch("builtins.print") as mock_print,
@@ -518,23 +448,19 @@ def test_unknown_arguments_with_json() -> None:
 
         check_config.run(None)
 
-        # Should still print unknown argument warning AND JSON
-        assert mock_print.call_count == 2
+        expect(mock_print.call_count).to_equal(2)
 
-        # First call should be the unknown argument warning
         unknown_warning = mock_print.call_args_list[0][0][0]
-        assert "Unknown arguments" in unknown_warning
-        assert "unknown-flag" in unknown_warning
+        expect("Unknown arguments" in unknown_warning).to_be(True)
+        expect("unknown-flag" in unknown_warning).to_be(True)
 
-        # Second call should be valid JSON
         json_output = mock_print.call_args_list[1][0][0]
         parsed_json = json.loads(json_output)
-        assert "config_dir" in parsed_json
+        expect("config_dir" in parsed_json).to_be(True)
 
 
-@pytest.mark.parametrize("hass_config_yaml", [BASE_CONFIG])
-@pytest.mark.usefixtures("mock_is_file", "mock_hass_config_yaml")
-def test_info_flag_with_json() -> None:
+@test
+def info_flag_with_json() -> None:
     """Test how --info flag interacts with --json."""
     with (
         patch("builtins.print") as mock_print,
@@ -550,20 +476,19 @@ def test_info_flag_with_json() -> None:
             "yaml_files": {},
         }
 
-        # Test --json with --info - JSON should take precedence
         exit_code = check_config.run(None)
 
-        assert exit_code == 0
-        assert mock_print.call_count == 1
+        expect(exit_code).to_equal(0)
+        expect(mock_print.call_count).to_equal(1)
 
-        # Should be JSON output, not info output
         json_output = json.loads(mock_print.call_args[0][0])
-        assert "config_dir" in json_output
-        assert "components" in json_output
-        assert "light" in json_output["components"]
+        expect("config_dir" in json_output).to_be(True)
+        expect("components" in json_output).to_be(True)
+        expect("light" in json_output["components"]).to_be(True)
 
 
-def test_config_flag_variations() -> None:
+@test
+def config_flag_variations() -> None:
     """Test different ways to specify config directory."""
     test_cases = [
         (["-c", "/test/path"], "/test/path"),
@@ -592,10 +517,11 @@ def test_config_flag_variations() -> None:
             if "--json" in flags:
                 json_output = json.loads(mock_print.call_args[0][0])
                 expected_full_path = os.path.join(os.getcwd(), expected_config_part)
-                assert json_output["config_dir"] == expected_full_path
+                expect(json_output["config_dir"]).to_equal(expected_full_path)
 
 
-def test_multiple_config_flags() -> None:
+@test
+def multiple_config_flags() -> None:
     """Test behavior with multiple config directory specifications."""
     with (
         patch("builtins.print") as mock_print,
@@ -614,23 +540,22 @@ def test_multiple_config_flags() -> None:
             "yaml_files": {},
         }
 
-        # Last config flag should win
         check_config.run(None)
 
         json_output = json.loads(mock_print.call_args[0][0])
         expected_path = os.path.join(os.getcwd(), "/second/path")
-        assert json_output["config_dir"] == expected_path
+        expect(json_output["config_dir"]).to_equal(expected_path)
 
 
-def test_fail_on_warnings_with_json_combinations() -> None:
+@test
+def fail_on_warnings_with_json_combinations() -> None:
     """Test --fail-on-warnings with --json in various scenarios."""
     test_scenarios = [
-        # (errors, warnings, expected_exit_code)
         ({}, {}, 0),
         ({"domain1": ["error"]}, {}, 1),
-        ({}, {"domain1": ["warning"]}, 1),  # With --fail-on-warnings
-        ({"d1": ["e1"]}, {"d2": ["w1"]}, 1),  # Errors still take precedence
-        ({"d1": ["e1"], "d2": ["e2"]}, {"d3": ["w1"]}, 1),  # Multiple errors > warnings
+        ({}, {"domain1": ["warning"]}, 1),
+        ({"d1": ["e1"]}, {"d2": ["w1"]}, 1),
+        ({"d1": ["e1"], "d2": ["e2"]}, {"d3": ["w1"]}, 1),
     ]
 
     for errors, warnings, expected_exit in test_scenarios:
@@ -649,11 +574,12 @@ def test_fail_on_warnings_with_json_combinations() -> None:
             }
 
             exit_code = check_config.run(None)
-            assert exit_code == expected_exit
+            expect(exit_code).to_equal(expected_exit)
 
-            # Should still output valid JSON
             json_output = json.loads(mock_print.call_args[0][0])
-            assert json_output["total_errors"] == sum(len(e) for e in errors.values())
-            assert json_output["total_warnings"] == sum(
-                len(w) for w in warnings.values()
+            expect(json_output["total_errors"]).to_equal(
+                sum(len(e) for e in errors.values())
+            )
+            expect(json_output["total_warnings"]).to_equal(
+                sum(len(w) for w in warnings.values())
             )
