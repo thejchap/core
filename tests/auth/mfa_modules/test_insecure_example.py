@@ -1,14 +1,24 @@
 """Test the example module auth module."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import auth, data_entry_flow
 from homeassistant.auth.mfa_modules import auth_mfa_module_from_config
 from homeassistant.auth.models import Credentials
 from homeassistant.core import HomeAssistant
 
 from tests.common import MockUser
+from tests.hass_fixtures import hass
 
 
-async def test_validate(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def validate(hass: HomeAssistant = Depends(hass)) -> None:
     """Test validating pin."""
     auth_module = await auth_mfa_module_from_config(
         hass,
@@ -19,29 +29,31 @@ async def test_validate(hass: HomeAssistant) -> None:
     )
 
     result = await auth_module.async_validate("test-user", {"pin": "123456"})
-    assert result is True
+    expect(result).to_be(True)
 
     result = await auth_module.async_validate("test-user", {"pin": "invalid"})
-    assert result is False
+    expect(result).to_be(False)
 
     result = await auth_module.async_validate("invalid-user", {"pin": "123456"})
-    assert result is False
+    expect(result).to_be(False)
 
 
-async def test_setup_user(hass: HomeAssistant) -> None:
+@test
+async def setup_user(hass: HomeAssistant = Depends(hass)) -> None:
     """Test setup user."""
     auth_module = await auth_mfa_module_from_config(
         hass, {"type": "insecure_example", "data": []}
     )
 
     await auth_module.async_setup_user("test-user", {"pin": "123456"})
-    assert len(auth_module._data) == 1
+    expect(len(auth_module._data)).to_equal(1)
 
     result = await auth_module.async_validate("test-user", {"pin": "123456"})
-    assert result is True
+    expect(result).to_be(True)
 
 
-async def test_depose_user(hass: HomeAssistant) -> None:
+@test
+async def depose_user(hass: HomeAssistant = Depends(hass)) -> None:
     """Test despose user."""
     auth_module = await auth_mfa_module_from_config(
         hass,
@@ -50,13 +62,14 @@ async def test_depose_user(hass: HomeAssistant) -> None:
             "data": [{"user_id": "test-user", "pin": "123456"}],
         },
     )
-    assert len(auth_module._data) == 1
+    expect(len(auth_module._data)).to_equal(1)
 
     await auth_module.async_depose_user("test-user")
-    assert len(auth_module._data) == 0
+    expect(len(auth_module._data)).to_equal(0)
 
 
-async def test_is_user_setup(hass: HomeAssistant) -> None:
+@test
+async def is_user_setup(hass: HomeAssistant = Depends(hass)) -> None:
     """Test is user setup."""
     auth_module = await auth_mfa_module_from_config(
         hass,
@@ -65,11 +78,12 @@ async def test_is_user_setup(hass: HomeAssistant) -> None:
             "data": [{"user_id": "test-user", "pin": "123456"}],
         },
     )
-    assert await auth_module.async_is_user_setup("test-user") is True
-    assert await auth_module.async_is_user_setup("invalid-user") is False
+    expect(await auth_module.async_is_user_setup("test-user")).to_be(True)
+    expect(await auth_module.async_is_user_setup("invalid-user")).to_be(False)
 
 
-async def test_login(hass: HomeAssistant) -> None:
+@test
+async def login(hass: HomeAssistant = Depends(hass)) -> None:
     """Test login flow with auth module."""
     hass.auth = await auth.auth_manager_from_config(
         hass,
@@ -102,41 +116,42 @@ async def test_login(hass: HomeAssistant) -> None:
 
     provider = hass.auth.auth_providers[0]
     result = await hass.auth.login_flow.async_init((provider.type, provider.id))
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
 
     result = await hass.auth.login_flow.async_configure(
         result["flow_id"], {"username": "incorrect-user", "password": "test-pass"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["errors"]["base"] == "invalid_auth"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal("invalid_auth")
 
     result = await hass.auth.login_flow.async_configure(
         result["flow_id"], {"username": "test-user", "password": "incorrect-pass"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["errors"]["base"] == "invalid_auth"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal("invalid_auth")
 
     result = await hass.auth.login_flow.async_configure(
         result["flow_id"], {"username": "test-user", "password": "test-pass"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "mfa"
-    assert result["data_schema"].schema.get("pin") is str
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("mfa")
+    expect(result["data_schema"].schema.get("pin") is str).to_be(True)
 
     result = await hass.auth.login_flow.async_configure(
         result["flow_id"], {"pin": "invalid-code"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["errors"]["base"] == "invalid_code"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal("invalid_code")
 
     result = await hass.auth.login_flow.async_configure(
         result["flow_id"], {"pin": "123456"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"].id == "mock-id"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"].id).to_equal("mock-id")
 
 
-async def test_setup_flow(hass: HomeAssistant) -> None:
+@test
+async def setup_flow(hass: HomeAssistant = Depends(hass)) -> None:
     """Test validating pin."""
     auth_module = await auth_mfa_module_from_config(
         hass,
@@ -149,9 +164,9 @@ async def test_setup_flow(hass: HomeAssistant) -> None:
     flow = await auth_module.async_setup_flow("new-user")
 
     result = await flow.async_step_init()
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
 
     result = await flow.async_step_init({"pin": "abcdefg"})
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert auth_module._data[1]["user_id"] == "new-user"
-    assert auth_module._data[1]["pin"] == "abcdefg"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(auth_module._data[1]["user_id"]).to_equal("new-user")
+    expect(auth_module._data[1]["pin"]).to_equal("abcdefg")
