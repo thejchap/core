@@ -1,9 +1,11 @@
 """The tests for the Sun binary_sensor platform."""
 
+from collections.abc import Generator
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from freezegun.api import FrozenDateTimeFactory
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components import sun
 from homeassistant.const import EntityCategory
@@ -12,12 +14,31 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 
+from tests.hass_fixtures import entity_registry, freezer, hass
 
-@pytest.mark.usefixtures("entity_registry_enabled_by_default")
-async def test_setting_rising(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    freezer: FrozenDateTimeFactory,
+
+@fixture
+def entity_registry_enabled_by_default() -> Generator[None]:
+    """Ensure all entities are enabled in the registry."""
+    with (
+        patch(
+            "homeassistant.helpers.entity.Entity.entity_registry_enabled_default",
+            return_value=True,
+        ),
+        patch(
+            "homeassistant.components.device_tracker.config_entry.ScannerEntity.entity_registry_enabled_default",
+            return_value=True,
+        ),
+    ):
+        yield
+
+
+@test
+async def setting_rising(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
+    freezer: FrozenDateTimeFactory = Depends(freezer),
+    _: None = Depends(entity_registry_enabled_by_default),
 ) -> None:
     """Test retrieving sun setting and rising."""
     utc_now = datetime(2016, 11, 1, 8, 0, 0, tzinfo=dt_util.UTC)
@@ -25,7 +46,7 @@ async def test_setting_rising(
     await async_setup_component(hass, sun.DOMAIN, {sun.DOMAIN: {}})
     await hass.async_block_till_done()
 
-    assert hass.states.get("binary_sensor.sun_solar_rising").state == "on"
+    expect(hass.states.get("binary_sensor.sun_solar_rising").state).to_equal("on")
 
     entry_ids = hass.config_entries.async_entries("sun")
 
@@ -36,9 +57,9 @@ async def test_setting_rising(
     await hass.async_block_till_done()
 
     # Make sure all the signals work
-    assert hass.states.get("binary_sensor.sun_solar_rising").state == "off"
+    expect(hass.states.get("binary_sensor.sun_solar_rising").state).to_equal("off")
 
     entity = entity_registry.async_get("binary_sensor.sun_solar_rising")
-    assert entity
-    assert entity.entity_category is EntityCategory.DIAGNOSTIC
-    assert entity.unique_id == f"{entry_ids[0].entry_id}-solar_rising"
+    expect(entity is not None).to_be(True)
+    expect(entity.entity_category).to_be(EntityCategory.DIAGNOSTIC)
+    expect(entity.unique_id).to_equal(f"{entry_ids[0].entry_id}-solar_rising")
