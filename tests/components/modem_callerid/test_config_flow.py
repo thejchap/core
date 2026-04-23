@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 import phone_modem
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components import usb
 from homeassistant.components.modem_callerid.const import DOMAIN
@@ -14,6 +15,8 @@ from homeassistant.helpers.service_info.usb import UsbServiceInfo
 
 from . import com_port, patch_config_flow_modem
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 DISCOVERY_INFO = UsbServiceInfo(
     device=phone_modem.DEFAULT_PORT,
     pid="1340",
@@ -24,17 +27,24 @@ DISCOVERY_INFO = UsbServiceInfo(
 )
 
 
+@fixture
+def _trigger_executor(_mn: None = Depends(mock_network)) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
 def _patch_setup():
     return patch(
         "homeassistant.components.modem_callerid.async_setup_entry",
     )
 
 
+@test
 @patch(
     "homeassistant.components.modem_callerid.config_flow.usb.async_scan_serial_ports",
     AsyncMock(return_value=[com_port()]),
 )
-async def test_flow_usb(hass: HomeAssistant) -> None:
+async def flow_usb(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test usb discovery flow."""
     with patch_config_flow_modem(), _patch_setup():
         result = await hass.config_entries.flow.async_init(
@@ -42,37 +52,39 @@ async def test_flow_usb(hass: HomeAssistant) -> None:
             context={CONF_SOURCE: SOURCE_USB},
             data=DISCOVERY_INFO,
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "usb_confirm"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("usb_confirm")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={CONF_DEVICE: phone_modem.DEFAULT_PORT},
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"] == {CONF_DEVICE: com_port().device}
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"]).to_equal({CONF_DEVICE: com_port().device})
 
 
+@test
 @patch(
     "homeassistant.components.modem_callerid.config_flow.usb.async_scan_serial_ports",
     AsyncMock(return_value=[com_port()]),
 )
-async def test_flow_usb_cannot_connect(hass: HomeAssistant) -> None:
+async def flow_usb_cannot_connect(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test usb flow connection error."""
     with patch_config_flow_modem() as modemmock:
         modemmock.side_effect = phone_modem.exceptions.SerialError
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={CONF_SOURCE: SOURCE_USB}, data=DISCOVERY_INFO
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "cannot_connect"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("cannot_connect")
 
 
+@test
 @patch(
     "homeassistant.components.modem_callerid.config_flow.usb.async_scan_serial_ports",
     AsyncMock(return_value=[com_port()]),
 )
-async def test_flow_user(hass: HomeAssistant) -> None:
+async def flow_user(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test user initialized flow."""
     port = com_port()
     port_select = usb.human_readable_device_name(
@@ -89,23 +101,24 @@ async def test_flow_user(hass: HomeAssistant) -> None:
             context={CONF_SOURCE: SOURCE_USER},
             data={CONF_DEVICE: port_select},
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"] == {CONF_DEVICE: port.device}
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"]).to_equal({CONF_DEVICE: port.device})
 
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={CONF_SOURCE: SOURCE_USER},
             data={CONF_DEVICE: port_select},
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "no_devices_found"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("no_devices_found")
 
 
+@test
 @patch(
     "homeassistant.components.modem_callerid.config_flow.usb.async_scan_serial_ports",
     AsyncMock(return_value=[com_port()]),
 )
-async def test_flow_user_error(hass: HomeAssistant) -> None:
+async def flow_user_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test user initialized flow with unreachable device."""
     port = com_port()
     port_select = usb.human_readable_device_name(
@@ -121,24 +134,25 @@ async def test_flow_user_error(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={CONF_SOURCE: SOURCE_USER}, data={CONF_DEVICE: port_select}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
-        assert result["errors"] == {"base": "cannot_connect"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
+        expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
         modemmock.side_effect = None
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={CONF_DEVICE: port_select},
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"] == {CONF_DEVICE: port.device}
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"]).to_equal({CONF_DEVICE: port.device})
 
 
+@test
 @patch(
     "homeassistant.components.modem_callerid.config_flow.usb.async_scan_serial_ports",
     AsyncMock(return_value=[]),
 )
-async def test_flow_user_no_port_list(hass: HomeAssistant) -> None:
+async def flow_user_no_port_list(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test user with no list of ports."""
     with patch_config_flow_modem():
         result = await hass.config_entries.flow.async_init(
@@ -146,11 +160,12 @@ async def test_flow_user_no_port_list(hass: HomeAssistant) -> None:
             context={CONF_SOURCE: SOURCE_USER},
             data={CONF_DEVICE: phone_modem.DEFAULT_PORT},
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "no_devices_found"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("no_devices_found")
 
 
-async def test_abort_user_with_existing_flow(hass: HomeAssistant) -> None:
+@test
+async def abort_user_with_existing_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test user flow is aborted when another discovery has happened."""
     with patch_config_flow_modem():
         result = await hass.config_entries.flow.async_init(
@@ -158,8 +173,8 @@ async def test_abort_user_with_existing_flow(hass: HomeAssistant) -> None:
             context={CONF_SOURCE: SOURCE_USB},
             data=DISCOVERY_INFO,
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "usb_confirm"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("usb_confirm")
 
         result2 = await hass.config_entries.flow.async_init(
             DOMAIN,
@@ -167,5 +182,5 @@ async def test_abort_user_with_existing_flow(hass: HomeAssistant) -> None:
             data={},
         )
 
-        assert result2["type"] is FlowResultType.ABORT
-        assert result2["reason"] == "already_in_progress"
+        expect(result2["type"]).to_be(FlowResultType.ABORT)
+        expect(result2["reason"]).to_equal("already_in_progress")

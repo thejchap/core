@@ -84,6 +84,7 @@ dependencies = [
   "moehlenhoff-alpha2==1.4.0",
   "mullvad-api==1.0.0",
   "python-mystrom==2.5.0",
+  "phone-modem==0.1.1",
 ]
 
 [project.urls]
