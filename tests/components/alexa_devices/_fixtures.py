@@ -1,0 +1,92 @@
+"""Alexa Devices tryke fixtures."""
+
+from collections.abc import Generator
+from copy import deepcopy
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from tryke import fixture
+
+from homeassistant.components.alexa_devices.const import (
+    CONF_LOGIN_DATA,
+    CONF_SITE,
+    DOMAIN,
+)
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+
+from .const import TEST_DEVICE_1, TEST_DEVICE_1_SN, TEST_PASSWORD, TEST_USERNAME
+
+from tests.common import MockConfigEntry
+
+
+@fixture
+def mock_setup_entry() -> Generator[AsyncMock]:
+    """Override async_setup_entry."""
+    with patch(
+        "homeassistant.components.alexa_devices.async_setup_entry",
+        return_value=True,
+    ) as mock_setup_entry:
+        yield mock_setup_entry
+
+
+@fixture
+def mock_amazon_devices_client() -> Generator[AsyncMock]:
+    """Mock an Alexa Devices client."""
+    with (
+        patch(
+            "homeassistant.components.alexa_devices.coordinator.AmazonEchoApi",
+            autospec=True,
+        ) as mock_client,
+        patch(
+            "homeassistant.components.alexa_devices.config_flow.AmazonEchoApi",
+            new=mock_client,
+        ),
+    ):
+        client = mock_client.return_value
+        client.login = AsyncMock()
+        client.login.login_mode_interactive.return_value = {
+            "customer_info": {"user_id": TEST_USERNAME},
+            CONF_SITE: "https://www.amazon.com",
+        }
+        client.get_devices_data.return_value = {
+            TEST_DEVICE_1_SN: deepcopy(TEST_DEVICE_1)
+        }
+        client.send_sound_notification = AsyncMock()
+        yield client
+
+
+@fixture
+def mock_zeroconf() -> Generator[MagicMock]:
+    """Mock zeroconf."""
+    from zeroconf import DNSCache  # noqa: PLC0415
+
+    with (
+        patch("homeassistant.components.zeroconf.HaZeroconf") as mock_zc,
+        patch(
+            "homeassistant.components.zeroconf.discovery.AsyncServiceBrowser",
+        ) as mock_browser,
+    ):
+        asb = mock_browser.return_value
+        asb.async_cancel = AsyncMock()
+        zc = mock_zc.return_value
+        zc.cache = DNSCache()
+        yield mock_zc
+
+
+@fixture
+def mock_config_entry() -> MockConfigEntry:
+    """Mock a config entry."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title="Amazon Test Account",
+        data={
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: TEST_PASSWORD,
+            CONF_LOGIN_DATA: {
+                "session": "test-session",
+                CONF_SITE: "https://www.amazon.com",
+            },
+        },
+        unique_id=TEST_USERNAME,
+        version=1,
+        minor_version=3,
+    )
