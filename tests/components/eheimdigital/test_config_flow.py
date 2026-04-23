@@ -4,7 +4,7 @@ from ipaddress import ip_address
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from aiohttp import ClientConnectionError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.eheimdigital.const import DOMAIN
 from homeassistant.config_entries import (
@@ -17,9 +17,19 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .conftest import init_integration
-
 from tests.common import MockConfigEntry
+from tests.components.eheimdigital._fixtures import (
+    classic_led_ctrl_mock,
+    classic_vario_mock,
+    eheimdigital_hub_mock,
+    filter_mock,
+    heater_mock,
+    init_integration,
+    mock_config_entry,
+    mock_zeroconf,
+    reeflex_mock,
+)
+from tests.hass_fixtures import hass, mock_network
 
 ZEROCONF_DISCOVERY = ZeroconfServiceInfo(
     ip_address=ip_address("192.0.2.1"),
@@ -34,82 +44,101 @@ ZEROCONF_DISCOVERY = ZeroconfServiceInfo(
 USER_INPUT = {CONF_HOST: "eheimdigital"}
 
 
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+# Re-export nested fixtures so Tryke's static AST discovery can resolve the chain.
+classic_led_ctrl_mock = classic_led_ctrl_mock  # noqa: F811
+heater_mock = heater_mock  # noqa: F811
+classic_vario_mock = classic_vario_mock  # noqa: F811
+filter_mock = filter_mock  # noqa: F811
+reeflex_mock = reeflex_mock  # noqa: F811
+
+
+@test
 @patch("homeassistant.components.eheimdigital.config_flow.asyncio.Event", new=AsyncMock)
-async def test_full_flow(hass: HomeAssistant, eheimdigital_hub_mock: AsyncMock) -> None:
+async def full_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    eheimdigital_hub_mock: AsyncMock = Depends(eheimdigital_hub_mock),
+) -> None:
     """Test full flow."""
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_USER},
+        DOMAIN, context={"source": SOURCE_USER}
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        USER_INPUT,
+        result["flow_id"], USER_INPUT
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == USER_INPUT[CONF_HOST]
-    assert result["data"] == USER_INPUT
-    assert (
-        result["result"].unique_id
-        == eheimdigital_hub_mock.return_value.main.mac_address
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(USER_INPUT[CONF_HOST])
+    expect(result["data"]).to_equal(USER_INPUT)
+    expect(result["result"].unique_id).to_equal(
+        eheimdigital_hub_mock.return_value.main.mac_address
     )
 
 
-@patch("homeassistant.components.eheimdigital.config_flow.asyncio.Event", new=AsyncMock)
-@pytest.mark.parametrize(
-    ("side_effect", "error_value"),
-    [(ClientConnectionError(), "cannot_connect"), (Exception(), "unknown")],
+@test.cases(
+    test.case("cannot_connect", ClientConnectionError(), "cannot_connect"),
+    test.case("unknown", Exception(), "unknown"),
 )
-async def test_flow_errors(
-    hass: HomeAssistant,
-    eheimdigital_hub_mock: AsyncMock,
+@patch("homeassistant.components.eheimdigital.config_flow.asyncio.Event", new=AsyncMock)
+async def flow_errors(
     side_effect: BaseException,
     error_value: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    eheimdigital_hub_mock: AsyncMock = Depends(eheimdigital_hub_mock),
 ) -> None:
     """Test flow errors."""
     eheimdigital_hub_mock.return_value.connect.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_USER},
+        DOMAIN, context={"source": SOURCE_USER}
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        USER_INPUT,
+        result["flow_id"], USER_INPUT
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_value}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({"base": error_value})
 
     eheimdigital_hub_mock.return_value.connect.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        USER_INPUT,
+        result["flow_id"], USER_INPUT
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == USER_INPUT[CONF_HOST]
-    assert result["data"] == USER_INPUT
-    assert (
-        result["result"].unique_id
-        == eheimdigital_hub_mock.return_value.main.mac_address
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(USER_INPUT[CONF_HOST])
+    expect(result["data"]).to_equal(USER_INPUT)
+    expect(result["result"].unique_id).to_equal(
+        eheimdigital_hub_mock.return_value.main.mac_address
     )
 
 
+@test
 @patch("homeassistant.components.eheimdigital.config_flow.asyncio.Event", new=AsyncMock)
-async def test_zeroconf_flow(
-    hass: HomeAssistant, eheimdigital_hub_mock: AsyncMock
+async def zeroconf_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    eheimdigital_hub_mock: AsyncMock = Depends(eheimdigital_hub_mock),
 ) -> None:
     """Test zeroconf flow."""
     result = await hass.config_entries.flow.async_init(
@@ -118,35 +147,31 @@ async def test_zeroconf_flow(
         data=ZEROCONF_DISCOVERY,
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("discovery_confirm")
 
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {},
-    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == ZEROCONF_DISCOVERY.host
-    assert result["data"] == {
-        CONF_HOST: ZEROCONF_DISCOVERY.host,
-    }
-    assert (
-        result["result"].unique_id
-        == eheimdigital_hub_mock.return_value.main.mac_address
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(ZEROCONF_DISCOVERY.host)
+    expect(result["data"]).to_equal({CONF_HOST: ZEROCONF_DISCOVERY.host})
+    expect(result["result"].unique_id).to_equal(
+        eheimdigital_hub_mock.return_value.main.mac_address
     )
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_value"),
-    [(ClientConnectionError(), "cannot_connect"), (Exception(), "unknown")],
+@test.cases(
+    test.case("cannot_connect", ClientConnectionError(), "cannot_connect"),
+    test.case("unknown", Exception(), "unknown"),
 )
 @patch("homeassistant.components.eheimdigital.config_flow.asyncio.Event", new=AsyncMock)
-async def test_zeroconf_flow_errors(
-    hass: HomeAssistant,
-    eheimdigital_hub_mock: MagicMock,
+async def zeroconf_flow_errors(
     side_effect: BaseException,
     error_value: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    eheimdigital_hub_mock: MagicMock = Depends(eheimdigital_hub_mock),
 ) -> None:
     """Test zeroconf flow errors."""
     eheimdigital_hub_mock.return_value.connect.side_effect = side_effect
@@ -157,135 +182,130 @@ async def test_zeroconf_flow_errors(
         data=ZEROCONF_DISCOVERY,
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == error_value
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal(error_value)
 
 
+@test
 @patch("homeassistant.components.eheimdigital.config_flow.asyncio.Event", new=AsyncMock)
-async def test_abort(hass: HomeAssistant, eheimdigital_hub_mock: AsyncMock) -> None:
+async def abort(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    eheimdigital_hub_mock: AsyncMock = Depends(eheimdigital_hub_mock),
+) -> None:
     """Test flow abort on matching data or unique_id."""
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_USER},
+        DOMAIN, context={"source": SOURCE_USER}
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        USER_INPUT,
+        result["flow_id"], USER_INPUT
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == USER_INPUT[CONF_HOST]
-    assert result["data"] == USER_INPUT
-    assert (
-        result["result"].unique_id
-        == eheimdigital_hub_mock.return_value.main.mac_address
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(USER_INPUT[CONF_HOST])
+    expect(result["data"]).to_equal(USER_INPUT)
+    expect(result["result"].unique_id).to_equal(
+        eheimdigital_hub_mock.return_value.main.mac_address
     )
 
     result2 = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_USER},
+        DOMAIN, context={"source": SOURCE_USER}
     )
     await hass.async_block_till_done()
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "user"
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["step_id"]).to_equal("user")
 
     result2 = await hass.config_entries.flow.async_configure(
-        result2["flow_id"],
-        USER_INPUT,
+        result2["flow_id"], USER_INPUT
     )
     await hass.async_block_till_done()
-
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result2["reason"]).to_equal("already_configured")
 
     result3 = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_USER},
+        DOMAIN, context={"source": SOURCE_USER}
     )
     await hass.async_block_till_done()
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["step_id"] == "user"
+    expect(result3["type"] is FlowResultType.FORM).to_be(True)
+    expect(result3["step_id"]).to_equal("user")
 
     result2 = await hass.config_entries.flow.async_configure(
-        result3["flow_id"],
-        {CONF_HOST: "eheimdigital2"},
+        result3["flow_id"], {CONF_HOST: "eheimdigital2"}
     )
     await hass.async_block_till_done()
+    expect(result2["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result2["reason"]).to_equal("already_configured")
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
 
-
-@patch("homeassistant.components.eheimdigital.config_flow.asyncio.Event", new=AsyncMock)
-@pytest.mark.parametrize(
-    ("side_effect", "error_value"),
-    [(ClientConnectionError(), "cannot_connect"), (Exception(), "unknown")],
+@test.cases(
+    test.case("cannot_connect", ClientConnectionError(), "cannot_connect"),
+    test.case("unknown", Exception(), "unknown"),
 )
-async def test_reconfigure(
-    hass: HomeAssistant,
-    eheimdigital_hub_mock: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@patch("homeassistant.components.eheimdigital.config_flow.asyncio.Event", new=AsyncMock)
+async def reconfigure(
     side_effect: Exception,
     error_value: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    eheimdigital_hub_mock: AsyncMock = Depends(eheimdigital_hub_mock),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reconfigure flow."""
     await init_integration(hass, mock_config_entry)
 
     result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == SOURCE_RECONFIGURE
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal(SOURCE_RECONFIGURE)
 
     eheimdigital_hub_mock.return_value.connect.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        USER_INPUT,
+        result["flow_id"], USER_INPUT
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_value}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({"base": error_value})
 
     eheimdigital_hub_mock.return_value.connect.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        USER_INPUT,
+        result["flow_id"], USER_INPUT
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert (
-        mock_config_entry.unique_id
-        == eheimdigital_hub_mock.return_value.main.mac_address
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(mock_config_entry.unique_id).to_equal(
+        eheimdigital_hub_mock.return_value.main.mac_address
     )
 
 
+@test
 @patch("homeassistant.components.eheimdigital.config_flow.asyncio.Event", new=AsyncMock)
-async def test_reconfigure_different_device(
-    hass: HomeAssistant,
-    eheimdigital_hub_mock: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+async def reconfigure_different_device(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    eheimdigital_hub_mock: AsyncMock = Depends(eheimdigital_hub_mock),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
-    """Test reconfigure flow."""
-
+    """Test reconfigure flow with a different device."""
     await init_integration(hass, mock_config_entry)
 
-    # Simulate a different device
     eheimdigital_hub_mock.return_value.main.mac_address = "00:00:00:00:00:02"
 
     result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == SOURCE_RECONFIGURE
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal(SOURCE_RECONFIGURE)
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        USER_INPUT,
+        result["flow_id"], USER_INPUT
     )
-
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unique_id_mismatch"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("unique_id_mismatch")
