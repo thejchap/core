@@ -1,9 +1,10 @@
 """Test Mikrotik setup process."""
 
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import librouteros
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.mikrotik.const import (
@@ -24,6 +25,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 DEMO_USER_INPUT = {
     CONF_HOST: "0.0.0.0",
@@ -45,16 +47,22 @@ DEMO_CONFIG_ENTRY = {
 }
 
 
-@pytest.fixture(name="api")
-def mock_mikrotik_api():
-    """Mock an api."""
+@fixture
+def _trigger_executor(_mn: None = Depends(mock_network)) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@contextmanager
+def _mock_api():
+    """Mock a working librouteros.connect."""
     with patch("librouteros.connect"):
         yield
 
 
-@pytest.fixture(name="auth_error")
-def mock_api_authentication_error():
-    """Mock an api."""
+@contextmanager
+def _mock_auth_error():
+    """Mock librouteros.connect raising an auth error."""
     with patch(
         "librouteros.connect",
         side_effect=librouteros.exceptions.TrapError("invalid user name or password"),
@@ -62,185 +70,195 @@ def mock_api_authentication_error():
         yield
 
 
-@pytest.fixture(name="conn_error")
-def mock_api_connection_error():
-    """Mock an api."""
+@contextmanager
+def _mock_conn_error():
+    """Mock librouteros.connect raising a connection error."""
     with patch(
         "librouteros.connect", side_effect=librouteros.exceptions.ConnectionClosed
     ):
         yield
 
 
-async def test_flow_works(hass: HomeAssistant, api) -> None:
+@test
+async def flow_works(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test config flow."""
+    with _mock_api():
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
 
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input=DEMO_USER_INPUT
+        )
 
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], user_input=DEMO_USER_INPUT
-    )
-
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Mikrotik (0.0.0.0)"
-    assert result["data"][CONF_HOST] == "0.0.0.0"
-    assert result["data"][CONF_USERNAME] == "username"
-    assert result["data"][CONF_PASSWORD] == "password"
-    assert result["data"][CONF_PORT] == 8278
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal("Mikrotik (0.0.0.0)")
+        expect(result["data"][CONF_HOST]).to_equal("0.0.0.0")
+        expect(result["data"][CONF_USERNAME]).to_equal("username")
+        expect(result["data"][CONF_PASSWORD]).to_equal("password")
+        expect(result["data"][CONF_PORT]).to_equal(8278)
 
 
-async def test_options(hass: HomeAssistant, api) -> None:
+@test
+async def options(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test updating options."""
-    entry = MockConfigEntry(domain=DOMAIN, data=DEMO_CONFIG_ENTRY)
-    entry.add_to_hass(hass)
+    with _mock_api():
+        entry = MockConfigEntry(domain=DOMAIN, data=DEMO_CONFIG_ENTRY)
+        entry.add_to_hass(hass)
 
-    assert await hass.config_entries.async_setup(entry.entry_id)
-    await hass.async_block_till_done()
+        expect(await hass.config_entries.async_setup(entry.entry_id)).to_be_truthy()
+        await hass.async_block_till_done()
 
-    result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "device_tracker"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("device_tracker")
 
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input={
-            CONF_DETECTION_TIME: 30,
-            CONF_ARP_PING: True,
-            CONF_FORCE_DHCP: False,
-        },
-    )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_DETECTION_TIME: 30,
+                CONF_ARP_PING: True,
+                CONF_FORCE_DHCP: False,
+            },
+        )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_DETECTION_TIME: 30,
-        CONF_ARP_PING: True,
-        CONF_FORCE_DHCP: False,
-    }
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"]).to_equal(
+            {
+                CONF_DETECTION_TIME: 30,
+                CONF_ARP_PING: True,
+                CONF_FORCE_DHCP: False,
+            }
+        )
 
 
-async def test_host_already_configured(hass: HomeAssistant, auth_error) -> None:
+@test
+async def host_already_configured(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test host already configured."""
+    with _mock_auth_error():
+        entry = MockConfigEntry(domain=DOMAIN, data=DEMO_CONFIG_ENTRY)
+        entry.add_to_hass(hass)
 
-    entry = MockConfigEntry(domain=DOMAIN, data=DEMO_CONFIG_ENTRY)
-    entry.add_to_hass(hass)
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], user_input=DEMO_USER_INPUT
-    )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input=DEMO_USER_INPUT
+        )
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_connection_error(hass: HomeAssistant, conn_error) -> None:
+@test
+async def connection_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test error when connection is unsuccessful."""
+    with _mock_conn_error():
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input=DEMO_USER_INPUT
+        )
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], user_input=DEMO_USER_INPUT
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
 
-
-async def test_wrong_credentials(hass: HomeAssistant, auth_error) -> None:
+@test
+async def wrong_credentials(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test error when credentials are wrong."""
+    with _mock_auth_error():
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input=DEMO_USER_INPUT
+        )
 
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], user_input=DEMO_USER_INPUT
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {
-        CONF_USERNAME: "invalid_auth",
-        CONF_PASSWORD: "invalid_auth",
-    }
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal(
+            {
+                CONF_USERNAME: "invalid_auth",
+                CONF_PASSWORD: "invalid_auth",
+            }
+        )
 
 
-async def test_reauth_success(hass: HomeAssistant, api) -> None:
+@test
+async def reauth_success(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we can reauth."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data=DEMO_USER_INPUT,
-    )
-    entry.add_to_hass(hass)
+    with _mock_api():
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data=DEMO_USER_INPUT,
+        )
+        entry.add_to_hass(hass)
 
-    result = await entry.start_reauth_flow(hass)
+        result = await entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["description_placeholders"] == {
-        CONF_NAME: "Mock Title",
-        CONF_USERNAME: "username",
-    }
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("reauth_confirm")
+        expect(result["description_placeholders"]).to_equal(
+            {
+                CONF_NAME: "Mock Title",
+                CONF_USERNAME: "username",
+            }
+        )
 
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            CONF_PASSWORD: "test-password",
-        },
-    )
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_PASSWORD: "test-password"},
+        )
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
+        expect(result2["type"]).to_be(FlowResultType.ABORT)
+        expect(result2["reason"]).to_equal("reauth_successful")
 
 
-async def test_reauth_failed(hass: HomeAssistant, auth_error) -> None:
+@test
+async def reauth_failed(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test reauth fails due to wrong password."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data=DEMO_USER_INPUT,
-    )
-    entry.add_to_hass(hass)
+    with _mock_auth_error():
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data=DEMO_USER_INPUT,
+        )
+        entry.add_to_hass(hass)
 
-    result = await entry.start_reauth_flow(hass)
+        result = await entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("reauth_confirm")
 
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            CONF_PASSWORD: "test-wrong-password",
-        },
-    )
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_PASSWORD: "test-wrong-password"},
+        )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {
-        CONF_PASSWORD: "invalid_auth",
-    }
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["errors"]).to_equal({CONF_PASSWORD: "invalid_auth"})
 
 
-async def test_reauth_failed_conn_error(hass: HomeAssistant, conn_error) -> None:
+@test
+async def reauth_failed_conn_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test reauth failed due to connection error."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data=DEMO_USER_INPUT,
-    )
-    entry.add_to_hass(hass)
+    with _mock_conn_error():
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data=DEMO_USER_INPUT,
+        )
+        entry.add_to_hass(hass)
 
-    result = await entry.start_reauth_flow(hass)
+        result = await entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("reauth_confirm")
 
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            CONF_PASSWORD: "test-wrong-password",
-        },
-    )
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_PASSWORD: "test-wrong-password"},
+        )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["errors"]).to_equal({"base": "cannot_connect"})
