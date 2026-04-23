@@ -1,8 +1,6 @@
 """Tests for Met Éireann config flow."""
 
-from unittest.mock import patch
-
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.met_eireann.const import DOMAIN, HOME_LOCATION_NAME
@@ -10,32 +8,34 @@ from homeassistant.const import CONF_ELEVATION, CONF_LATITUDE, CONF_LONGITUDE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import met_eireann_setup
 
-@pytest.fixture(name="met_eireann_setup", autouse=True)
-def met_setup_fixture():
-    """Patch Met Éireann setup entry."""
-    with patch(
-        "homeassistant.components.met_eireann.async_setup_entry", return_value=True
-    ):
-        yield
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_show_config_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _mn: None = Depends(mock_network),
+    _mes: None = Depends(met_eireann_setup),
+) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def show_config_form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test show configuration form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == config_entries.SOURCE_USER
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(config_entries.SOURCE_USER)
 
 
-async def test_flow_with_home_location(hass: HomeAssistant) -> None:
-    """Test config flow.
-
-    Test the flow when a default location is configured.
-    Then it should return a form with default values.
-    """
+@test
+async def flow_with_home_location(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test config flow with default location configured."""
     hass.config.latitude = 1
     hass.config.longitude = 2
     hass.config.elevation = 3
@@ -44,17 +44,18 @@ async def test_flow_with_home_location(hass: HomeAssistant) -> None:
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == config_entries.SOURCE_USER
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(config_entries.SOURCE_USER)
 
     default_data = result["data_schema"]({})
-    assert default_data["name"] == HOME_LOCATION_NAME
-    assert default_data["latitude"] == 1
-    assert default_data["longitude"] == 2
-    assert default_data["elevation"] == 3
+    expect(default_data["name"]).to_equal(HOME_LOCATION_NAME)
+    expect(default_data["latitude"]).to_equal(1)
+    expect(default_data["longitude"]).to_equal(2)
+    expect(default_data["elevation"]).to_equal(3)
 
 
-async def test_create_entry(hass: HomeAssistant) -> None:
+@test
+async def create_entry(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test create entry from user input."""
     test_data = {
         "name": "test",
@@ -67,16 +68,14 @@ async def test_create_entry(hass: HomeAssistant) -> None:
         DOMAIN, context={"source": config_entries.SOURCE_USER}, data=test_data
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == test_data.get("name")
-    assert result["data"] == test_data
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(test_data.get("name"))
+    expect(result["data"]).to_equal(test_data)
 
 
-async def test_flow_entry_already_exists(hass: HomeAssistant) -> None:
-    """Test user input for config_entry that already exists.
-
-    Test to ensure the config form does not allow duplicate entries.
-    """
+@test
+async def flow_entry_already_exists(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test user input for config_entry that already exists."""
     test_data = {
         "name": "test",
         CONF_LONGITUDE: 0,
@@ -84,15 +83,13 @@ async def test_flow_entry_already_exists(hass: HomeAssistant) -> None:
         CONF_ELEVATION: 0,
     }
 
-    # Create the first entry and assert that it is created successfully
     result1 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}, data=test_data
     )
-    assert result1["type"] is FlowResultType.CREATE_ENTRY
+    expect(result1["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
-    # Create the second entry and assert that it is aborted
     result2 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}, data=test_data
     )
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")

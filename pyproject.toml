@@ -942,6 +942,7 @@ property-decorators = ["propcache.api.cached_property"]
 
 [dependency-groups]
 dev = [
+    "aiohttp-sse==2.2.0",
     "aiolichess>=1.2.0",
     "kiosker-python-api>=1.2.9",
     "knocki>=0.4.2",
@@ -950,6 +951,7 @@ dev = [
     "lektricowifi==0.1",
     "letpot==0.6.4",
     "librehardwaremonitor-api==1.11.1",
+    "mcp==1.26.0",
     "meater-python==0.0.8",
     "py-madvr2==1.6.40",
     "pykmtronic>=0.3.0",
@@ -959,6 +961,7 @@ dev = [
     "pyliebherrhomeapi==0.4.1",
     "pylitejet>=0.6.3",
     "pylitterbot==2025.3.2",
+    "pymeteireann==2024.11.0",
     "pyserial>=3.5",
     "python-linkplay==0.2.12",
     "ultraheat-api>=0.5.7",
