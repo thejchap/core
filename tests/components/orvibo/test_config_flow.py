@@ -1,11 +1,14 @@
 """Tests for the Orvibo config flow in Home Assistant core."""
 
+from __future__ import annotations
+
 import asyncio
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from orvibo.s20 import S20Exception
-import pytest
+with patch("socket.socket.bind"):
+    from orvibo.s20 import S20Exception
+from tryke import Depends, expect, fixture, test
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -15,38 +18,55 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+from ._fixtures import (
+    mock_config_entry as mock_config_entry_fx,
+    mock_discover as mock_discover_fx,
+    mock_s20 as mock_s20_fx,
+    mock_setup_entry as mock_setup_entry_fx,
+)
 
 
-async def test_user_menu_display(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def user_menu_display(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Initial step displays the user menu correctly."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] == FlowResultType.MENU
-    assert result["step_id"] == "user"
-    assert set(result["menu_options"]) == {"start_discovery", "edit"}
+    expect(result["type"]).to_equal(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("user")
+    expect(set(result["menu_options"])).to_equal({"start_discovery", "edit"})
 
 
-@pytest.mark.parametrize(
-    ("user_input", "expected_mac", "mock_mac_bytes"),
-    [
-        (
-            {CONF_HOST: "192.168.1.2", CONF_MAC: "ac:cf:23:12:34:56"},
-            "ac:cf:23:12:34:56",
-            None,
-        ),
-        ({CONF_HOST: "192.168.1.2"}, "aa:bb:cc:dd:ee:ff", b"\xaa\xbb\xcc\xdd\xee\xff"),
-    ],
+@test.cases(
+    test.case(
+        "with_mac",
+        {CONF_HOST: "192.168.1.2", CONF_MAC: "ac:cf:23:12:34:56"},
+        "ac:cf:23:12:34:56",
+        None,
+    ),
+    test.case(
+        "discovered_mac",
+        {CONF_HOST: "192.168.1.2"},
+        "aa:bb:cc:dd:ee:ff",
+        b"\xaa\xbb\xcc\xdd\xee\xff",
+    ),
 )
-async def test_edit_flow_success(
-    hass: HomeAssistant,
-    mock_discover,
-    mock_setup_entry,
-    mock_s20,
+async def edit_flow_success(
     user_input: dict[str, Any],
     expected_mac: str,
     mock_mac_bytes: bytes | None,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_discover: MagicMock = Depends(mock_discover_fx),
+    mock_setup_entry: MagicMock = Depends(mock_setup_entry_fx),
+    mock_s20: MagicMock = Depends(mock_s20_fx),
 ) -> None:
     """Test manual flow succeeds with provided MAC or discovered MAC."""
     mock_s20.return_value._mac = mock_mac_bytes
@@ -62,40 +82,45 @@ async def test_edit_flow_success(
         result["flow_id"], user_input
     )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"{DEFAULT_NAME} (192.168.1.2)"
-    assert result["data"][CONF_HOST] == "192.168.1.2"
-    assert result["data"][CONF_MAC] == expected_mac
-    assert result["result"].unique_id == expected_mac
+    expect(result["type"]).to_equal(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"{DEFAULT_NAME} (192.168.1.2)")
+    expect(result["data"][CONF_HOST]).to_equal("192.168.1.2")
+    expect(result["data"][CONF_MAC]).to_equal(expected_mac)
+    expect(result["result"].unique_id).to_equal(expected_mac)
 
 
-@pytest.mark.parametrize(
-    ("user_input", "expected_error", "mock_exception", "mock_mac_bytes"),
-    [
-        (
-            {CONF_HOST: "192.168.1.2", CONF_MAC: "not_a_mac"},
-            "invalid_mac",
-            None,
-            b"dummy",
-        ),
-        ({CONF_HOST: "192.168.1.99"}, "cannot_discover", None, None),
-        (
-            {CONF_HOST: "192.168.1.3", CONF_MAC: "ac:cf:23:12:34:56"},
-            "cannot_connect",
-            S20Exception("Connection failed"),
-            b"dummy",
-        ),
-    ],
+@test.cases(
+    test.case(
+        "invalid_mac",
+        {CONF_HOST: "192.168.1.2", CONF_MAC: "not_a_mac"},
+        "invalid_mac",
+        None,
+        b"dummy",
+    ),
+    test.case(
+        "cannot_discover",
+        {CONF_HOST: "192.168.1.99"},
+        "cannot_discover",
+        None,
+        None,
+    ),
+    test.case(
+        "cannot_connect",
+        {CONF_HOST: "192.168.1.3", CONF_MAC: "ac:cf:23:12:34:56"},
+        "cannot_connect",
+        S20Exception("Connection failed"),
+        b"dummy",
+    ),
 )
-async def test_edit_flow_errors(
-    hass: HomeAssistant,
-    mock_s20,
-    mock_discover,
-    mock_setup_entry,
+async def edit_flow_errors(
     user_input: dict[str, Any],
     expected_error: str,
     mock_exception: Exception | None,
     mock_mac_bytes: bytes | None,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_s20: MagicMock = Depends(mock_s20_fx),
+    mock_discover: MagicMock = Depends(mock_discover_fx),
+    mock_setup_entry: MagicMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test various errors in the manual (edit) step and recover."""
     mock_discover.return_value = {}
@@ -113,8 +138,8 @@ async def test_edit_flow_errors(
         result["flow_id"], user_input
     )
 
-    assert result["type"] == FlowResultType.FORM
-    assert result["errors"]["base"] == expected_error
+    expect(result["type"]).to_equal(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal(expected_error)
 
     mock_s20.side_effect = None
     mock_s20.return_value._mac = b"\xac\xcf\x23\x12\x34\x56"
@@ -124,48 +149,55 @@ async def test_edit_flow_errors(
         {CONF_HOST: "192.168.1.2", CONF_MAC: "ac:cf:23:12:34:56"},
     )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"{DEFAULT_NAME} (192.168.1.2)"
-    assert result["data"][CONF_HOST] == "192.168.1.2"
-    assert result["data"][CONF_MAC] == "ac:cf:23:12:34:56"
+    expect(result["type"]).to_equal(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"{DEFAULT_NAME} (192.168.1.2)")
+    expect(result["data"][CONF_HOST]).to_equal("192.168.1.2")
+    expect(result["data"][CONF_MAC]).to_equal("ac:cf:23:12:34:56")
 
 
-async def test_discovery_success(
-    hass: HomeAssistant, mock_discover, mock_setup_entry
+@test
+async def discovery_success(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_discover: MagicMock = Depends(mock_discover_fx),
+    mock_setup_entry: MagicMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Verify discovery finds devices and completes config entry creation."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] == FlowResultType.MENU
+    expect(result["type"]).to_equal(FlowResultType.MENU)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "start_discovery"}
     )
-    assert result["type"] == FlowResultType.SHOW_PROGRESS
-    assert result["step_id"] == "start_discovery"
-    assert result["progress_action"] == "start_discovery"
+    expect(result["type"]).to_equal(FlowResultType.SHOW_PROGRESS)
+    expect(result["step_id"]).to_equal("start_discovery")
+    expect(result["progress_action"]).to_equal("start_discovery")
 
     await hass.async_block_till_done()
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "choose_switch"
+    expect(result["type"]).to_equal(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("choose_switch")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_SWITCH_LIST: "192.168.1.100"}
     )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"{DEFAULT_NAME} (192.168.1.100)"
-    assert result["data"][CONF_HOST] == "192.168.1.100"
-    assert result["data"][CONF_MAC] == "ac:cf:23:12:34:56"
-    assert result["result"].unique_id == "ac:cf:23:12:34:56"
+    expect(result["type"]).to_equal(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"{DEFAULT_NAME} (192.168.1.100)")
+    expect(result["data"][CONF_HOST]).to_equal("192.168.1.100")
+    expect(result["data"][CONF_MAC]).to_equal("ac:cf:23:12:34:56")
+    expect(result["result"].unique_id).to_equal("ac:cf:23:12:34:56")
 
 
-async def test_discovery_no_devices(
-    hass: HomeAssistant, mock_discover, mock_s20, mock_setup_entry
+@test
+async def discovery_no_devices(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_discover: MagicMock = Depends(mock_discover_fx),
+    mock_s20: MagicMock = Depends(mock_s20_fx),
+    mock_setup_entry: MagicMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Discovery with no found devices should go to discovery_failed and recover via edit."""
     mock_discover.return_value = {}
@@ -181,15 +213,15 @@ async def test_discovery_no_devices(
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] == FlowResultType.MENU
-    assert result["step_id"] == "discovery_failed"
+    expect(result["type"]).to_equal(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("discovery_failed")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "edit"}
     )
 
-    assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "edit"
+    expect(result["type"]).to_equal(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("edit")
 
     mock_s20.return_value._mac = b"\xaa\xbb\xcc\xdd\xee\xff"
 
@@ -198,31 +230,34 @@ async def test_discovery_no_devices(
         {CONF_HOST: "192.168.1.10", CONF_MAC: "aa:bb:cc:dd:ee:ff"},
     )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"{DEFAULT_NAME} (192.168.1.10)"
-    assert result["data"][CONF_HOST] == "192.168.1.10"
-    assert result["data"][CONF_MAC] == "aa:bb:cc:dd:ee:ff"
+    expect(result["type"]).to_equal(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"{DEFAULT_NAME} (192.168.1.10)")
+    expect(result["data"][CONF_HOST]).to_equal("192.168.1.10")
+    expect(result["data"][CONF_MAC]).to_equal("aa:bb:cc:dd:ee:ff")
 
 
-@pytest.mark.parametrize(
-    ("import_data", "expected_mac", "mock_mac_bytes"),
-    [
-        (
-            {CONF_HOST: "192.168.1.5", CONF_MAC: "ac:cf:23:12:34:56"},
-            "ac:cf:23:12:34:56",
-            None,
-        ),
-        ({CONF_HOST: "192.168.1.5"}, "11:22:33:44:55:66", b"\x11\x22\x33\x44\x55\x66"),
-    ],
+@test.cases(
+    test.case(
+        "with_mac",
+        {CONF_HOST: "192.168.1.5", CONF_MAC: "ac:cf:23:12:34:56"},
+        "ac:cf:23:12:34:56",
+        None,
+    ),
+    test.case(
+        "discovered_mac",
+        {CONF_HOST: "192.168.1.5"},
+        "11:22:33:44:55:66",
+        b"\x11\x22\x33\x44\x55\x66",
+    ),
 )
-async def test_import_flow_success(
-    hass: HomeAssistant,
-    mock_discover,
-    mock_setup_entry,
-    mock_s20,
+async def import_flow_success(
     import_data: dict[str, Any],
     expected_mac: str,
     mock_mac_bytes: bytes | None,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_discover: MagicMock = Depends(mock_discover_fx),
+    mock_setup_entry: MagicMock = Depends(mock_setup_entry_fx),
+    mock_s20: MagicMock = Depends(mock_s20_fx),
 ) -> None:
     """Test importing configuration.yaml entry succeeds with provided or discovered MAC."""
     mock_s20.return_value._mac = mock_mac_bytes
@@ -232,31 +267,35 @@ async def test_import_flow_success(
         DOMAIN, context={"source": config_entries.SOURCE_IMPORT}, data=import_data
     )
 
-    assert result["type"] == FlowResultType.CREATE_ENTRY
-    assert result["title"] == "192.168.1.5"
-    assert result["data"][CONF_MAC] == expected_mac
+    expect(result["type"]).to_equal(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("192.168.1.5")
+    expect(result["data"][CONF_MAC]).to_equal(expected_mac)
 
 
-@pytest.mark.parametrize(
-    ("import_data", "expected_reason", "mock_exception", "mock_mac_bytes"),
-    [
-        ({CONF_HOST: "192.168.1.5"}, "cannot_discover", None, None),
-        (
-            {CONF_HOST: "192.168.1.5", CONF_MAC: "ac:cf:23:12:34:56"},
-            "cannot_connect",
-            S20Exception("Connection failed"),
-            b"dummy",
-        ),
-    ],
+@test.cases(
+    test.case(
+        "cannot_discover",
+        {CONF_HOST: "192.168.1.5"},
+        "cannot_discover",
+        None,
+        None,
+    ),
+    test.case(
+        "cannot_connect",
+        {CONF_HOST: "192.168.1.5", CONF_MAC: "ac:cf:23:12:34:56"},
+        "cannot_connect",
+        S20Exception("Connection failed"),
+        b"dummy",
+    ),
 )
-async def test_import_flow_errors(
-    hass: HomeAssistant,
-    mock_s20,
-    mock_discover,
+async def import_flow_errors(
     import_data: dict[str, Any],
     expected_reason: str,
     mock_exception: Exception | None,
     mock_mac_bytes: bytes | None,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_s20: MagicMock = Depends(mock_s20_fx),
+    mock_discover: MagicMock = Depends(mock_discover_fx),
 ) -> None:
     """Test various abort errors in the import flow."""
     mock_discover.return_value = {}
@@ -267,12 +306,15 @@ async def test_import_flow_errors(
         DOMAIN, context={"source": config_entries.SOURCE_IMPORT}, data=import_data
     )
 
-    assert result["type"] == FlowResultType.ABORT
-    assert result["reason"] == expected_reason
+    expect(result["type"]).to_equal(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(expected_reason)
 
 
-async def test_discover_skips_existing_and_invalid_mac(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_discover
+@test
+async def discover_skips_existing_and_invalid_mac(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
+    mock_discover: MagicMock = Depends(mock_discover_fx),
 ) -> None:
     """Test discovery ignores devices already configured and devices without MACs."""
     mock_config_entry.add_to_hass(hass)
@@ -295,18 +337,21 @@ async def test_discover_skips_existing_and_invalid_mac(
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] == FlowResultType.FORM
-    assert result["step_id"] == "choose_switch"
+    expect(result["type"]).to_equal(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("choose_switch")
 
     schema = result["data_schema"].schema
     dropdown_options = schema[vol.Required(CONF_SWITCH_LIST)].container
 
-    assert "192.168.1.12" in dropdown_options
-    assert "192.168.1.10" not in dropdown_options
-    assert "192.168.1.11" not in dropdown_options
+    expect("192.168.1.12" in dropdown_options).to_be(True)
+    expect("192.168.1.10" not in dropdown_options).to_be(True)
+    expect("192.168.1.11" not in dropdown_options).to_be(True)
 
 
-async def test_start_discovery_shows_progress(hass: HomeAssistant) -> None:
+@test
+async def start_discovery_shows_progress(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test polling the flow while discovery is still in progress."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -320,18 +365,20 @@ async def test_start_discovery_shows_progress(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"next_step_id": "start_discovery"}
         )
-        assert result["type"] == FlowResultType.SHOW_PROGRESS
+        expect(result["type"]).to_equal(FlowResultType.SHOW_PROGRESS)
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-        assert result["type"] == FlowResultType.SHOW_PROGRESS
-        assert result["progress_action"] == "start_discovery"
+        expect(result["type"]).to_equal(FlowResultType.SHOW_PROGRESS)
+        expect(result["progress_action"]).to_equal("start_discovery")
 
     await hass.async_block_till_done()
 
 
-async def test_discovery_flow_task_exception(
-    hass: HomeAssistant, mock_discover
+@test
+async def discovery_flow_task_exception(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_discover: MagicMock = Depends(mock_discover_fx),
 ) -> None:
     """Test the discovery process when the background task raises an error."""
     mock_discover.side_effect = S20Exception("Network timeout")
@@ -348,5 +395,5 @@ async def test_discovery_flow_task_exception(
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] == FlowResultType.MENU
-    assert result["step_id"] == "discovery_failed"
+    expect(result["type"]).to_equal(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("discovery_failed")
