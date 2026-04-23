@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.fastdotcom.const import DOMAIN
 from homeassistant.config_entries import SOURCE_IMPORT, SOURCE_USER
@@ -10,16 +10,24 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass
 
 
-async def test_user_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def user_form(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with patch(
         "homeassistant.components.fastdotcom.async_setup_entry",
@@ -30,17 +38,20 @@ async def test_user_form(hass: HomeAssistant) -> None:
             user_input={},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Fast.com"
-    assert result["data"] == {}
-    assert result["options"] == {}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Fast.com")
+    expect(result["data"]).to_equal({})
+    expect(result["options"]).to_equal({})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize("source", [SOURCE_USER, SOURCE_IMPORT])
-async def test_single_instance_allowed(
-    hass: HomeAssistant,
+@test.cases(
+    test.case("user", SOURCE_USER),
+    test.case("import", SOURCE_IMPORT),
+)
+async def single_instance_allowed(
     source: str,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test we abort if already setup."""
     mock_config_entry = MockConfigEntry(domain=DOMAIN)
@@ -51,5 +62,5 @@ async def test_single_instance_allowed(
         DOMAIN, context={"source": source}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
