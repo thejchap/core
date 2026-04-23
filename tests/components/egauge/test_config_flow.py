@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 from egauge_async.exceptions import EgaugeAuthenticationError, EgaugePermissionError
 from httpx import ConnectError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.egauge.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -19,17 +19,35 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.egauge._fixtures import (
+    mock_config_entry,
+    mock_egauge_client,
+    mock_zeroconf,
+)
+from tests.hass_fixtures import hass, mock_network
 
 
-async def test_user_flow(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def user_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_egauge_client: MagicMock = Depends(mock_egauge_client),
+) -> None:
     """Test the full happy path user flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -42,32 +60,33 @@ async def test_user_flow(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "egauge-home"
-    assert result["data"] == {
-        CONF_HOST: "192.168.1.100",
-        CONF_USERNAME: "admin",
-        CONF_PASSWORD: "secret",
-        CONF_SSL: True,
-        CONF_VERIFY_SSL: False,
-    }
-    assert result["result"].unique_id == "ABC123456"
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal("egauge-home")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "192.168.1.100",
+            CONF_USERNAME: "admin",
+            CONF_PASSWORD: "secret",
+            CONF_SSL: True,
+            CONF_VERIFY_SSL: False,
+        }
+    )
+    expect(result["result"].unique_id).to_equal("ABC123456")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (EgaugeAuthenticationError, "invalid_auth"),
-        (EgaugePermissionError, "missing_permission"),
-        (ConnectError("Connection error"), "cannot_connect"),
-        (Exception("Unexpected error"), "unknown"),
-    ],
+@test.cases(
+    test.case("auth_error", EgaugeAuthenticationError, "invalid_auth"),
+    test.case("permission_error", EgaugePermissionError, "missing_permission"),
+    test.case("connect_error", ConnectError("Connection error"), "cannot_connect"),
+    test.case("unknown", Exception("Unexpected error"), "unknown"),
 )
-async def test_user_flow_errors(
-    hass: HomeAssistant,
-    mock_egauge_client: MagicMock,
+async def user_flow_errors(
     side_effect: Exception,
     expected_error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    mock_egauge_client: MagicMock = Depends(mock_egauge_client),
 ) -> None:
     """Test user flow with various errors."""
     mock_egauge_client.get_device_serial_number.side_effect = side_effect
@@ -84,11 +103,10 @@ async def test_user_flow_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": expected_error})
 
-    # Test recovery after error
     mock_egauge_client.get_device_serial_number.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -100,20 +118,27 @@ async def test_user_flow_errors(
             CONF_VERIFY_SSL: False,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "egauge-home"
-    assert result["data"] == {
-        CONF_HOST: "192.168.1.100",
-        CONF_USERNAME: "admin",
-        CONF_PASSWORD: "secret",
-        CONF_SSL: True,
-        CONF_VERIFY_SSL: False,
-    }
-    assert result["result"].unique_id == "ABC123456"
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal("egauge-home")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "192.168.1.100",
+            CONF_USERNAME: "admin",
+            CONF_PASSWORD: "secret",
+            CONF_SSL: True,
+            CONF_VERIFY_SSL: False,
+        }
+    )
+    expect(result["result"].unique_id).to_equal("ABC123456")
 
 
-async def test_user_flow_already_configured(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def user_flow_already_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_egauge_client: MagicMock = Depends(mock_egauge_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test configuration flow aborts when device is already configured."""
     mock_config_entry.add_to_hass(hass)
@@ -130,5 +155,5 @@ async def test_user_flow_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")

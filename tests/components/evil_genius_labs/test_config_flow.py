@@ -1,25 +1,48 @@
 """Test the Evil Genius Labs config flow."""
 
-from unittest.mock import patch
+import logging
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import aiohttp
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.evil_genius_labs.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.util.json import JsonObjectType
+
+from tests.components.evil_genius_labs._fixtures import (
+    all_fixture,
+    info_fixture,
+    mock_zeroconf,
+    product_fixture,
+)
+from tests.hass_fixtures import hass, mock_network
 
 
-async def test_form(
-    hass: HomeAssistant, all_fixture, info_fixture, product_fixture
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    all_fixture: dict[str, Any] = Depends(all_fixture),
+    info_fixture: JsonObjectType = Depends(info_fixture),
+    product_fixture: dict[str, str] = Depends(product_fixture),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"] is None).to_be(True)
 
     with (
         patch(
@@ -47,39 +70,62 @@ async def test_form(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Fibonacci256-23D4"
-    assert result2["data"] == {
-        "host": "1.1.1.1",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result2["title"]).to_equal("Fibonacci256-23D4")
+    expect(result2["data"]).to_equal({"host": "1.1.1.1"})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_cannot_connect(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def form_cannot_connect(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
 ) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    with patch(
-        "pyevilgenius.EvilGeniusDevice.get_all",
-        side_effect=aiohttp.ClientError,
-    ):
-        result2 = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                "host": "1.1.1.1",
-            },
-        )
+    records: list[logging.LogRecord] = []
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
-    assert "Unable to connect" in caplog.text
+    class _Handler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _Handler(level=logging.DEBUG)
+    root = logging.getLogger()
+    root.addHandler(handler)
+    prev_level = root.level
+    root.setLevel(logging.DEBUG)
+    try:
+        with patch(
+            "pyevilgenius.EvilGeniusDevice.get_all",
+            side_effect=aiohttp.ClientError,
+        ):
+            result2 = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                {
+                    "host": "1.1.1.1",
+                },
+            )
+    finally:
+        root.removeHandler(handler)
+        root.setLevel(prev_level)
+
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
+    expect(
+        any("Unable to connect" in record.getMessage() for record in records)
+    ).to_be(True)
 
 
-async def test_form_timeout(hass: HomeAssistant) -> None:
+@test
+async def form_timeout(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test we handle timeout error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -96,11 +142,16 @@ async def test_form_timeout(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "timeout"}
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["errors"]).to_equal({"base": "timeout"})
 
 
-async def test_form_unknown(hass: HomeAssistant) -> None:
+@test
+async def form_unknown(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test we handle unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -117,5 +168,5 @@ async def test_form_unknown(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
