@@ -2,14 +2,24 @@
 
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.raspberry_pi.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry, MockModule, mock_integration
+from tests.hass_fixtures import hass
 
 
-async def test_config_flow(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def config_flow(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the config flow."""
     mock_integration(hass, MockModule("hassio"))
 
@@ -21,23 +31,23 @@ async def test_config_flow(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": "system"}
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Raspberry Pi"
-    assert result["data"] == {}
-    assert result["options"] == {}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Raspberry Pi")
+    expect(result["data"]).to_equal({})
+    expect(result["options"]).to_equal({})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
     config_entry = hass.config_entries.async_entries(DOMAIN)[0]
-    assert config_entry.data == {}
-    assert config_entry.options == {}
-    assert config_entry.title == "Raspberry Pi"
+    expect(config_entry.data).to_equal({})
+    expect(config_entry.options).to_equal({})
+    expect(config_entry.title).to_equal("Raspberry Pi")
 
 
-async def test_config_flow_single_entry(hass: HomeAssistant) -> None:
+@test
+async def config_flow_single_entry(hass: HomeAssistant = Depends(hass)) -> None:
     """Test only a single entry is allowed."""
     mock_integration(hass, MockModule("hassio"))
 
-    # Setup the config entry
     config_entry = MockConfigEntry(
         data={},
         domain=DOMAIN,
@@ -54,6 +64,6 @@ async def test_config_flow_single_entry(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": "system"}
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
     mock_setup_entry.assert_not_called()
