@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from ipaddress import IPv4Address
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from duco.exceptions import DucoConnectionError, DucoError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.duco.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF
@@ -15,9 +15,34 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .conftest import TEST_HOST, TEST_MAC, USER_INPUT
-
 from tests.common import MockConfigEntry
+from tests.components.duco._fixtures import (
+    TEST_HOST,
+    TEST_MAC,
+    USER_INPUT,
+    mock_config_entry,
+    mock_duco_client,
+    mock_setup_entry,
+    mock_zeroconf,
+)
+from tests.components.duco._fixtures import (
+    mock_board_info as _mock_board_info,
+    mock_lan_info as _mock_lan_info,
+    mock_nodes as _mock_nodes,
+)
+from tests.hass_fixtures import hass, mock_network
+
+# Re-export so fixture-chain resolution finds them.
+mock_board_info = _mock_board_info
+mock_lan_info = _mock_lan_info
+mock_nodes = _mock_nodes
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
 
 ZEROCONF_DISCOVERY = ZeroconfServiceInfo(
     ip_address=IPv4Address(TEST_HOST),
@@ -30,42 +55,48 @@ ZEROCONF_DISCOVERY = ZeroconfServiceInfo(
 )
 
 
-async def test_user_flow_success(
-    hass: HomeAssistant,
-    mock_duco_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def user_flow_success(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_duco_client: AsyncMock = Depends(mock_duco_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test a successful user flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], USER_INPUT
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "SILENT_CONNECT"
-    assert result["data"] == USER_INPUT
-    assert result["result"].unique_id == TEST_MAC
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal("SILENT_CONNECT")
+    expect(result["data"]).to_equal(USER_INPUT)
+    expect(result["result"].unique_id).to_equal(TEST_MAC)
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_error"),
-    [
-        (DucoConnectionError("Connection refused"), "cannot_connect"),
-        (DucoError("Unexpected error"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "connection_error",
+        DucoConnectionError("Connection refused"),
+        "cannot_connect",
+    ),
+    test.case("unknown_error", DucoError("Unexpected error"), "unknown"),
 )
-async def test_user_flow_error(
-    hass: HomeAssistant,
-    mock_duco_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+async def user_flow_error(
     exception: Exception,
     expected_error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    mock_duco_client: AsyncMock = Depends(mock_duco_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test handling of connection and unknown errors in the user flow."""
     result = await hass.config_entries.flow.async_init(
@@ -77,27 +108,29 @@ async def test_user_flow_error(
         result["flow_id"], USER_INPUT
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": expected_error})
 
     mock_duco_client.async_get_board_info.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], USER_INPUT
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
 
 
-async def test_user_flow_duplicate(
-    hass: HomeAssistant,
-    mock_duco_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def user_flow_duplicate(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_duco_client: AsyncMock = Depends(mock_duco_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that a duplicate config entry is aborted."""
     mock_config_entry.add_to_hass(hass)
 
-    # Second attempt for the same device
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -105,14 +138,17 @@ async def test_user_flow_duplicate(
         result["flow_id"], USER_INPUT
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_zeroconf_discovery_new_device(
-    hass: HomeAssistant,
-    mock_duco_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def zeroconf_discovery_new_device(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_duco_client: AsyncMock = Depends(mock_duco_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test zeroconf discovery of a new device shows confirmation form and creates entry."""
     result = await hass.config_entries.flow.async_init(
@@ -121,23 +157,26 @@ async def test_zeroconf_discovery_new_device(
         data=ZEROCONF_DISCOVERY,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("discovery_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "SILENT_CONNECT"
-    assert result["data"] == USER_INPUT
-    assert result["result"].unique_id == TEST_MAC
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal("SILENT_CONNECT")
+    expect(result["data"]).to_equal(USER_INPUT)
+    expect(result["result"].unique_id).to_equal(TEST_MAC)
 
 
-async def test_zeroconf_discovery_updates_host(
-    hass: HomeAssistant,
-    mock_duco_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def zeroconf_discovery_updates_host(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_duco_client: AsyncMock = Depends(mock_duco_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test zeroconf discovery updates the host of an existing entry."""
     mock_config_entry.add_to_hass(hass)
@@ -159,15 +198,18 @@ async def test_zeroconf_discovery_updates_host(
         data=discovery,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert mock_config_entry.data[CONF_HOST] == new_ip
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(mock_config_entry.data[CONF_HOST]).to_equal(new_ip)
 
 
-async def test_zeroconf_discovery_already_configured_same_ip(
-    hass: HomeAssistant,
-    mock_duco_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def zeroconf_discovery_already_configured_same_ip(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_duco_client: AsyncMock = Depends(mock_duco_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test zeroconf discovery with unchanged IP aborts as already_configured."""
     mock_config_entry.add_to_hass(hass)
@@ -178,22 +220,25 @@ async def test_zeroconf_discovery_already_configured_same_ip(
         data=ZEROCONF_DISCOVERY,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_reason"),
-    [
-        (DucoConnectionError("Connection refused"), "cannot_connect"),
-        (DucoError("Unexpected error"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "connection_error",
+        DucoConnectionError("Connection refused"),
+        "cannot_connect",
+    ),
+    test.case("unknown_error", DucoError("Unexpected error"), "unknown"),
 )
-async def test_zeroconf_discovery_exceptions(
-    hass: HomeAssistant,
-    mock_duco_client: AsyncMock,
+async def zeroconf_discovery_exceptions(
     exception: Exception,
     expected_reason: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    mock_duco_client: AsyncMock = Depends(mock_duco_client),
 ) -> None:
     """Test zeroconf discovery aborts on connection and unknown errors."""
     mock_duco_client.async_get_board_info.side_effect = exception
@@ -204,5 +249,5 @@ async def test_zeroconf_discovery_exceptions(
         data=ZEROCONF_DISCOVERY,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == expected_reason
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal(expected_reason)
