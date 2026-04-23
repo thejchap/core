@@ -1,8 +1,8 @@
 """Test emoncms config flow."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.emoncms.const import (
     CONF_ONLY_INCLUDE_FEEDID,
@@ -16,10 +16,20 @@ from homeassistant.const import CONF_API_KEY, CONF_URL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from . import setup_integration
-from .conftest import EMONCMS_FAILURE, FLOW_RESULT, SENSOR_NAME, UNIQUE_ID
-
 from tests.common import MockConfigEntry
+from tests.components.emoncms import setup_integration
+from tests.components.emoncms._fixtures import (
+    EMONCMS_FAILURE,
+    FLOW_RESULT,
+    SENSOR_NAME,
+    UNIQUE_ID,
+    config_entry,
+    config_entry_unique_id,
+    emoncms_client,
+    mock_setup_entry,
+    mock_zeroconf,
+)
+from tests.hass_fixtures import hass, mock_network
 
 USER_INPUT = {
     CONF_URL: "http://1.1.1.1",
@@ -27,18 +37,23 @@ USER_INPUT = {
 }
 
 
-@pytest.mark.parametrize(
-    ("url", "api_key"),
-    [
-        (USER_INPUT[CONF_URL], "regenerated_api_key"),
-        ("http://1.1.1.2", USER_INPUT[CONF_API_KEY]),
-    ],
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test.cases(
+    test.case("regenerated_api_key", USER_INPUT[CONF_URL], "regenerated_api_key"),
+    test.case("new_url", "http://1.1.1.2", USER_INPUT[CONF_API_KEY]),
 )
-async def test_reconfigure(
-    hass: HomeAssistant,
-    emoncms_client: AsyncMock,
+async def reconfigure(
     url: str,
     api_key: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _emoncms_client: AsyncMock = Depends(emoncms_client),
 ) -> None:
     """Test reconfigure flow."""
     new_input = {
@@ -53,8 +68,8 @@ async def test_reconfigure(
     )
     await setup_integration(hass, config_entry)
     result = await config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -62,14 +77,17 @@ async def test_reconfigure(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert config_entry.data == new_input
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data).to_equal(new_input)
 
 
-async def test_reconfigure_api_error(
-    hass: HomeAssistant,
-    emoncms_client: AsyncMock,
+@test
+async def reconfigure_api_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    emoncms_client: AsyncMock = Depends(emoncms_client),
 ) -> None:
     """Test reconfigure flow with API error."""
     config_entry = MockConfigEntry(
@@ -81,97 +99,115 @@ async def test_reconfigure_api_error(
     await setup_integration(hass, config_entry)
     emoncms_client.async_request.return_value = EMONCMS_FAILURE
     result = await config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "api_error"}
-    assert result["description_placeholders"]["details"] == "failure"
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({"base": "api_error"})
+    expect(result["description_placeholders"]["details"]).to_equal("failure")
+    expect(result["step_id"]).to_equal("reconfigure")
 
 
-async def test_user_flow_failure(
-    hass: HomeAssistant, emoncms_client: AsyncMock
+@test
+async def user_flow_failure(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    emoncms_client: AsyncMock = Depends(emoncms_client),
 ) -> None:
     """Test emoncms failure when adding a new entry."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
     emoncms_client.async_request.return_value = EMONCMS_FAILURE
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
-    assert result["errors"]["base"] == "api_error"
-    assert result["description_placeholders"]["details"] == "failure"
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["errors"]["base"]).to_equal("api_error")
+    expect(result["description_placeholders"]["details"]).to_equal("failure")
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_user_flow_manual_mode(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, emoncms_client: AsyncMock
+@test
+async def user_flow_manual_mode(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _emoncms_client: AsyncMock = Depends(emoncms_client),
 ) -> None:
     """Test we get the user forms and the entry in manual mode."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {**USER_INPUT, SYNC_MODE: SYNC_MODE_MANUAL},
     )
 
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_ONLY_INCLUDE_FEEDID: ["1"]},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == SENSOR_NAME
-    assert result["data"] == {**USER_INPUT, CONF_ONLY_INCLUDE_FEEDID: ["1"]}
-    # assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(SENSOR_NAME)
+    expect(result["data"]).to_equal({**USER_INPUT, CONF_ONLY_INCLUDE_FEEDID: ["1"]})
 
 
-async def test_user_flow_auto_mode(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, emoncms_client: AsyncMock
+@test
+async def user_flow_auto_mode(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _emoncms_client: AsyncMock = Depends(emoncms_client),
 ) -> None:
     """Test we get the user form and the entry in automatic mode."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {**USER_INPUT, SYNC_MODE: SYNC_MODE_AUTO},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == SENSOR_NAME
-    assert result["data"] == {
-        **USER_INPUT,
-        CONF_ONLY_INCLUDE_FEEDID: FLOW_RESULT[CONF_ONLY_INCLUDE_FEEDID],
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(SENSOR_NAME)
+    expect(result["data"]).to_equal(
+        {
+            **USER_INPUT,
+            CONF_ONLY_INCLUDE_FEEDID: FLOW_RESULT[CONF_ONLY_INCLUDE_FEEDID],
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_options_flow(
-    hass: HomeAssistant,
-    emoncms_client: AsyncMock,
-    config_entry: MockConfigEntry,
+@test
+async def options_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _emoncms_client: AsyncMock = Depends(emoncms_client),
+    config_entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Options flow - success test."""
     await setup_integration(hass, config_entry)
-    assert config_entry.options == {}
+    expect(config_entry.options).to_equal({})
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     await hass.async_block_till_done()
     result = await hass.config_entries.options.async_configure(
@@ -180,33 +216,41 @@ async def test_options_flow(
             CONF_ONLY_INCLUDE_FEEDID: ["1"],
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {
-        CONF_ONLY_INCLUDE_FEEDID: ["1"],
-    }
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(config_entry.options).to_equal(
+        {
+            CONF_ONLY_INCLUDE_FEEDID: ["1"],
+        }
+    )
 
 
-async def test_options_flow_failure(
-    hass: HomeAssistant,
-    emoncms_client: AsyncMock,
-    config_entry: MockConfigEntry,
+@test
+async def options_flow_failure(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    emoncms_client: AsyncMock = Depends(emoncms_client),
+    config_entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Options flow - test failure."""
     await setup_integration(hass, config_entry)
     emoncms_client.async_request.return_value = EMONCMS_FAILURE
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     await hass.async_block_till_done()
-    assert result["errors"]["base"] == "api_error"
-    assert result["description_placeholders"]["details"] == "failure"
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["errors"]["base"]).to_equal("api_error")
+    expect(result["description_placeholders"]["details"]).to_equal("failure")
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("init")
 
 
-async def test_unique_id_exists(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    emoncms_client: AsyncMock,
-    config_entry_unique_id: MockConfigEntry,
+@test
+async def unique_id_exists(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _emoncms_client: AsyncMock = Depends(emoncms_client),
+    config_entry_unique_id: MockConfigEntry = Depends(config_entry_unique_id),
 ) -> None:
     """Test when entry with same unique id already exists."""
     config_entry_unique_id.add_to_hass(hass)
@@ -216,5 +260,5 @@ async def test_unique_id_exists(
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], USER_INPUT
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
