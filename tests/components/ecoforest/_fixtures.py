@@ -4,16 +4,17 @@ from collections.abc import Generator
 from unittest.mock import AsyncMock, Mock, patch
 
 from pyecoforest.models.device import Alarm, Device, OperationMode, State
-import pytest
+from tryke import Depends, fixture
 
 from homeassistant.components.ecoforest.const import DOMAIN
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass
 
 
-@pytest.fixture
+@fixture
 def mock_setup_entry() -> Generator[AsyncMock]:
     """Override async_setup_entry."""
     with patch(
@@ -22,8 +23,8 @@ def mock_setup_entry() -> Generator[AsyncMock]:
         yield mock_setup_entry
 
 
-@pytest.fixture(name="config")
-def config_fixture():
+@fixture
+def config() -> dict[str, str]:
     """Define a config entry data fixture."""
     return {
         CONF_HOST: "1.1.1.1",
@@ -32,14 +33,14 @@ def config_fixture():
     }
 
 
-@pytest.fixture(name="serial_number")
-def serial_number_fixture():
+@fixture
+def serial_number() -> str:
     """Define a serial number fixture."""
     return "1234"
 
 
-@pytest.fixture(name="mock_device")
-def mock_device_fixture(serial_number):
+@fixture
+def mock_device(serial_number: str = Depends(serial_number)) -> Mock:
     """Define a mocked Ecoforest device fixture."""
     mock = Mock(spec=Device)
     mock.model = "model-version"
@@ -60,8 +61,12 @@ def mock_device_fixture(serial_number):
     return mock
 
 
-@pytest.fixture(name="config_entry")
-def config_entry_fixture(hass: HomeAssistant, config, serial_number):
+@fixture
+def config_entry(
+    hass: HomeAssistant = Depends(hass),
+    config: dict[str, str] = Depends(config),
+    serial_number: str = Depends(serial_number),
+) -> MockConfigEntry:
     """Define a config entry fixture."""
     entry = MockConfigEntry(
         domain=DOMAIN,
