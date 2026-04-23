@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import xml.etree.ElementTree as ET
 
 import aiohttp
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.environment_canada.const import CONF_STATION, DOMAIN
@@ -13,6 +13,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.environment_canada._fixtures import mock_zeroconf
+from tests.hass_fixtures import hass, mock_network
 
 FAKE_CONFIG = {
     CONF_STATION: "123",
@@ -53,7 +55,18 @@ def mocked_stations():
     )
 
 
-async def test_create_entry(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def create_entry(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test creating an entry."""
     with (
         mocked_ec(),
@@ -70,12 +83,17 @@ async def test_create_entry(hass: HomeAssistant) -> None:
             flow["flow_id"], FAKE_CONFIG
         )
         await hass.async_block_till_done()
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"] == FAKE_CONFIG
-        assert result["title"] == FAKE_TITLE
+        expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+        expect(result["data"]).to_equal(FAKE_CONFIG)
+        expect(result["title"]).to_equal(FAKE_TITLE)
 
 
-async def test_create_same_entry_twice(hass: HomeAssistant) -> None:
+@test
+async def create_same_entry_twice(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test duplicate entries."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -99,23 +117,35 @@ async def test_create_same_entry_twice(hass: HomeAssistant) -> None:
             flow["flow_id"], FAKE_CONFIG
         )
         await hass.async_block_till_done()
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    "error",
-    [
-        (aiohttp.ClientResponseError(Mock(), (), status=404), "bad_station_id"),
-        (aiohttp.ClientResponseError(Mock(), (), status=400), "error_response"),
-        (aiohttp.ClientConnectionError, "cannot_connect"),
-        (ET.ParseError, "bad_station_id"),
-        (ValueError, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "not_found",
+        aiohttp.ClientResponseError(Mock(), (), status=404),
+        "bad_station_id",
+    ),
+    test.case(
+        "bad_request",
+        aiohttp.ClientResponseError(Mock(), (), status=400),
+        "error_response",
+    ),
+    test.case(
+        "connection", aiohttp.ClientConnectionError, "cannot_connect"
+    ),
+    test.case("parse_error", ET.ParseError, "bad_station_id"),
+    test.case("value_error", ValueError, "unknown"),
 )
-async def test_exception_handling(hass: HomeAssistant, error) -> None:
+async def exception_handling(
+    exc: Exception,
+    base_error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test exception handling."""
-    exc, base_error = error
     with (
         mocked_stations(),
         patch(
@@ -131,11 +161,16 @@ async def test_exception_handling(hass: HomeAssistant, error) -> None:
             {},
         )
         await hass.async_block_till_done()
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": base_error}
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["errors"]).to_equal({"base": base_error})
 
 
-async def test_lat_lon_not_specified(hass: HomeAssistant) -> None:
+@test
+async def lat_lon_not_specified(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that the import step works when coordinates are not specified."""
     with (
         mocked_ec(),
@@ -152,12 +187,17 @@ async def test_lat_lon_not_specified(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": config_entries.SOURCE_USER}, data=fake_config
         )
         await hass.async_block_till_done()
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"] == FAKE_CONFIG
-        assert result["title"] == FAKE_TITLE
+        expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+        expect(result["data"]).to_equal(FAKE_CONFIG)
+        expect(result["title"]).to_equal(FAKE_TITLE)
 
 
-async def test_coordinates_without_station(hass: HomeAssistant) -> None:
+@test
+async def coordinates_without_station(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test setup with coordinates but no station ID."""
     with (
         mocked_ec(),
@@ -167,7 +207,6 @@ async def test_coordinates_without_station(hass: HomeAssistant) -> None:
             return_value=True,
         ),
     ):
-        # Config with coordinates but no station
         config_no_station = {
             CONF_LANGUAGE: "English",
             CONF_LATITUDE: 42.42,
@@ -180,6 +219,6 @@ async def test_coordinates_without_station(hass: HomeAssistant) -> None:
             flow["flow_id"], config_no_station
         )
         await hass.async_block_till_done()
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"] == FAKE_CONFIG
-        assert result["title"] == FAKE_TITLE
+        expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+        expect(result["data"]).to_equal(FAKE_CONFIG)
+        expect(result["title"]).to_equal(FAKE_TITLE)
