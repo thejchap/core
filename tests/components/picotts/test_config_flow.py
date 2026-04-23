@@ -1,8 +1,10 @@
 """Test the Pico TTS config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components import tts
@@ -15,11 +17,28 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    hass as hass_fixture,
+    issue_registry as issue_registry_fx,
+    mock_network,
+)
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+from ._fixtures import mock_setup_entry as mock_setup_entry_fx
 
 
-async def test_user_step(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry_fx),
+) -> None:
+    """Wire mock_network and mock_setup_entry for every test."""
+
+
+@test
+async def user_step(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+) -> None:
     """Test user step create entry result."""
     with patch(
         "homeassistant.components.picotts.shutil.which",
@@ -28,8 +47,8 @@ async def test_user_step(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> No
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] is None
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_be(None)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -39,16 +58,15 @@ async def test_user_step(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> No
         )
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "Pico TTS es-ES"
-        assert result["data"] == {
-            CONF_LANG: "es-ES",
-        }
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal("Pico TTS es-ES")
+        expect(result["data"]).to_equal({CONF_LANG: "es-ES"})
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_step_binary_not_found(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def user_step_binary_not_found(
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test user step aborts when binary not found."""
     with patch(
@@ -59,12 +77,14 @@ async def test_user_step_binary_not_found(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "binary_not_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("binary_not_found")
 
 
-async def test_already_configured(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test user step already configured entry."""
     with patch(
@@ -77,8 +97,8 @@ async def test_already_configured(
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] is None
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_be(None)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -87,31 +107,40 @@ async def test_already_configured(
             },
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
-        assert len(mock_setup_entry.mock_calls) == 0
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
+        expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_import_flow(
-    hass: HomeAssistant,
-    issue_registry: ir.IssueRegistry,
+@test
+async def import_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry_fx),
 ) -> None:
     """Test the import flow."""
     with patch(
         "homeassistant.components.picotts.shutil.which",
         return_value="/usr/local/bin/pico2wave",
     ):
-        assert not hass.config_entries.async_entries(DOMAIN)
-        assert await async_setup_component(
-            hass,
-            tts.DOMAIN,
-            {tts.DOMAIN: {CONF_PLATFORM: DOMAIN}},
-        )
+        expect(bool(hass.config_entries.async_entries(DOMAIN))).to_be(False)
+        expect(
+            bool(
+                await async_setup_component(
+                    hass,
+                    tts.DOMAIN,
+                    {tts.DOMAIN: {CONF_PLATFORM: DOMAIN}},
+                )
+            )
+        ).to_be(True)
         await hass.async_block_till_done()
-        assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+        expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
         config_entry = hass.config_entries.async_entries(DOMAIN)[0]
-        assert config_entry.state is config_entries.ConfigEntryState.LOADED
-        assert issue_registry.async_get_issue(
-            domain=DOMAIN,
-            issue_id=f"deprecated_yaml_{DOMAIN}",
-        )
+        expect(config_entry.state).to_be(config_entries.ConfigEntryState.LOADED)
+        expect(
+            bool(
+                issue_registry.async_get_issue(
+                    domain=DOMAIN,
+                    issue_id=f"deprecated_yaml_{DOMAIN}",
+                )
+            )
+        ).to_be(True)
