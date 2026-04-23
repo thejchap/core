@@ -1,6 +1,10 @@
 """Test the Nobø Ecohub config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, PropertyMock, patch
+
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.nobo_hub.const import CONF_OVERRIDE_TYPE, DOMAIN
@@ -8,11 +12,19 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.nobo_hub._fixtures import mock_setup_entry, mock_unload_entry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_configure_with_discover(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def configure_with_discover(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test configure with discover."""
     with patch(
@@ -22,8 +34,8 @@ async def test_configure_with_discover(
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -31,9 +43,9 @@ async def test_configure_with_discover(
             "device": "1.1.1.1",
         },
     )
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {}
-    assert result2["step_id"] == "selected"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({})
+    expect(result2["step_id"]).to_equal("selected")
 
     with (
         patch("pynobo.nobo.async_connect_hub", return_value=True) as mock_connect,
@@ -52,20 +64,23 @@ async def test_configure_with_discover(
         )
         await hass.async_block_till_done()
 
-        assert result3["type"] is FlowResultType.CREATE_ENTRY
-        assert result3["title"] == "My Nobø Ecohub"
-        assert result3["data"] == {
-            "ip_address": "1.1.1.1",
-            "serial": "123456789012",
-            "auto_discovered": True,
-        }
+        expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result3["title"]).to_equal("My Nobø Ecohub")
+        expect(result3["data"]).to_equal(
+            {
+                "ip_address": "1.1.1.1",
+                "serial": "123456789012",
+                "auto_discovered": True,
+            }
+        )
         mock_connect.assert_awaited_once_with("1.1.1.1", "123456789012")
-        mock_setup_entry.assert_awaited_once()
+        mock_setup.assert_awaited_once()
 
 
-async def test_configure_manual(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+@test
+async def configure_manual(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test manual configuration when no hubs are discovered."""
     with patch(
@@ -75,9 +90,9 @@ async def test_configure_manual(
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {}
-        assert result["step_id"] == "manual"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({})
+        expect(result["step_id"]).to_equal("manual")
 
     with (
         patch("pynobo.nobo.async_connect_hub", return_value=True) as mock_connect,
@@ -97,20 +112,23 @@ async def test_configure_manual(
         )
         await hass.async_block_till_done()
 
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
-        assert result2["title"] == "My Nobø Ecohub"
-        assert result2["data"] == {
-            "serial": "123456789012",
-            "ip_address": "1.1.1.1",
-            "auto_discovered": False,
-        }
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result2["title"]).to_equal("My Nobø Ecohub")
+        expect(result2["data"]).to_equal(
+            {
+                "serial": "123456789012",
+                "ip_address": "1.1.1.1",
+                "auto_discovered": False,
+            }
+        )
         mock_connect.assert_awaited_once_with("1.1.1.1", "123456789012")
-        mock_setup_entry.assert_awaited_once()
+        mock_setup.assert_awaited_once()
 
 
-async def test_configure_user_selected_manual(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+@test
+async def configure_user_selected_manual(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test configuration when user selects manual."""
     with patch(
@@ -127,9 +145,9 @@ async def test_configure_user_selected_manual(
             "device": "manual",
         },
     )
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {}
-    assert result2["step_id"] == "manual"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({})
+    expect(result2["step_id"]).to_equal("manual")
 
     with (
         patch("pynobo.nobo.async_connect_hub", return_value=True) as mock_connect,
@@ -149,18 +167,23 @@ async def test_configure_user_selected_manual(
         )
         await hass.async_block_till_done()
 
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
-        assert result2["title"] == "My Nobø Ecohub"
-        assert result2["data"] == {
-            "serial": "123456789012",
-            "ip_address": "1.1.1.1",
-            "auto_discovered": False,
-        }
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result2["title"]).to_equal("My Nobø Ecohub")
+        expect(result2["data"]).to_equal(
+            {
+                "serial": "123456789012",
+                "ip_address": "1.1.1.1",
+                "auto_discovered": False,
+            }
+        )
         mock_connect.assert_awaited_once_with("1.1.1.1", "123456789012")
-        mock_setup_entry.assert_awaited_once()
+        mock_setup.assert_awaited_once()
 
 
-async def test_configure_invalid_serial_suffix(hass: HomeAssistant) -> None:
+@test
+async def configure_invalid_serial_suffix(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid serial suffix error."""
     with patch(
         "pynobo.nobo.async_discover_hubs",
@@ -181,11 +204,14 @@ async def test_configure_invalid_serial_suffix(hass: HomeAssistant) -> None:
         {"serial_suffix": "ABC"},
     )
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "invalid_serial"}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": "invalid_serial"})
 
 
-async def test_configure_invalid_serial_undiscovered(hass: HomeAssistant) -> None:
+@test
+async def configure_invalid_serial_undiscovered(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid serial error."""
     with patch(
         "pynobo.nobo.async_discover_hubs",
@@ -200,11 +226,14 @@ async def test_configure_invalid_serial_undiscovered(hass: HomeAssistant) -> Non
         {"ip_address": "1.1.1.1", "serial": "123456789"},
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_serial"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_serial"})
 
 
-async def test_configure_invalid_ip_address(hass: HomeAssistant) -> None:
+@test
+async def configure_invalid_ip_address(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid ip address error."""
     with patch(
         "pynobo.nobo.async_discover_hubs",
@@ -219,11 +248,14 @@ async def test_configure_invalid_ip_address(hass: HomeAssistant) -> None:
         {"serial": "123456789012", "ip_address": "ABCD"},
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_ip"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_ip"})
 
 
-async def test_configure_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def configure_cannot_connect(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     with patch(
         "pynobo.nobo.async_discover_hubs",
@@ -248,15 +280,16 @@ async def test_configure_cannot_connect(hass: HomeAssistant) -> None:
             result2["flow_id"],
             {"serial_suffix": "012"},
         )
-        assert result3["type"] is FlowResultType.FORM
-        assert result3["errors"] == {"base": "cannot_connect"}
+        expect(result3["type"]).to_be(FlowResultType.FORM)
+        expect(result3["errors"]).to_equal({"base": "cannot_connect"})
         mock_connect.assert_awaited_once_with("1.1.1.1", "123456789012")
 
 
-async def test_options_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_unload_entry: AsyncMock,
+@test
+async def options_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup: AsyncMock = Depends(mock_setup_entry),
+    mock_unload: AsyncMock = Depends(mock_unload_entry),
 ) -> None:
     """Test the options flow."""
     config_entry = MockConfigEntry(
@@ -265,13 +298,13 @@ async def test_options_flow(
         data={"serial": "123456789012", "ip_address": "1.1.1.1", "auto_discover": True},
     )
     config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
-    mock_setup_entry.reset_mock()
+    mock_setup.reset_mock()
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -281,12 +314,12 @@ async def test_options_flow(
     )
     await hass.async_block_till_done()
 
-    assert mock_unload_entry.await_count == 1
-    assert mock_setup_entry.await_count == 1
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {CONF_OVERRIDE_TYPE: "Constant"}
-    mock_unload_entry.reset_mock()
-    mock_setup_entry.reset_mock()
+    expect(mock_unload.await_count).to_equal(1)
+    expect(mock_setup.await_count).to_equal(1)
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal({CONF_OVERRIDE_TYPE: "Constant"})
+    mock_unload.reset_mock()
+    mock_setup.reset_mock()
 
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     result = await hass.config_entries.options.async_configure(
@@ -297,7 +330,7 @@ async def test_options_flow(
     )
     await hass.async_block_till_done()
 
-    assert mock_unload_entry.await_count == 1
-    assert mock_setup_entry.await_count == 1
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {CONF_OVERRIDE_TYPE: "Now"}
+    expect(mock_unload.await_count).to_equal(1)
+    expect(mock_setup.await_count).to_equal(1)
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal({CONF_OVERRIDE_TYPE: "Now"})
