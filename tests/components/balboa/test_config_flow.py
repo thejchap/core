@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 from pybalboa.exceptions import SpaConnectionError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.balboa.const import CONF_SYNC_TIME, DOMAIN
@@ -13,6 +13,8 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from tests.common import MockConfigEntry
+from tests.components.balboa._fixtures import client
+from tests.hass_fixtures import hass, mock_network
 
 TEST_HOST = "1.1.1.1"
 TEST_DATA = {CONF_HOST: TEST_HOST}
@@ -22,13 +24,24 @@ TEST_DHCP_SERVICE_INFO = DhcpServiceInfo(
 )
 
 
-async def test_form(hass: HomeAssistant, client: MagicMock) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    client: MagicMock = Depends(client),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -46,12 +59,17 @@ async def test_form(hass: HomeAssistant, client: MagicMock) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["data"] == TEST_DATA
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result2["data"]).to_equal(TEST_DATA)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_cannot_connect(hass: HomeAssistant, client: MagicMock) -> None:
+@test
+async def form_cannot_connect(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    client: MagicMock = Depends(client),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -66,11 +84,16 @@ async def test_form_cannot_connect(hass: HomeAssistant, client: MagicMock) -> No
             result["flow_id"], TEST_DATA
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_spa_not_configured(hass: HomeAssistant, client: MagicMock) -> None:
+@test
+async def form_spa_not_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    client: MagicMock = Depends(client),
+) -> None:
     """Test we handle spa not configured error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -85,11 +108,16 @@ async def test_form_spa_not_configured(hass: HomeAssistant, client: MagicMock) -
             result["flow_id"], TEST_DATA
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_unknown_error(hass: HomeAssistant, client: MagicMock) -> None:
+@test
+async def unknown_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    client: MagicMock = Depends(client),
+) -> None:
     """Test we handle unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -105,11 +133,16 @@ async def test_unknown_error(hass: HomeAssistant, client: MagicMock) -> None:
             TEST_DATA,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_already_configured(hass: HomeAssistant, client: MagicMock) -> None:
+@test
+async def already_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    client: MagicMock = Depends(client),
+) -> None:
     """Test when provided credentials are already configured."""
     MockConfigEntry(domain=DOMAIN, data=TEST_DATA, unique_id=TEST_MAC).add_to_hass(hass)
 
@@ -117,8 +150,8 @@ async def test_already_configured(hass: HomeAssistant, client: MagicMock) -> Non
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -136,11 +169,16 @@ async def test_already_configured(hass: HomeAssistant, client: MagicMock) -> Non
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result2["reason"]).to_equal("already_configured")
 
 
-async def test_options_flow(hass: HomeAssistant, client: MagicMock) -> None:
+@test
+async def options_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    client: MagicMock = Depends(client),
+) -> None:
     """Test specifying non default settings using options flow."""
     config_entry = MockConfigEntry(domain=DOMAIN, data=TEST_DATA, unique_id=TEST_MAC)
     config_entry.add_to_hass(hass)
@@ -150,8 +188,8 @@ async def test_options_flow(hass: HomeAssistant, client: MagicMock) -> None:
 
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("init")
 
     with patch(
         "homeassistant.components.balboa.async_setup_entry",
@@ -163,11 +201,16 @@ async def test_options_flow(hass: HomeAssistant, client: MagicMock) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert dict(config_entry.options) == {CONF_SYNC_TIME: True}
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(dict(config_entry.options)).to_equal({CONF_SYNC_TIME: True})
 
 
-async def test_dhcp_discovery(hass: HomeAssistant, client: MagicMock) -> None:
+@test
+async def dhcp_discovery(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    client: MagicMock = Depends(client),
+) -> None:
     """Test we can process the discovery from dhcp."""
     with patch(
         "homeassistant.components.balboa.config_flow.SpaClient.__aenter__",
@@ -179,26 +222,29 @@ async def test_dhcp_discovery(hass: HomeAssistant, client: MagicMock) -> None:
             data=TEST_DHCP_SERVICE_INFO,
         )
 
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "FakeSpa"
-        assert result["data"] == TEST_DATA
-        assert result["result"].unique_id == TEST_MAC
+        expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+        expect(result["title"]).to_equal("FakeSpa")
+        expect(result["data"]).to_equal(TEST_DATA)
+        expect(result["result"].unique_id).to_equal(TEST_MAC)
 
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": config_entries.SOURCE_DHCP},
             data=TEST_DHCP_SERVICE_INFO,
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_dhcp_discovery_updates_host(
-    hass: HomeAssistant, client: MagicMock
+@test
+async def dhcp_discovery_updates_host(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    client: MagicMock = Depends(client),
 ) -> None:
     """Test dhcp discovery updates host and aborts."""
     entry = MockConfigEntry(domain=DOMAIN, data=TEST_DATA, unique_id=TEST_MAC)
@@ -212,21 +258,22 @@ async def test_dhcp_discovery_updates_host(
         data=TEST_DHCP_SERVICE_INFO,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert entry.data[CONF_HOST] == updated_ip
+    expect(entry.data[CONF_HOST]).to_equal(updated_ip)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "reason"),
-    [
-        (SpaConnectionError, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("cannot_connect", SpaConnectionError, "cannot_connect"),
+    test.case("unknown", Exception, "unknown"),
 )
-async def test_dhcp_discovery_failed(
-    hass: HomeAssistant, client: MagicMock, side_effect: Exception, reason: str
+async def dhcp_discovery_failed(
+    side_effect: type[Exception],
+    reason: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    client: MagicMock = Depends(client),
 ) -> None:
     """Test failed setup from dhcp."""
     with patch(
@@ -239,12 +286,15 @@ async def test_dhcp_discovery_failed(
             context={"source": config_entries.SOURCE_DHCP},
             data=TEST_DHCP_SERVICE_INFO,
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == reason
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result["reason"]).to_equal(reason)
 
 
-async def test_dhcp_discovery_manual_user_setup(
-    hass: HomeAssistant, client: MagicMock
+@test
+async def dhcp_discovery_manual_user_setup(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    client: MagicMock = Depends(client),
 ) -> None:
     """Test dhcp discovery with manual user setup."""
     with patch(
@@ -257,13 +307,13 @@ async def test_dhcp_discovery_manual_user_setup(
             data=TEST_DHCP_SERVICE_INFO,
         )
 
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
 
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": config_entries.SOURCE_USER},
         )
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -271,5 +321,5 @@ async def test_dhcp_discovery_manual_user_setup(
         )
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"] == TEST_DATA
+        expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+        expect(result["data"]).to_equal(TEST_DATA)
