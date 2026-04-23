@@ -1,31 +1,62 @@
 """Test the Hi-Link HLK-SW16 config flow."""
 
 import asyncio
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.hlk_sw16.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _mock_zeroconf() -> MagicMock:
+    """Patch zeroconf so tests don't require a real zeroconf instance."""
+    from zeroconf import DNSCache
+
+    with (
+        patch("homeassistant.components.zeroconf.HaZeroconf") as mock_zc,
+        patch("homeassistant.components.zeroconf.discovery.AsyncServiceBrowser"),
+    ):
+        zc = mock_zc.return_value
+        zc.async_add_service_listener = AsyncMock()
+        zc.async_remove_service_listener = AsyncMock()
+        zc.async_register_service = AsyncMock()
+        zc.async_update_service = AsyncMock()
+        zc.cache = DNSCache()
+        yield mock_zc
+
+
+@fixture
+def _trigger_executor(
+    _mn: None = Depends(mock_network),
+    _mz: MagicMock = Depends(_mock_zeroconf),
+) -> None:
+    """Trigger the hook executor path."""
+    return None
+
 
 class MockSW16Client:
     """Class to mock the SW16Client client."""
 
-    def __init__(self, fail) -> None:
+    def __init__(self, fail: bool) -> None:
         """Initialise client with failure modes."""
         self.fail = fail
         self.disconnect_callback = None
         self.in_transaction = False
         self.active_transaction = None
 
-    async def setup(self):
+    async def setup(self) -> asyncio.Future:
         """Mock successful setup."""
         fut = asyncio.Future()
         fut.set_result(True)
         return fut
 
-    async def status(self):
+    async def status(self) -> asyncio.Future:
         """Mock status based on failure mode."""
         self.in_transaction = True
         self.active_transaction = asyncio.Future()
@@ -36,27 +67,27 @@ class MockSW16Client:
         self.active_transaction.set_result(True)
         return self.active_transaction
 
-    def stop(self):
+    def stop(self) -> None:
         """Mock client stop."""
         self.in_transaction = False
         self.active_transaction = None
 
 
-async def create_mock_hlk_sw16_connection(fail):
+async def create_mock_hlk_sw16_connection(fail: bool) -> MockSW16Client:
     """Create a mock HLK-SW16 client."""
     client = MockSW16Client(fail)
     await client.setup()
     return client
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@test
+async def form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     conf = {
         "host": "127.0.0.1",
@@ -84,14 +115,11 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "127.0.0.1:8080"
-    assert result2["data"] == {
-        "host": "127.0.0.1",
-        "port": 8080,
-    }
-    assert len(mock_setup.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("127.0.0.1:8080")
+    expect(result2["data"]).to_equal({"host": "127.0.0.1", "port": 8080})
+    expect(len(mock_setup.mock_calls)).to_equal(1)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
     mock_hlk_sw16_connection = await create_mock_hlk_sw16_connection(False)
 
@@ -102,26 +130,26 @@ async def test_form(hass: HomeAssistant) -> None:
         result3 = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({})
 
     result4 = await hass.config_entries.flow.async_configure(
         result3["flow_id"],
         conf,
     )
 
-    assert result4["type"] is FlowResultType.ABORT
-    assert result4["reason"] == "already_configured"
+    expect(result4["type"]).to_be(FlowResultType.ABORT)
+    expect(result4["reason"]).to_equal("already_configured")
 
 
-async def test_import(hass: HomeAssistant) -> None:
+@test
+async def import_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_IMPORT}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     conf = {
         "host": "127.0.0.1",
@@ -149,17 +177,15 @@ async def test_import(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "127.0.0.1:8080"
-    assert result2["data"] == {
-        "host": "127.0.0.1",
-        "port": 8080,
-    }
-    assert len(mock_setup.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("127.0.0.1:8080")
+    expect(result2["data"]).to_equal({"host": "127.0.0.1", "port": 8080})
+    expect(len(mock_setup.mock_calls)).to_equal(1)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_data(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_data(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -181,11 +207,12 @@ async def test_form_invalid_data(hass: HomeAssistant) -> None:
             conf,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -206,5 +233,5 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             conf,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
