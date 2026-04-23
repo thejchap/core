@@ -1,9 +1,9 @@
 """Test the Fibaro config flow."""
 
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from pyfibaro.fibaro_client import FibaroAuthenticationFailed, FibaroConnectFailed
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.fibaro import DOMAIN
@@ -13,11 +13,23 @@ from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult, FlowResultType
 
-from .conftest import TEST_NAME, TEST_PASSWORD, TEST_URL, TEST_USERNAME
-
 from tests.common import MockConfigEntry
+from tests.components.fibaro._fixtures import (
+    TEST_NAME,
+    TEST_PASSWORD,
+    TEST_URL,
+    TEST_USERNAME,
+    mock_config_entry,
+    mock_fibaro_client,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import hass as hass_fixture
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry", "mock_fibaro_client")
+
+@fixture
+def _trigger_executor() -> None:
+    """Trigger the hook executor path."""
+    return None
 
 
 async def _recovery_after_failure_works(
@@ -37,14 +49,16 @@ async def _recovery_after_failure_works(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_NAME
-    assert result["data"] == {
-        CONF_URL: TEST_URL,
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: TEST_PASSWORD,
-        CONF_IMPORT_PLUGINS: False,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_NAME)
+    expect(result["data"]).to_equal(
+        {
+            CONF_URL: TEST_URL,
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: TEST_PASSWORD,
+            CONF_IMPORT_PLUGINS: False,
+        }
+    )
 
 
 async def _recovery_after_reauth_failure_works(
@@ -60,19 +74,24 @@ async def _recovery_after_reauth_failure_works(
         user_input={CONF_PASSWORD: "other_fake_password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-async def test_config_flow_user_initiated_success(hass: HomeAssistant) -> None:
+@test
+async def config_flow_user_initiated_success(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_fibaro_client: Mock = Depends(mock_fibaro_client),
+) -> None:
     """Successful flow manually initialized by the user."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -83,27 +102,32 @@ async def test_config_flow_user_initiated_success(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_NAME
-    assert result["data"] == {
-        CONF_URL: TEST_URL,
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: TEST_PASSWORD,
-        CONF_IMPORT_PLUGINS: False,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_NAME)
+    expect(result["data"]).to_equal(
+        {
+            CONF_URL: TEST_URL,
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: TEST_PASSWORD,
+            CONF_IMPORT_PLUGINS: False,
+        }
+    )
 
 
-async def test_config_flow_user_initiated_auth_failure(
-    hass: HomeAssistant, mock_fibaro_client: Mock
+@test
+async def config_flow_user_initiated_auth_failure(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_fibaro_client: Mock = Depends(mock_fibaro_client),
 ) -> None:
     """Authentication failure in flow manually initialized by the user."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     mock_fibaro_client.connect_with_credentials.side_effect = (
         FibaroAuthenticationFailed()
@@ -118,24 +142,27 @@ async def test_config_flow_user_initiated_auth_failure(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
     await _recovery_after_failure_works(hass, mock_fibaro_client, result)
 
 
-async def test_config_flow_user_initiated_connect_failure(
-    hass: HomeAssistant, mock_fibaro_client: Mock
+@test
+async def config_flow_user_initiated_connect_failure(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_fibaro_client: Mock = Depends(mock_fibaro_client),
 ) -> None:
     """Unknown failure in flow manually initialized by the user."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     mock_fibaro_client.connect_with_credentials.side_effect = FibaroConnectFailed()
 
@@ -148,41 +175,47 @@ async def test_config_flow_user_initiated_connect_failure(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     await _recovery_after_failure_works(hass, mock_fibaro_client, result)
 
 
-async def test_reauth_success(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def reauth_success(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_fibaro_client: Mock = Depends(mock_fibaro_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Successful reauth flow initialized by the user."""
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_PASSWORD: "other_fake_password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-async def test_reauth_connect_failure(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_fibaro_client: Mock,
+@test
+async def reauth_connect_failure(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_fibaro_client: Mock = Depends(mock_fibaro_client),
 ) -> None:
-    """Successful reauth flow initialized by the user."""
+    """Reauth flow with connect failure."""
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
 
     mock_fibaro_client.connect_with_credentials.side_effect = FibaroConnectFailed()
 
@@ -191,23 +224,25 @@ async def test_reauth_connect_failure(
         user_input={CONF_PASSWORD: "other_fake_password"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     await _recovery_after_reauth_failure_works(hass, mock_fibaro_client, result)
 
 
-async def test_reauth_auth_failure(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_fibaro_client: Mock,
+@test
+async def reauth_auth_failure(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_fibaro_client: Mock = Depends(mock_fibaro_client),
 ) -> None:
-    """Successful reauth flow initialized by the user."""
+    """Reauth flow with auth failure."""
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
 
     mock_fibaro_client.connect_with_credentials.side_effect = (
         FibaroAuthenticationFailed()
@@ -218,14 +253,21 @@ async def test_reauth_auth_failure(
         user_input={CONF_PASSWORD: "other_fake_password"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
     await _recovery_after_reauth_failure_works(hass, mock_fibaro_client, result)
 
 
-@pytest.mark.parametrize("url_path", ["/api/", "/api", "/", ""])
-async def test_normalize_url(url_path: str) -> None:
+@test.cases(
+    test.case("api_slash", url_path="/api/"),
+    test.case("api_no_slash", url_path="/api"),
+    test.case("just_slash", url_path="/"),
+    test.case("empty", url_path=""),
+)
+async def normalize_url(url_path: str) -> None:
     """Test that the url is normalized for different entered values."""
-    assert _normalize_url(f"http://192.168.1.1{url_path}") == "http://192.168.1.1/api/"
+    expect(_normalize_url(f"http://192.168.1.1{url_path}")).to_equal(
+        "http://192.168.1.1/api/"
+    )
