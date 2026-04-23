@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from mcstatus import BedrockServer, JavaServer, LegacyServer
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.minecraft_server.api import MinecraftServerType
 from homeassistant.components.minecraft_server.const import DOMAIN
@@ -11,6 +12,11 @@ from homeassistant.const import CONF_ADDRESS, CONF_TYPE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import (
+    bedrock_mock_config_entry,
+    java_mock_config_entry,
+    legacy_java_mock_config_entry,
+)
 from .const import (
     TEST_ADDRESS,
     TEST_BEDROCK_STATUS_RESPONSE,
@@ -21,20 +27,29 @@ from .const import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 
 USER_INPUT = {
     CONF_ADDRESS: TEST_ADDRESS,
 }
 
 
-async def test_full_flow_java(hass: HomeAssistant) -> None:
-    """Test config entry in case of a successful connection to a Java Edition server."""
+@fixture
+def _trigger_executor(_mn: None = Depends(mock_network)) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def full_flow_java(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test config entry for a Java Edition server."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -54,20 +69,21 @@ async def test_full_flow_java(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == USER_INPUT[CONF_ADDRESS]
-        assert result["data"][CONF_ADDRESS] == TEST_ADDRESS
-        assert result["data"][CONF_TYPE] == MinecraftServerType.JAVA_EDITION
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(USER_INPUT[CONF_ADDRESS])
+        expect(result["data"][CONF_ADDRESS]).to_equal(TEST_ADDRESS)
+        expect(result["data"][CONF_TYPE]).to_equal(MinecraftServerType.JAVA_EDITION)
 
 
-async def test_full_flow_bedrock(hass: HomeAssistant) -> None:
-    """Test config entry in case of a successful connection to a Bedrock Edition server."""
+@test
+async def full_flow_bedrock(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test config entry for a Bedrock Edition server."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -83,20 +99,21 @@ async def test_full_flow_bedrock(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == USER_INPUT[CONF_ADDRESS]
-        assert result["data"][CONF_ADDRESS] == TEST_ADDRESS
-        assert result["data"][CONF_TYPE] == MinecraftServerType.BEDROCK_EDITION
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(USER_INPUT[CONF_ADDRESS])
+        expect(result["data"][CONF_ADDRESS]).to_equal(TEST_ADDRESS)
+        expect(result["data"][CONF_TYPE]).to_equal(MinecraftServerType.BEDROCK_EDITION)
 
 
-async def test_full_flow_legacy_java(hass: HomeAssistant) -> None:
-    """Test config entry in case of a successful connection to a legacy Java Edition server."""
+@test
+async def full_flow_legacy_java(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test config entry for a legacy Java Edition server."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -120,14 +137,18 @@ async def test_full_flow_legacy_java(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == USER_INPUT[CONF_ADDRESS]
-        assert result["data"][CONF_ADDRESS] == TEST_ADDRESS
-        assert result["data"][CONF_TYPE] == MinecraftServerType.LEGACY_JAVA_EDITION
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(USER_INPUT[CONF_ADDRESS])
+        expect(result["data"][CONF_ADDRESS]).to_equal(TEST_ADDRESS)
+        expect(result["data"][CONF_TYPE]).to_equal(
+            MinecraftServerType.LEGACY_JAVA_EDITION
+        )
 
 
-async def test_service_already_configured_java(
-    hass: HomeAssistant, java_mock_config_entry: MockConfigEntry
+@test
+async def service_already_configured_java(
+    hass: HomeAssistant = Depends(hass_fixture),
+    java_mock_config_entry: MockConfigEntry = Depends(java_mock_config_entry),
 ) -> None:
     """Test config flow abort if a Java Edition server is already configured."""
     java_mock_config_entry.add_to_hass(hass)
@@ -149,12 +170,14 @@ async def test_service_already_configured_java(
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_service_already_configured_bedrock(
-    hass: HomeAssistant, bedrock_mock_config_entry: MockConfigEntry
+@test
+async def service_already_configured_bedrock(
+    hass: HomeAssistant = Depends(hass_fixture),
+    bedrock_mock_config_entry: MockConfigEntry = Depends(bedrock_mock_config_entry),
 ) -> None:
     """Test config flow abort if a Bedrock Edition server is already configured."""
     bedrock_mock_config_entry.add_to_hass(hass)
@@ -172,12 +195,16 @@ async def test_service_already_configured_bedrock(
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_service_already_configured_legacy_java(
-    hass: HomeAssistant, legacy_java_mock_config_entry: MockConfigEntry
+@test
+async def service_already_configured_legacy_java(
+    hass: HomeAssistant = Depends(hass_fixture),
+    legacy_java_mock_config_entry: MockConfigEntry = Depends(
+        legacy_java_mock_config_entry
+    ),
 ) -> None:
     """Test config flow abort if a legacy Java Edition server is already configured."""
     legacy_java_mock_config_entry.add_to_hass(hass)
@@ -203,12 +230,13 @@ async def test_service_already_configured_legacy_java(
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_recovery_java(hass: HomeAssistant) -> None:
-    """Test config flow recovery with a Java Edition server (successful connection after a failed connection)."""
+@test
+async def recovery_java(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test config flow recovery with a Java Edition server."""
     with (
         patch(
             "homeassistant.components.minecraft_server.api.BedrockServer.lookup",
@@ -230,8 +258,8 @@ async def test_recovery_java(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": "cannot_connect"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     with (
         patch(
@@ -250,14 +278,15 @@ async def test_recovery_java(hass: HomeAssistant) -> None:
         result2 = await hass.config_entries.flow.async_configure(
             flow_id=result["flow_id"], user_input=USER_INPUT
         )
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
-        assert result2["title"] == USER_INPUT[CONF_ADDRESS]
-        assert result2["data"][CONF_ADDRESS] == TEST_ADDRESS
-        assert result2["data"][CONF_TYPE] == MinecraftServerType.JAVA_EDITION
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result2["title"]).to_equal(USER_INPUT[CONF_ADDRESS])
+        expect(result2["data"][CONF_ADDRESS]).to_equal(TEST_ADDRESS)
+        expect(result2["data"][CONF_TYPE]).to_equal(MinecraftServerType.JAVA_EDITION)
 
 
-async def test_recovery_bedrock(hass: HomeAssistant) -> None:
-    """Test config flow recovery with a Bedrock Edition server (successful connection after a failed connection)."""
+@test
+async def recovery_bedrock(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test config flow recovery with a Bedrock Edition server."""
     with (
         patch(
             "homeassistant.components.minecraft_server.api.BedrockServer.lookup",
@@ -279,8 +308,8 @@ async def test_recovery_bedrock(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": "cannot_connect"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     with (
         patch(
@@ -295,14 +324,17 @@ async def test_recovery_bedrock(hass: HomeAssistant) -> None:
         result2 = await hass.config_entries.flow.async_configure(
             flow_id=result["flow_id"], user_input=USER_INPUT
         )
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
-        assert result2["title"] == USER_INPUT[CONF_ADDRESS]
-        assert result2["data"][CONF_ADDRESS] == TEST_ADDRESS
-        assert result2["data"][CONF_TYPE] == MinecraftServerType.BEDROCK_EDITION
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result2["title"]).to_equal(USER_INPUT[CONF_ADDRESS])
+        expect(result2["data"][CONF_ADDRESS]).to_equal(TEST_ADDRESS)
+        expect(result2["data"][CONF_TYPE]).to_equal(
+            MinecraftServerType.BEDROCK_EDITION
+        )
 
 
-async def test_recovery_legacy_java(hass: HomeAssistant) -> None:
-    """Test config flow recovery with a legacy Java Edition server (successful connection after a failed connection)."""
+@test
+async def recovery_legacy_java(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test config flow recovery with a legacy Java Edition server."""
     with (
         patch(
             "homeassistant.components.minecraft_server.api.BedrockServer.lookup",
@@ -324,8 +356,8 @@ async def test_recovery_legacy_java(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=USER_INPUT
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": "cannot_connect"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     with (
         patch(
@@ -348,7 +380,9 @@ async def test_recovery_legacy_java(hass: HomeAssistant) -> None:
         result2 = await hass.config_entries.flow.async_configure(
             flow_id=result["flow_id"], user_input=USER_INPUT
         )
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
-        assert result2["title"] == USER_INPUT[CONF_ADDRESS]
-        assert result2["data"][CONF_ADDRESS] == TEST_ADDRESS
-        assert result2["data"][CONF_TYPE] == MinecraftServerType.LEGACY_JAVA_EDITION
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result2["title"]).to_equal(USER_INPUT[CONF_ADDRESS])
+        expect(result2["data"][CONF_ADDRESS]).to_equal(TEST_ADDRESS)
+        expect(result2["data"][CONF_TYPE]).to_equal(
+            MinecraftServerType.LEGACY_JAVA_EDITION
+        )
