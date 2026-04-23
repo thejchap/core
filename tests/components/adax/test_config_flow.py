@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 import adax_local
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.adax.const import (
@@ -19,6 +20,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass, mock_network
 
 TEST_DATA = {
     ACCOUNT_ID: 12345,
@@ -26,13 +28,23 @@ TEST_DATA = {
 }
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_be(None)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -40,7 +52,7 @@ async def test_form(hass: HomeAssistant) -> None:
             CONNECTION_TYPE: CLOUD,
         },
     )
-    assert result2["type"] is FlowResultType.FORM
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
 
     with (
         patch(
@@ -58,17 +70,23 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == str(TEST_DATA["account_id"])
-    assert result3["data"] == {
-        ACCOUNT_ID: TEST_DATA["account_id"],
-        CONF_PASSWORD: TEST_DATA["password"],
-        CONNECTION_TYPE: CLOUD,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result3["title"]).to_equal(str(TEST_DATA["account_id"]))
+    expect(result3["data"]).to_equal(
+        {
+            ACCOUNT_ID: TEST_DATA["account_id"],
+            CONF_PASSWORD: TEST_DATA["password"],
+            CONNECTION_TYPE: CLOUD,
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -80,7 +98,7 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             CONNECTION_TYPE: CLOUD,
         },
     )
-    assert result2["type"] is FlowResultType.FORM
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
 
     with patch(
         "adax.get_adax_token",
@@ -90,11 +108,15 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             result2["flow_id"],
             TEST_DATA,
         )
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "cannot_connect"}
+    expect(result3["type"] is FlowResultType.FORM).to_be(True)
+    expect(result3["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_flow_entry_already_exists(hass: HomeAssistant) -> None:
+@test
+async def flow_entry_already_exists(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test user input for config_entry that already exists."""
 
     first_entry = MockConfigEntry(
@@ -115,7 +137,7 @@ async def test_flow_entry_already_exists(hass: HomeAssistant) -> None:
             CONNECTION_TYPE: CLOUD,
         },
     )
-    assert result2["type"] is FlowResultType.FORM
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
 
     with patch("adax.get_adax_token", return_value="token"):
         result3 = await hass.config_entries.flow.async_configure(
@@ -124,20 +146,21 @@ async def test_flow_entry_already_exists(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.ABORT
-    assert result3["reason"] == "already_configured"
+    expect(result3["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result3["reason"]).to_equal("already_configured")
 
 
-# local API:
-
-
-async def test_local_create_entry(hass: HomeAssistant) -> None:
+@test
+async def local_create_entry(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test create entry from user input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_be(None)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -145,7 +168,7 @@ async def test_local_create_entry(hass: HomeAssistant) -> None:
             CONNECTION_TYPE: LOCAL,
         },
     )
-    assert result2["type"] is FlowResultType.FORM
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
 
     test_data = {
         WIFI_SSID: "ssid",
@@ -173,17 +196,23 @@ async def test_local_create_entry(hass: HomeAssistant) -> None:
         )
 
     test_data[CONNECTION_TYPE] = LOCAL
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "8383838"
-    assert result["data"] == {
-        "connection_type": "Local",
-        "ip_address": "192.168.1.4",
-        "token": "token",
-        "unique_id": "8383838",
-    }
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal("8383838")
+    expect(result["data"]).to_equal(
+        {
+            "connection_type": "Local",
+            "ip_address": "192.168.1.4",
+            "token": "token",
+            "unique_id": "8383838",
+        }
+    )
 
 
-async def test_local_flow_entry_already_exists(hass: HomeAssistant) -> None:
+@test
+async def local_flow_entry_already_exists(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test user input for config_entry that already exists."""
 
     test_data = {
@@ -201,8 +230,8 @@ async def test_local_flow_entry_already_exists(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_be(None)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -210,7 +239,7 @@ async def test_local_flow_entry_already_exists(hass: HomeAssistant) -> None:
             CONNECTION_TYPE: LOCAL,
         },
     )
-    assert result2["type"] is FlowResultType.FORM
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
 
     test_data = {
         WIFI_SSID: "ssid",
@@ -229,18 +258,22 @@ async def test_local_flow_entry_already_exists(hass: HomeAssistant) -> None:
             test_data,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_local_connection_error(hass: HomeAssistant) -> None:
+@test
+async def local_connection_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test connection error."""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_be(None)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -248,7 +281,7 @@ async def test_local_connection_error(hass: HomeAssistant) -> None:
             CONNECTION_TYPE: LOCAL,
         },
     )
-    assert result2["type"] is FlowResultType.FORM
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
 
     test_data = {
         WIFI_SSID: "ssid",
@@ -264,18 +297,22 @@ async def test_local_connection_error(hass: HomeAssistant) -> None:
             test_data,
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_local_heater_not_available(hass: HomeAssistant) -> None:
+@test
+async def local_heater_not_available(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test connection error."""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_be(None)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -283,7 +320,7 @@ async def test_local_heater_not_available(hass: HomeAssistant) -> None:
             CONNECTION_TYPE: LOCAL,
         },
     )
-    assert result2["type"] is FlowResultType.FORM
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
 
     test_data = {
         WIFI_SSID: "ssid",
@@ -299,18 +336,22 @@ async def test_local_heater_not_available(hass: HomeAssistant) -> None:
             test_data,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "heater_not_available"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("heater_not_available")
 
 
-async def test_local_heater_not_found(hass: HomeAssistant) -> None:
+@test
+async def local_heater_not_found(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test connection error."""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_be(None)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -318,7 +359,7 @@ async def test_local_heater_not_found(hass: HomeAssistant) -> None:
             CONNECTION_TYPE: LOCAL,
         },
     )
-    assert result2["type"] is FlowResultType.FORM
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
 
     test_data = {
         WIFI_SSID: "ssid",
@@ -334,18 +375,22 @@ async def test_local_heater_not_found(hass: HomeAssistant) -> None:
             test_data,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "heater_not_found"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("heater_not_found")
 
 
-async def test_local_invalid_wifi_cred(hass: HomeAssistant) -> None:
+@test
+async def local_invalid_wifi_cred(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test connection error."""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_be(None)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -353,7 +398,7 @@ async def test_local_invalid_wifi_cred(hass: HomeAssistant) -> None:
             CONNECTION_TYPE: LOCAL,
         },
     )
-    assert result2["type"] is FlowResultType.FORM
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
 
     test_data = {
         WIFI_SSID: "ssid",
@@ -369,5 +414,5 @@ async def test_local_invalid_wifi_cred(hass: HomeAssistant) -> None:
             test_data,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "invalid_auth"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("invalid_auth")
