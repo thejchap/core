@@ -5,8 +5,8 @@ from http import HTTPStatus
 import logging
 from unittest.mock import patch
 
-import pytest
-import requests_mock
+import requests_mock as requests_mock_lib
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components import notify
 from homeassistant.components.clicksend_tts import notify as cs_tts
@@ -14,8 +14,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
 from tests.common import assert_setup_component
+from tests.hass_fixtures import LogCapture, caplog, hass
 
-# Infos from https://developers.clicksend.com/docs/rest/v3/#testing
 TEST_USERNAME = "nocredit"
 TEST_API_KEY = "D83DED51-9E35-4D42-9BB9-0E34B7CA85AE"
 TEST_VOICE_NUMBER = "+61411111111"
@@ -37,55 +37,56 @@ CONFIG = {
 }
 
 
-@pytest.fixture
-def mock_clicksend_tts_notify():
-    """Mock Clicksend TTS notify service."""
-    with patch(
-        "homeassistant.components.clicksend_tts.notify.get_service", autospec=True
-    ) as ns:
-        yield ns
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
 
 
 async def setup_notify(hass: HomeAssistant) -> None:
     """Test setup."""
     with assert_setup_component(1, notify.DOMAIN) as config:
-        assert await async_setup_component(hass, notify.DOMAIN, CONFIG)
-        assert config[notify.DOMAIN]
+        expect(await async_setup_component(hass, notify.DOMAIN, CONFIG)).to_be(True)
+        expect(bool(config[notify.DOMAIN])).to_be(True)
         await hass.async_block_till_done()
 
 
-async def test_no_notify_service(
-    hass: HomeAssistant, mock_clicksend_tts_notify, caplog: pytest.LogCaptureFixture
+@test
+async def no_notify_service(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test missing platform notify service instance."""
     caplog.set_level(logging.ERROR)
-    mock_clicksend_tts_notify.return_value = None
-    await setup_notify(hass)
-    await hass.async_block_till_done()
-    assert mock_clicksend_tts_notify.called
-    assert "Failed to initialize notification service clicksend_tts" in caplog.text
+    with patch(
+        "homeassistant.components.clicksend_tts.notify.get_service", autospec=True
+    ) as mock_clicksend_tts_notify:
+        mock_clicksend_tts_notify.return_value = None
+        await setup_notify(hass)
+        await hass.async_block_till_done()
+        expect(mock_clicksend_tts_notify.called).to_be(True)
+        expect(
+            "Failed to initialize notification service clicksend_tts" in caplog.text
+        ).to_be(True)
 
 
-async def test_send_simple_message(hass: HomeAssistant) -> None:
+@test
+async def send_simple_message(hass: HomeAssistant = Depends(hass)) -> None:
     """Test sending a simple message with success."""
 
-    with requests_mock.Mocker() as mock:
-        # Mocking authentication endpoint
+    with requests_mock_lib.Mocker() as mock:
         mock.get(
             f"{cs_tts.BASE_API_URL}/account",
             status_code=HTTPStatus.OK,
         )
 
-        # Mocking TTS endpoint
         mock.post(
             f"{cs_tts.BASE_API_URL}/voice/send",
             status_code=HTTPStatus.OK,
         )
 
-        # Setting up integration
         await setup_notify(hass)
 
-        # Sending message
         data = {
             notify.ATTR_MESSAGE: TEST_MESSAGE,
         }
@@ -93,9 +94,8 @@ async def test_send_simple_message(hass: HomeAssistant) -> None:
             notify.DOMAIN, cs_tts.DEFAULT_NAME, data, blocking=True
         )
 
-        # Checking if everything went well
-        assert mock.called
-        assert mock.call_count == 2
+        expect(mock.called).to_be(True)
+        expect(mock.call_count).to_equal(2)
 
         expected_body = {
             "messages": [
@@ -108,19 +108,17 @@ async def test_send_simple_message(hass: HomeAssistant) -> None:
                 }
             ]
         }
-        assert mock.last_request.json() == expected_body
+        expect(mock.last_request.json()).to_equal(expected_body)
 
         expected_content_type = "application/json"
-        assert (
-            "Content-Type" in mock.last_request.headers
-            and mock.last_request.headers["Content-Type"] == expected_content_type
+        expect("Content-Type" in mock.last_request.headers).to_be(True)
+        expect(mock.last_request.headers["Content-Type"]).to_equal(
+            expected_content_type
         )
 
         encoded_auth = base64.b64encode(
             f"{TEST_USERNAME}:{TEST_API_KEY}".encode()
         ).decode()
         expected_auth = f"Basic {encoded_auth}"
-        assert (
-            "Authorization" in mock.last_request.headers
-            and mock.last_request.headers["Authorization"] == expected_auth
-        )
+        expect("Authorization" in mock.last_request.headers).to_be(True)
+        expect(mock.last_request.headers["Authorization"]).to_equal(expected_auth)
