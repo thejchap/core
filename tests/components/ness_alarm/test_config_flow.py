@@ -1,9 +1,11 @@
 """Test the Ness Alarm config flow."""
 
+from __future__ import annotations
+
 from types import MappingProxyType
 from unittest.mock import AsyncMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.components.ness_alarm.const import (
@@ -23,17 +25,35 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.ness_alarm._fixtures import (
+    mock_client,
+    mock_config_entry,
+    mock_setup_entry,
+    post_connection_delay,
+)
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_user_flow(
-    hass: HomeAssistant, mock_client: AsyncMock, mock_setup_entry: AsyncMock
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _delay: None = Depends(post_connection_delay),
+) -> None:
+    """Wire module-level fixtures (post_connection_delay is autouse in pytest)."""
+
+
+@test
+async def user_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_client),
+    mock_setup_entry_: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test successful user config flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -44,19 +64,24 @@ async def test_user_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Ness Alarm 192.168.1.100:1992"
-    assert result["data"] == {
-        CONF_HOST: "192.168.1.100",
-        CONF_PORT: 1992,
-        CONF_INFER_ARMING_STATE: False,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
-    mock_client.close.assert_awaited_once()
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Ness Alarm 192.168.1.100:1992")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "192.168.1.100",
+            CONF_PORT: 1992,
+            CONF_INFER_ARMING_STATE: False,
+        }
+    )
+    expect(len(mock_setup_entry_.mock_calls)).to_equal(1)
+    client.close.assert_awaited_once()
 
 
-async def test_user_flow_with_infer_arming_state(
-    hass: HomeAssistant, mock_client: AsyncMock, mock_setup_entry: AsyncMock
+@test
+async def user_flow_with_infer_arming_state(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(mock_client),
+    _mse: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user flow with infer_arming_state enabled."""
     result = await hass.config_entries.flow.async_init(
@@ -72,15 +97,17 @@ async def test_user_flow_with_infer_arming_state(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_INFER_ARMING_STATE] is True
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_INFER_ARMING_STATE]).to_be(True)
 
 
-async def test_user_flow_already_configured(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def user_flow_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we abort if already configured."""
-    mock_config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -95,32 +122,28 @@ async def test_user_flow_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (OSError("Connection refused"), "cannot_connect"),
-        (TimeoutError, "cannot_connect"),
-        (RuntimeError("Unexpected"), "unknown"),
-    ],
+@test.cases(
+    test.case("os_error", OSError("Connection refused"), "cannot_connect"),
+    test.case("timeout", TimeoutError, "cannot_connect"),
+    test.case("runtime", RuntimeError("Unexpected"), "unknown"),
 )
-async def test_user_flow_connection_error_recovery(
-    hass: HomeAssistant,
-    mock_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    side_effect: Exception,
+async def user_flow_connection_error_recovery(
+    side_effect: type[Exception] | Exception,
     expected_error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_client),
+    _mse: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test connection error handling and recovery."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    # First attempt fails
-    mock_client.update.side_effect = side_effect
+    client.update.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -130,13 +153,12 @@ async def test_user_flow_connection_error_recovery(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": expected_error}
-    mock_client.close.assert_awaited_once()
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": expected_error})
+    client.close.assert_awaited_once()
 
-    # Second attempt succeeds
-    mock_client.update.side_effect = None
-    mock_client.close.reset_mock()
+    client.update.side_effect = None
+    client.close.reset_mock()
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -146,11 +168,14 @@ async def test_user_flow_connection_error_recovery(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_import_yaml_config(
-    hass: HomeAssistant, mock_client: AsyncMock, mock_setup_entry: AsyncMock
+@test
+async def import_yaml_config(
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_client),
+    mock_setup_entry_: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test importing YAML configuration."""
     result = await hass.config_entries.flow.async_init(
@@ -171,46 +196,48 @@ async def test_import_yaml_config(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Ness Alarm 192.168.1.72:4999"
-    assert result["data"] == {
-        CONF_HOST: "192.168.1.72",
-        CONF_PORT: 4999,
-        CONF_INFER_ARMING_STATE: False,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Ness Alarm 192.168.1.72:4999")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "192.168.1.72",
+            CONF_PORT: 4999,
+            CONF_INFER_ARMING_STATE: False,
+        }
+    )
 
-    # Check that subentries were created for zones with names preserved
-    assert len(result["subentries"]) == 2
-    assert result["subentries"][0]["title"] == "Zone 1"
-    assert result["subentries"][0]["unique_id"] == "zone_1"
-    assert result["subentries"][0]["data"][CONF_TYPE] == BinarySensorDeviceClass.MOTION
-    assert result["subentries"][0]["data"][CONF_ZONE_NAME] == "Garage"
-    assert result["subentries"][1]["title"] == "Zone 5"
-    assert result["subentries"][1]["unique_id"] == "zone_5"
-    assert result["subentries"][1]["data"][CONF_TYPE] == BinarySensorDeviceClass.DOOR
-    assert result["subentries"][1]["data"][CONF_ZONE_NAME] == "Front Door"
+    expect(len(result["subentries"])).to_equal(2)
+    expect(result["subentries"][0]["title"]).to_equal("Zone 1")
+    expect(result["subentries"][0]["unique_id"]).to_equal("zone_1")
+    expect(result["subentries"][0]["data"][CONF_TYPE]).to_equal(
+        BinarySensorDeviceClass.MOTION
+    )
+    expect(result["subentries"][0]["data"][CONF_ZONE_NAME]).to_equal("Garage")
+    expect(result["subentries"][1]["title"]).to_equal("Zone 5")
+    expect(result["subentries"][1]["unique_id"]).to_equal("zone_5")
+    expect(result["subentries"][1]["data"][CONF_TYPE]).to_equal(
+        BinarySensorDeviceClass.DOOR
+    )
+    expect(result["subentries"][1]["data"][CONF_ZONE_NAME]).to_equal("Front Door")
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    mock_client.close.assert_awaited_once()
+    expect(len(mock_setup_entry_.mock_calls)).to_equal(1)
+    client.close.assert_awaited_once()
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_reason"),
-    [
-        (OSError("Connection refused"), "cannot_connect"),
-        (TimeoutError, "cannot_connect"),
-        (RuntimeError("Unexpected"), "unknown"),
-    ],
+@test.cases(
+    test.case("os_error", OSError("Connection refused"), "cannot_connect"),
+    test.case("timeout", TimeoutError, "cannot_connect"),
+    test.case("runtime", RuntimeError("Unexpected"), "unknown"),
 )
-async def test_import_yaml_config_errors(
-    hass: HomeAssistant,
-    mock_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    side_effect: Exception,
+async def import_yaml_config_errors(
+    side_effect: type[Exception] | Exception,
     expected_reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_client),
+    _mse: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
-    """Test importing YAML configuration."""
-    mock_client.update.side_effect = side_effect
+    """Test importing YAML configuration error paths."""
+    client.update.side_effect = side_effect
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_IMPORT},
@@ -229,15 +256,17 @@ async def test_import_yaml_config_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == expected_reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(expected_reason)
 
 
-async def test_import_already_configured(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def import_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we abort import if already configured."""
-    mock_config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -249,26 +278,23 @@ async def test_import_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_reason"),
-    [
-        (OSError("Connection refused"), "cannot_connect"),
-        (TimeoutError, "cannot_connect"),
-        (RuntimeError("Unexpected"), "unknown"),
-    ],
+@test.cases(
+    test.case("os_error", OSError("Connection refused"), "cannot_connect"),
+    test.case("timeout", TimeoutError, "cannot_connect"),
+    test.case("runtime", RuntimeError("Unexpected"), "unknown"),
 )
-async def test_import_connection_errors(
-    hass: HomeAssistant,
-    mock_client: AsyncMock,
-    side_effect: Exception,
+async def import_connection_errors(
+    side_effect: type[Exception] | Exception,
     expected_reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_client),
 ) -> None:
     """Test import aborts on connection errors."""
-    mock_client.update.side_effect = side_effect
+    client.update.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -280,12 +306,13 @@ async def test_import_connection_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == expected_reason
-    mock_client.close.assert_awaited_once()
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(expected_reason)
+    client.close.assert_awaited_once()
 
 
-async def test_zone_subentry_flow(hass: HomeAssistant) -> None:
+@test
+async def zone_subentry_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test adding a zone through subentry flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -301,8 +328,8 @@ async def test_zone_subentry_flow(hass: HomeAssistant) -> None:
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -312,13 +339,16 @@ async def test_zone_subentry_flow(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Zone 1"
-    assert result["data"][CONF_ZONE_NUMBER] == 1
-    assert result["data"][CONF_TYPE] == BinarySensorDeviceClass.DOOR
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Zone 1")
+    expect(result["data"][CONF_ZONE_NUMBER]).to_equal(1)
+    expect(result["data"][CONF_TYPE]).to_equal(BinarySensorDeviceClass.DOOR)
 
 
-async def test_zone_subentry_already_configured(hass: HomeAssistant) -> None:
+@test
+async def zone_subentry_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test adding a zone that already exists."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -357,11 +387,14 @@ async def test_zone_subentry_already_configured(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {CONF_ZONE_NUMBER: "already_configured"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({CONF_ZONE_NUMBER: "already_configured"})
 
 
-async def test_zone_subentry_reconfigure(hass: HomeAssistant) -> None:
+@test
+async def zone_subentry_reconfigure(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reconfiguring an existing zone."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -388,9 +421,9 @@ async def test_zone_subentry_reconfigure(hass: HomeAssistant) -> None:
 
     result = await entry.start_subentry_reconfigure_flow(hass, "zone_1_id")
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-    assert result["description_placeholders"][CONF_ZONE_NUMBER] == "1"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(result["description_placeholders"][CONF_ZONE_NUMBER]).to_equal("1")
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -399,11 +432,12 @@ async def test_zone_subentry_reconfigure(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test options flow to configure alarm panel settings."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -416,8 +450,8 @@ async def test_options_flow(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -426,11 +460,14 @@ async def test_options_flow(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_SHOW_HOME_MODE] is False
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options[CONF_SHOW_HOME_MODE]).to_be(False)
 
 
-async def test_options_flow_enable_home_mode(hass: HomeAssistant) -> None:
+@test
+async def options_flow_enable_home_mode(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test options flow to enable home mode."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -450,5 +487,5 @@ async def test_options_flow_enable_home_mode(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_SHOW_HOME_MODE] is True
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options[CONF_SHOW_HOME_MODE]).to_be(True)
