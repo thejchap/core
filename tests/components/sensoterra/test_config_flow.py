@@ -3,8 +3,8 @@
 from unittest.mock import AsyncMock
 
 from jwt import DecodeError
-import pytest
 from sensoterra.customerapi import InvalidAuth as StInvalidAuth, Timeout as StTimeout
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.sensoterra.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -15,19 +15,32 @@ from homeassistant.data_entry_flow import FlowResultType
 from .const import API_EMAIL, API_PASSWORD, API_TOKEN, HASS_UUID
 
 from tests.common import MockConfigEntry
+from tests.components.sensoterra._fixtures import (
+    mock_customer_api_client,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import hass, mock_network
 
 
-async def test_full_flow(
-    hass: HomeAssistant,
-    mock_customer_api_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def full_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_customer_api_client: AsyncMock = Depends(mock_customer_api_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we can finish a config flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({})
 
     hass.data["core.uuid"] = HASS_UUID
     result = await hass.config_entries.flow.async_configure(
@@ -37,18 +50,23 @@ async def test_full_flow(
             CONF_PASSWORD: API_PASSWORD,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == API_EMAIL
-    assert result["data"] == {
-        CONF_TOKEN: API_TOKEN,
-        CONF_EMAIL: API_EMAIL,
-    }
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(API_EMAIL)
+    expect(result["data"]).to_equal(
+        {
+            CONF_TOKEN: API_TOKEN,
+            CONF_EMAIL: API_EMAIL,
+        }
+    )
 
-    assert len(mock_customer_api_client.mock_calls) == 1
+    expect(len(mock_customer_api_client.mock_calls)).to_equal(1)
 
 
-async def test_form_unique_id(
-    hass: HomeAssistant, mock_customer_api_client: AsyncMock
+@test
+async def form_unique_id(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_customer_api_client: AsyncMock = Depends(mock_customer_api_client),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
@@ -66,26 +84,28 @@ async def test_form_unique_id(
             CONF_PASSWORD: API_PASSWORD,
         },
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert len(mock_customer_api_client.mock_calls) == 1
+    expect(len(mock_customer_api_client.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (StTimeout, "cannot_connect"),
-        (StInvalidAuth("Invalid credentials"), "invalid_auth"),
-        (DecodeError("Bad API token"), "invalid_access_token"),
-    ],
+@test.cases(
+    test.case("timeout", StTimeout, "cannot_connect"),
+    test.case(
+        "invalid_auth", StInvalidAuth("Invalid credentials"), "invalid_auth"
+    ),
+    test.case(
+        "decode_error", DecodeError("Bad API token"), "invalid_access_token"
+    ),
 )
-async def test_form_exceptions(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_customer_api_client: AsyncMock,
-    exception: Exception,
+async def form_exceptions(
+    exception: type[Exception] | Exception,
     error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_customer_api_client: AsyncMock = Depends(mock_customer_api_client),
 ) -> None:
     """Test we handle config form exceptions."""
     result = await hass.config_entries.flow.async_init(
@@ -102,8 +122,8 @@ async def test_form_exceptions(
             CONF_PASSWORD: API_PASSWORD,
         },
     )
-    assert result["errors"] == {"base": error}
-    assert result["type"] is FlowResultType.FORM
+    expect(result["errors"]).to_equal({"base": error})
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
 
     mock_customer_api_client.get_token.side_effect = None
 
@@ -115,10 +135,12 @@ async def test_form_exceptions(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == API_EMAIL
-    assert result["data"] == {
-        CONF_TOKEN: API_TOKEN,
-        CONF_EMAIL: API_EMAIL,
-    }
-    assert len(mock_customer_api_client.mock_calls) == 2
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(API_EMAIL)
+    expect(result["data"]).to_equal(
+        {
+            CONF_TOKEN: API_TOKEN,
+            CONF_EMAIL: API_EMAIL,
+        }
+    )
+    expect(len(mock_customer_api_client.mock_calls)).to_equal(2)
