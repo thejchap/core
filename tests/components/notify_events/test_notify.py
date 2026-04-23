@@ -1,5 +1,7 @@
 """The tests for notify_events."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.notify import (
     ATTR_DATA,
     ATTR_MESSAGE,
@@ -13,9 +15,17 @@ from homeassistant.components.notify_events.notify import (
 from homeassistant.core import HomeAssistant
 
 from tests.common import async_mock_service
+from tests.hass_fixtures import hass
 
 
-async def test_send_msg(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def send_msg(hass: HomeAssistant = Depends(hass)) -> None:
     """Test notify.events service."""
     notify_calls = async_mock_service(hass, NOTIFY_DOMAIN, "events")
 
@@ -33,12 +43,12 @@ async def test_send_msg(hass: HomeAssistant) -> None:
         blocking=True,
     )
 
-    assert len(notify_calls) == 1
+    expect(len(notify_calls)).to_equal(1)
     call = notify_calls[-1]
 
-    assert call.domain == NOTIFY_DOMAIN
-    assert call.service == "events"
-    assert call.data.get(ATTR_MESSAGE) == "message content"
-    assert call.data.get(ATTR_DATA).get(ATTR_TOKEN) == "XYZ"
-    assert call.data.get(ATTR_DATA).get(ATTR_LEVEL) == "warning"
-    assert call.data.get(ATTR_DATA).get(ATTR_PRIORITY) == "high"
+    expect(call.domain).to_equal(NOTIFY_DOMAIN)
+    expect(call.service).to_equal("events")
+    expect(call.data.get(ATTR_MESSAGE)).to_equal("message content")
+    expect(call.data.get(ATTR_DATA).get(ATTR_TOKEN)).to_equal("XYZ")
+    expect(call.data.get(ATTR_DATA).get(ATTR_LEVEL)).to_equal("warning")
+    expect(call.data.get(ATTR_DATA).get(ATTR_PRIORITY)).to_equal("high")
