@@ -1,8 +1,11 @@
 """Test the P1 Monitor config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 from p1monitor import P1MonitorError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.p1_monitor.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -10,15 +13,23 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-async def test_full_user_flow(hass: HomeAssistant) -> None:
+
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def full_user_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     with (
         patch(
@@ -33,16 +44,17 @@ async def test_full_user_flow(hass: HomeAssistant) -> None:
             user_input={CONF_HOST: "example.com", CONF_PORT: 80},
         )
 
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2.get("title") == "P1 Monitor"
-    assert result2.get("data") == {CONF_HOST: "example.com", CONF_PORT: 80}
-    assert isinstance(result2["data"][CONF_PORT], int)
+    expect(result2.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2.get("title")).to_equal("P1 Monitor")
+    expect(result2.get("data")).to_equal({CONF_HOST: "example.com", CONF_PORT: 80})
+    expect(isinstance(result2["data"][CONF_PORT], int)).to_be(True)
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert len(mock_p1monitor.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+    expect(len(mock_p1monitor.mock_calls)).to_equal(1)
 
 
-async def test_api_error(hass: HomeAssistant) -> None:
+@test
+async def api_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle cannot connect error."""
     with patch(
         "homeassistant.components.p1_monitor.coordinator.P1Monitor.settings",
@@ -54,5 +66,5 @@ async def test_api_error(hass: HomeAssistant) -> None:
             data={CONF_HOST: "example.com", CONF_PORT: 80},
         )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {"base": "cannot_connect"}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({"base": "cannot_connect"})

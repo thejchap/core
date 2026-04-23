@@ -1,9 +1,11 @@
 """Test the PECO Outage Counter config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 from peco import HttpError, IncompatibleMeterError, UnresponsiveMeterError
-import pytest
+from tryke import Depends, expect, fixture, test
 from voluptuous.error import Invalid
 
 from homeassistant import config_entries
@@ -11,15 +13,23 @@ from homeassistant.components.peco.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-async def test_form(hass: HomeAssistant) -> None:
+
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
+    expect(result["step_id"]).to_equal("user")
 
     with patch(
         "homeassistant.components.peco.async_setup_entry",
@@ -27,50 +37,48 @@ async def test_form(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "county": "PHILADELPHIA",
-            },
+            {"county": "PHILADELPHIA"},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Philadelphia Outage Count"
-    assert result2["data"] == {
-        "county": "PHILADELPHIA",
-    }
-    assert result2["context"]["unique_id"] == "PHILADELPHIA"
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Philadelphia Outage Count")
+    expect(result2["data"]).to_equal({"county": "PHILADELPHIA"})
+    expect(result2["context"]["unique_id"]).to_equal("PHILADELPHIA")
 
 
-async def test_invalid_county(hass: HomeAssistant) -> None:
-    """Test if the InvalidCounty error works."""
+@test
+async def invalid_county(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test the InvalidCounty error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    with (
-        patch(
-            "homeassistant.components.peco.async_setup_entry",
-            return_value=True,
-        ),
-        pytest.raises(Invalid),
+    raised: type[Exception] | None = None
+    with patch(
+        "homeassistant.components.peco.async_setup_entry",
+        return_value=True,
     ):
-        await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                "county": "INVALID_COUNTY_THAT_SHOULDNT_EXIST",
-            },
-        )
+        try:
+            await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                {"county": "INVALID_COUNTY_THAT_SHOULDNT_EXIST"},
+            )
+        except Invalid:
+            raised = Invalid
+    expect(raised).to_be(Invalid)
 
 
-async def test_meter_value_error(hass: HomeAssistant) -> None:
-    """Test if the MeterValueError error works."""
+@test
+async def meter_value_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test the MeterValueError path."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -81,98 +89,90 @@ async def test_meter_value_error(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"phone_number": "invalid_phone_number"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"phone_number": "invalid_phone_number"})
 
 
-async def test_incompatible_meter_error(hass: HomeAssistant) -> None:
-    """Test if the IncompatibleMeter error works."""
+@test
+async def incompatible_meter_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test the IncompatibleMeter error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with patch("peco.PecoOutageApi.meter_check", side_effect=IncompatibleMeterError()):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "county": "PHILADELPHIA",
-                "phone_number": "1234567890",
-            },
+            {"county": "PHILADELPHIA", "phone_number": "1234567890"},
         )
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "incompatible_meter"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("incompatible_meter")
 
 
-async def test_unresponsive_meter_error(hass: HomeAssistant) -> None:
-    """Test if the UnresponsiveMeter error works."""
+@test
+async def unresponsive_meter_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test the UnresponsiveMeter error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with patch("peco.PecoOutageApi.meter_check", side_effect=UnresponsiveMeterError()):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "county": "PHILADELPHIA",
-                "phone_number": "1234567890",
-            },
+            {"county": "PHILADELPHIA", "phone_number": "1234567890"},
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"phone_number": "unresponsive_meter"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"phone_number": "unresponsive_meter"})
 
 
-async def test_meter_http_error(hass: HomeAssistant) -> None:
-    """Test if the InvalidMeter error works."""
+@test
+async def meter_http_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test the HttpError path."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with patch("peco.PecoOutageApi.meter_check", side_effect=HttpError):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "county": "PHILADELPHIA",
-                "phone_number": "1234567890",
-            },
+            {"county": "PHILADELPHIA", "phone_number": "1234567890"},
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"phone_number": "http_error"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"phone_number": "http_error"})
 
 
-async def test_smart_meter(hass: HomeAssistant) -> None:
-    """Test if the Smart Meter step works."""
+@test
+async def smart_meter(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test the Smart Meter step."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with patch("peco.PecoOutageApi.meter_check", return_value=True):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "county": "PHILADELPHIA",
-                "phone_number": "1234567890",
-            },
+            {"county": "PHILADELPHIA", "phone_number": "1234567890"},
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Philadelphia - 1234567890"
-    assert result["data"]["phone_number"] == "1234567890"
-    assert result["context"]["unique_id"] == "PHILADELPHIA-1234567890"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Philadelphia - 1234567890")
+    expect(result["data"]["phone_number"]).to_equal("1234567890")
+    expect(result["context"]["unique_id"]).to_equal("PHILADELPHIA-1234567890")

@@ -1,10 +1,12 @@
 """Test the Panasonic Viera config flow."""
 
+from __future__ import annotations
+
 from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 
 from panasonic_viera import SOAPError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.panasonic_viera.const import (
@@ -26,9 +28,10 @@ from .conftest import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.fixture(autouse=True)
+@fixture
 def mock_setup_entry() -> Generator[AsyncMock]:
     """Mock setting up a config entry."""
     with patch(
@@ -38,15 +41,23 @@ def mock_setup_entry() -> Generator[AsyncMock]:
         yield mock_setup
 
 
-async def test_flow_non_encrypted(hass: HomeAssistant) -> None:
-    """Test flow without encryption."""
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Wire mock_network + mock_setup_entry for every test."""
 
+
+@test
+async def flow_non_encrypted(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test flow without encryption."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     mock_remote = get_mock_remote(encrypted=False)
 
@@ -59,20 +70,20 @@ async def test_flow_non_encrypted(hass: HomeAssistant) -> None:
             {**MOCK_BASIC_DATA},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_NAME
-    assert result["data"] == {**MOCK_CONFIG_DATA, ATTR_DEVICE_INFO: MOCK_DEVICE_INFO}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_NAME)
+    expect(result["data"]).to_equal({**MOCK_CONFIG_DATA, ATTR_DEVICE_INFO: MOCK_DEVICE_INFO})
 
 
-async def test_flow_not_connected_error(hass: HomeAssistant) -> None:
+@test
+async def flow_not_connected_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test flow with connection error."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with patch(
         "homeassistant.components.panasonic_viera.config_flow.RemoteControl",
@@ -83,20 +94,20 @@ async def test_flow_not_connected_error(hass: HomeAssistant) -> None:
             {**MOCK_BASIC_DATA},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_flow_unknown_abort(hass: HomeAssistant) -> None:
+@test
+async def flow_unknown_abort(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test flow with unknown error abortion."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with patch(
         "homeassistant.components.panasonic_viera.config_flow.RemoteControl",
@@ -107,21 +118,21 @@ async def test_flow_unknown_abort(hass: HomeAssistant) -> None:
             {**MOCK_BASIC_DATA},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_flow_encrypted_not_connected_pin_code_request(
-    hass: HomeAssistant,
+@test
+async def flow_encrypted_not_connected_pin_code_request(
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Test flow with encryption and PIN code request connection error abortion during pairing request step."""
-
+    """Test pairing-request connection error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     mock_remote = get_mock_remote(encrypted=True, request_error=TimeoutError)
 
@@ -134,19 +145,21 @@ async def test_flow_encrypted_not_connected_pin_code_request(
             {**MOCK_BASIC_DATA},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_flow_encrypted_unknown_pin_code_request(hass: HomeAssistant) -> None:
-    """Test flow with encryption and PIN code request unknown error abortion during pairing request step."""
-
+@test
+async def flow_encrypted_unknown_pin_code_request(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test pairing-request unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     mock_remote = get_mock_remote(encrypted=True, request_error=Exception)
 
@@ -159,19 +172,21 @@ async def test_flow_encrypted_unknown_pin_code_request(hass: HomeAssistant) -> N
             {**MOCK_BASIC_DATA},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_flow_encrypted_valid_pin_code(hass: HomeAssistant) -> None:
-    """Test flow with encryption and valid PIN code."""
-
+@test
+async def flow_encrypted_valid_pin_code(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test flow with encryption and valid PIN."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     mock_remote = get_mock_remote(
         encrypted=True,
@@ -188,32 +203,36 @@ async def test_flow_encrypted_valid_pin_code(hass: HomeAssistant) -> None:
             {**MOCK_BASIC_DATA},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PIN: "1234"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_NAME
-    assert result["data"] == {
-        **MOCK_CONFIG_DATA,
-        **MOCK_ENCRYPTION_DATA,
-        ATTR_DEVICE_INFO: MOCK_DEVICE_INFO,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_NAME)
+    expect(result["data"]).to_equal(
+        {
+            **MOCK_CONFIG_DATA,
+            **MOCK_ENCRYPTION_DATA,
+            ATTR_DEVICE_INFO: MOCK_DEVICE_INFO,
+        }
+    )
 
 
-async def test_flow_encrypted_invalid_pin_code_error(hass: HomeAssistant) -> None:
-    """Test flow with encryption and invalid PIN code error during pairing step."""
-
+@test
+async def flow_encrypted_invalid_pin_code_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test pairing invalid PIN error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     mock_remote = get_mock_remote(encrypted=True, authorize_error=SOAPError)
 
@@ -226,8 +245,8 @@ async def test_flow_encrypted_invalid_pin_code_error(hass: HomeAssistant) -> Non
             {**MOCK_BASIC_DATA},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     with patch(
         "homeassistant.components.panasonic_viera.config_flow.RemoteControl",
@@ -238,20 +257,22 @@ async def test_flow_encrypted_invalid_pin_code_error(hass: HomeAssistant) -> Non
             {CONF_PIN: "0000"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
-    assert result["errors"] == {"base": ERROR_INVALID_PIN_CODE}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
+    expect(result["errors"]).to_equal({"base": ERROR_INVALID_PIN_CODE})
 
 
-async def test_flow_encrypted_not_connected_abort(hass: HomeAssistant) -> None:
-    """Test flow with encryption and PIN code connection error abortion during pairing step."""
-
+@test
+async def flow_encrypted_not_connected_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test pairing step connection error abortion."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     mock_remote = get_mock_remote(encrypted=True, authorize_error=TimeoutError)
 
@@ -264,27 +285,29 @@ async def test_flow_encrypted_not_connected_abort(hass: HomeAssistant) -> None:
             {**MOCK_BASIC_DATA},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PIN: "0000"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_flow_encrypted_unknown_abort(hass: HomeAssistant) -> None:
-    """Test flow with encryption and PIN code unknown error abortion during pairing step."""
-
+@test
+async def flow_encrypted_unknown_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test pairing step unknown error abortion."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     mock_remote = get_mock_remote(encrypted=True, authorize_error=Exception)
 
@@ -297,21 +320,23 @@ async def test_flow_encrypted_unknown_abort(hass: HomeAssistant) -> None:
             {**MOCK_BASIC_DATA},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PIN: "0000"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_flow_non_encrypted_already_configured_abort(hass: HomeAssistant) -> None:
-    """Test flow without encryption and existing config entry abortion."""
-
+@test
+async def flow_non_encrypted_already_configured_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test existing entry abortion."""
     MockConfigEntry(
         domain=DOMAIN,
         unique_id="0.0.0.0",
@@ -324,13 +349,15 @@ async def test_flow_non_encrypted_already_configured_abort(hass: HomeAssistant) 
         data={**MOCK_BASIC_DATA},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_flow_encrypted_already_configured_abort(hass: HomeAssistant) -> None:
-    """Test flow with encryption and existing config entry abortion."""
-
+@test
+async def flow_encrypted_already_configured_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test existing encrypted entry abortion."""
     MockConfigEntry(
         domain=DOMAIN,
         unique_id="0.0.0.0",
@@ -343,13 +370,15 @@ async def test_flow_encrypted_already_configured_abort(hass: HomeAssistant) -> N
         data={**MOCK_BASIC_DATA},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_imported_flow_non_encrypted(hass: HomeAssistant) -> None:
+@test
+async def imported_flow_non_encrypted(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test imported flow without encryption."""
-
     mock_remote = get_mock_remote(encrypted=False)
 
     with patch(
@@ -362,14 +391,16 @@ async def test_imported_flow_non_encrypted(hass: HomeAssistant) -> None:
             data={**MOCK_CONFIG_DATA},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_NAME
-    assert result["data"] == {**MOCK_CONFIG_DATA, ATTR_DEVICE_INFO: MOCK_DEVICE_INFO}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_NAME)
+    expect(result["data"]).to_equal({**MOCK_CONFIG_DATA, ATTR_DEVICE_INFO: MOCK_DEVICE_INFO})
 
 
-async def test_imported_flow_encrypted_valid_pin_code(hass: HomeAssistant) -> None:
-    """Test imported flow with encryption and valid PIN code."""
-
+@test
+async def imported_flow_encrypted_valid_pin_code(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test imported flow with valid PIN."""
     mock_remote = get_mock_remote(
         encrypted=True,
         app_id="mock-app-id",
@@ -386,28 +417,30 @@ async def test_imported_flow_encrypted_valid_pin_code(hass: HomeAssistant) -> No
             data={**MOCK_CONFIG_DATA},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PIN: "1234"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_NAME
-    assert result["data"] == {
-        **MOCK_CONFIG_DATA,
-        **MOCK_ENCRYPTION_DATA,
-        ATTR_DEVICE_INFO: MOCK_DEVICE_INFO,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_NAME)
+    expect(result["data"]).to_equal(
+        {
+            **MOCK_CONFIG_DATA,
+            **MOCK_ENCRYPTION_DATA,
+            ATTR_DEVICE_INFO: MOCK_DEVICE_INFO,
+        }
+    )
 
 
-async def test_imported_flow_encrypted_invalid_pin_code_error(
-    hass: HomeAssistant,
+@test
+async def imported_flow_encrypted_invalid_pin_code_error(
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Test imported flow with encryption and invalid PIN code error during pairing step."""
-
+    """Test imported flow with invalid PIN."""
     mock_remote = get_mock_remote(encrypted=True, authorize_error=SOAPError)
 
     with patch(
@@ -420,8 +453,8 @@ async def test_imported_flow_encrypted_invalid_pin_code_error(
             data={**MOCK_CONFIG_DATA},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     with patch(
         "homeassistant.components.panasonic_viera.config_flow.RemoteControl",
@@ -432,14 +465,16 @@ async def test_imported_flow_encrypted_invalid_pin_code_error(
             {CONF_PIN: "0000"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
-    assert result["errors"] == {"base": ERROR_INVALID_PIN_CODE}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
+    expect(result["errors"]).to_equal({"base": ERROR_INVALID_PIN_CODE})
 
 
-async def test_imported_flow_encrypted_not_connected_abort(hass: HomeAssistant) -> None:
-    """Test imported flow with encryption and PIN code connection error abortion during pairing step."""
-
+@test
+async def imported_flow_encrypted_not_connected_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test imported flow pairing connection error."""
     mock_remote = get_mock_remote(encrypted=True, authorize_error=TimeoutError)
 
     with patch(
@@ -452,21 +487,23 @@ async def test_imported_flow_encrypted_not_connected_abort(hass: HomeAssistant) 
             data={**MOCK_CONFIG_DATA},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PIN: "0000"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_imported_flow_encrypted_unknown_abort(hass: HomeAssistant) -> None:
-    """Test imported flow with encryption and PIN code unknown error abortion during pairing step."""
-
+@test
+async def imported_flow_encrypted_unknown_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test imported flow pairing unknown error."""
     mock_remote = get_mock_remote(encrypted=True, authorize_error=Exception)
 
     with patch(
@@ -479,21 +516,23 @@ async def test_imported_flow_encrypted_unknown_abort(hass: HomeAssistant) -> Non
             data={**MOCK_CONFIG_DATA},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PIN: "0000"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_imported_flow_not_connected_error(hass: HomeAssistant) -> None:
-    """Test imported flow with connection error abortion."""
-
+@test
+async def imported_flow_not_connected_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test imported flow with connection error."""
     with patch(
         "homeassistant.components.panasonic_viera.config_flow.RemoteControl",
         side_effect=TimeoutError,
@@ -504,14 +543,16 @@ async def test_imported_flow_not_connected_error(hass: HomeAssistant) -> None:
             data={**MOCK_CONFIG_DATA},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_imported_flow_unknown_abort(hass: HomeAssistant) -> None:
-    """Test imported flow with unknown error abortion."""
-
+@test
+async def imported_flow_unknown_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test imported flow unknown error abortion."""
     with patch(
         "homeassistant.components.panasonic_viera.config_flow.RemoteControl",
         side_effect=Exception,
@@ -522,15 +563,15 @@ async def test_imported_flow_unknown_abort(hass: HomeAssistant) -> None:
             data={**MOCK_CONFIG_DATA},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_imported_flow_non_encrypted_already_configured_abort(
-    hass: HomeAssistant,
+@test
+async def imported_flow_non_encrypted_already_configured_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Test imported flow without encryption and existing config entry abortion."""
-
+    """Test imported flow existing entry abortion."""
     MockConfigEntry(
         domain=DOMAIN,
         unique_id="0.0.0.0",
@@ -543,15 +584,15 @@ async def test_imported_flow_non_encrypted_already_configured_abort(
         data={**MOCK_BASIC_DATA},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_imported_flow_encrypted_already_configured_abort(
-    hass: HomeAssistant,
+@test
+async def imported_flow_encrypted_already_configured_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Test imported flow with encryption and existing config entry abortion."""
-
+    """Test imported flow existing encrypted entry abortion."""
     MockConfigEntry(
         domain=DOMAIN,
         unique_id="0.0.0.0",
@@ -564,5 +605,5 @@ async def test_imported_flow_encrypted_already_configured_abort(
         data={**MOCK_BASIC_DATA},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

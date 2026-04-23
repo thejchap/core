@@ -1,8 +1,11 @@
 """Tests for Pegel Online config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 from aiohttp.client_exceptions import ClientError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.pegel_online.const import CONF_STATION, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -19,6 +22,8 @@ from . import PegelOnlineMock
 from .const import MOCK_CONFIG_ENTRY_DATA_DRESDEN, MOCK_NEARBY_STATIONS
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 
 MOCK_USER_DATA_STEP1 = {
     CONF_LOCATION: {CONF_LATITUDE: 51.0, CONF_LONGITUDE: 13.0},
@@ -28,13 +33,19 @@ MOCK_USER_DATA_STEP1 = {
 MOCK_USER_DATA_STEP2 = {CONF_STATION: "70272185-xxxx-xxxx-xxxx-43bea330dcae"}
 
 
-async def test_user(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def user(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test starting a flow by user."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -48,23 +59,26 @@ async def test_user(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=MOCK_USER_DATA_STEP1
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "select_station"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("select_station")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=MOCK_USER_DATA_STEP2
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"][CONF_STATION] == "70272185-xxxx-xxxx-xxxx-43bea330dcae"
-        assert result["title"] == "DRESDEN ELBE"
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"][CONF_STATION]).to_equal(
+            "70272185-xxxx-xxxx-xxxx-43bea330dcae"
+        )
+        expect(result["title"]).to_equal("DRESDEN ELBE")
 
         await hass.async_block_till_done()
 
-    assert mock_setup_entry.called
+    expect(mock_setup_entry.called).to_be(True)
 
 
-async def test_user_already_configured(hass: HomeAssistant) -> None:
-    """Test starting a flow by user with an already configured statioon."""
+@test
+async def user_already_configured(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test starting a flow by user with an already configured station."""
     mock_config = MockConfigEntry(
         domain=DOMAIN,
         data=MOCK_CONFIG_ENTRY_DATA_DRESDEN,
@@ -75,8 +89,8 @@ async def test_user_already_configured(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with patch(
         "homeassistant.components.pegel_online.config_flow.PegelOnline",
@@ -85,23 +99,24 @@ async def test_user_already_configured(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=MOCK_USER_DATA_STEP1
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "select_station"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("select_station")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=MOCK_USER_DATA_STEP2
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_connection_error(hass: HomeAssistant) -> None:
+@test
+async def connection_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test connection error during user flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -111,42 +126,43 @@ async def test_connection_error(hass: HomeAssistant) -> None:
             "homeassistant.components.pegel_online.config_flow.PegelOnline",
         ) as pegelonline,
     ):
-        # connection issue during setup
         pegelonline.return_value = PegelOnlineMock(side_effect=ClientError)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=MOCK_USER_DATA_STEP1
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
-        assert result["errors"]["base"] == "cannot_connect"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
+        expect(result["errors"]["base"]).to_equal("cannot_connect")
 
-        # connection issue solved
         pegelonline.return_value = PegelOnlineMock(nearby_stations=MOCK_NEARBY_STATIONS)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=MOCK_USER_DATA_STEP1
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "select_station"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("select_station")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=MOCK_USER_DATA_STEP2
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"][CONF_STATION] == "70272185-xxxx-xxxx-xxxx-43bea330dcae"
-        assert result["title"] == "DRESDEN ELBE"
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"][CONF_STATION]).to_equal(
+            "70272185-xxxx-xxxx-xxxx-43bea330dcae"
+        )
+        expect(result["title"]).to_equal("DRESDEN ELBE")
 
         await hass.async_block_till_done()
 
-    assert mock_setup_entry.called
+    expect(mock_setup_entry.called).to_be(True)
 
 
-async def test_user_no_stations(hass: HomeAssistant) -> None:
+@test
+async def user_no_stations(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test starting a flow by user which does not find any station."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -156,30 +172,30 @@ async def test_user_no_stations(hass: HomeAssistant) -> None:
             "homeassistant.components.pegel_online.config_flow.PegelOnline",
         ) as pegelonline,
     ):
-        # no stations found
         pegelonline.return_value = PegelOnlineMock(nearby_stations={})
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=MOCK_USER_DATA_STEP1
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
-        assert result["errors"][CONF_RADIUS] == "no_stations"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
+        expect(result["errors"][CONF_RADIUS]).to_equal("no_stations")
 
-        # stations found, go ahead
         pegelonline.return_value = PegelOnlineMock(nearby_stations=MOCK_NEARBY_STATIONS)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=MOCK_USER_DATA_STEP1
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "select_station"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("select_station")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=MOCK_USER_DATA_STEP2
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"][CONF_STATION] == "70272185-xxxx-xxxx-xxxx-43bea330dcae"
-        assert result["title"] == "DRESDEN ELBE"
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"][CONF_STATION]).to_equal(
+            "70272185-xxxx-xxxx-xxxx-43bea330dcae"
+        )
+        expect(result["title"]).to_equal("DRESDEN ELBE")
 
         await hass.async_block_till_done()
 
-    assert mock_setup_entry.called
+    expect(mock_setup_entry.called).to_be(True)
