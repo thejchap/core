@@ -1,9 +1,11 @@
 """Test the OpenRouter config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock
 
-import pytest
 from python_open_router import OpenRouterError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.open_router.const import (
     CONF_PROMPT,
@@ -15,39 +17,59 @@ from homeassistant.const import CONF_API_KEY, CONF_LLM_HASS_API, CONF_MODEL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from . import get_subentry_id, setup_integration
-
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+from . import get_subentry_id, setup_integration
+from ._fixtures import (
+    make_mock_config_entry,
+    mock_config_entry as mock_config_entry_fx,
+    mock_open_router_client as mock_open_router_client_fx,
+    mock_openai_client as mock_openai_client_fx,
+    mock_setup_entry as mock_setup_entry_fx,
+    mock_zeroconf,
+    setup_ha,
+)
 
 
-async def test_full_flow(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _zeroconf: object = Depends(mock_zeroconf),
+    _setup_ha: None = Depends(setup_ha),
+) -> None:
+    """Wire autouse fixtures for every test."""
+
+
+@test
+async def full_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test the full config flow."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_API_KEY: "bla"}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Test account"
-    assert result["data"] == {CONF_API_KEY: "bla"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Test account")
+    expect(result["data"]).to_equal({CONF_API_KEY: "bla"})
 
 
-async def test_second_account(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def second_account(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test that a second account with a different API key can be added."""
     mock_config_entry.add_to_hass(hass)
@@ -61,24 +83,21 @@ async def test_second_account(
         {CONF_API_KEY: "different_key"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Test account"
-    assert result["data"] == {CONF_API_KEY: "different_key"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Test account")
+    expect(result["data"]).to_equal({CONF_API_KEY: "different_key"})
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (OpenRouterError("exception"), "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("connect_error", OpenRouterError("exception"), "cannot_connect"),
+    test.case("unknown_error", Exception, "unknown"),
 )
-async def test_form_errors(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def form_errors(
+    exception: type[Exception] | Exception,
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test we handle errors from the OpenRouter API."""
     result = await hass.config_entries.flow.async_init(
@@ -92,8 +111,8 @@ async def test_form_errors(
         {CONF_API_KEY: "bla"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
     mock_open_router_client.get_key_data.side_effect = None
 
@@ -102,40 +121,41 @@ async def test_form_errors(
         {CONF_API_KEY: "bla"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_duplicate_entry(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def duplicate_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test aborting the flow if an entry already exists."""
-
     mock_config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_API_KEY: "bla"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_create_conversation_agent(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_openai_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def create_conversation_agent(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_openai_client: AsyncMock = Depends(mock_openai_client_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test creating a conversation agent."""
     await setup_integration(hass, mock_config_entry)
@@ -144,14 +164,16 @@ async def test_create_conversation_agent(
         (mock_config_entry.entry_id, "conversation"),
         context={"source": SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
+    expect(result["step_id"]).to_equal("init")
 
-    assert result["data_schema"].schema["model"].config["options"] == [
-        {"value": "openai/gpt-3.5-turbo", "label": "OpenAI: GPT-3.5 Turbo"},
-        {"value": "openai/gpt-4", "label": "OpenAI: GPT-4"},
-    ]
+    expect(result["data_schema"].schema["model"].config["options"]).to_equal(
+        [
+            {"value": "openai/gpt-3.5-turbo", "label": "OpenAI: GPT-3.5 Turbo"},
+            {"value": "openai/gpt-4", "label": "OpenAI: GPT-4"},
+        ]
+    )
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -163,20 +185,23 @@ async def test_create_conversation_agent(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_MODEL: "openai/gpt-3.5-turbo",
-        CONF_PROMPT: "you are an assistant",
-        CONF_LLM_HASS_API: ["assist"],
-        CONF_WEB_SEARCH: False,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_MODEL: "openai/gpt-3.5-turbo",
+            CONF_PROMPT: "you are an assistant",
+            CONF_LLM_HASS_API: ["assist"],
+            CONF_WEB_SEARCH: False,
+        }
+    )
 
 
-async def test_create_conversation_agent_no_control(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_openai_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def create_conversation_agent_no_control(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_openai_client: AsyncMock = Depends(mock_openai_client_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test creating a conversation agent without control over the LLM API."""
     await setup_integration(hass, mock_config_entry)
@@ -185,14 +210,16 @@ async def test_create_conversation_agent_no_control(
         (mock_config_entry.entry_id, "conversation"),
         context={"source": SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
+    expect(result["step_id"]).to_equal("init")
 
-    assert result["data_schema"].schema["model"].config["options"] == [
-        {"value": "openai/gpt-3.5-turbo", "label": "OpenAI: GPT-3.5 Turbo"},
-        {"value": "openai/gpt-4", "label": "OpenAI: GPT-4"},
-    ]
+    expect(result["data_schema"].schema["model"].config["options"]).to_equal(
+        [
+            {"value": "openai/gpt-3.5-turbo", "label": "OpenAI: GPT-3.5 Turbo"},
+            {"value": "openai/gpt-4", "label": "OpenAI: GPT-4"},
+        ]
+    )
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -204,19 +231,22 @@ async def test_create_conversation_agent_no_control(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_MODEL: "openai/gpt-3.5-turbo",
-        CONF_PROMPT: "you are an assistant",
-        CONF_WEB_SEARCH: False,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_MODEL: "openai/gpt-3.5-turbo",
+            CONF_PROMPT: "you are an assistant",
+            CONF_WEB_SEARCH: False,
+        }
+    )
 
 
-async def test_create_ai_task(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_openai_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def create_ai_task(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_openai_client: AsyncMock = Depends(mock_openai_client_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test creating an AI Task."""
     await setup_integration(hass, mock_config_entry)
@@ -225,39 +255,47 @@ async def test_create_ai_task(
         (mock_config_entry.entry_id, "ai_task_data"),
         context={"source": SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
+    expect(result["step_id"]).to_equal("init")
 
-    assert result["data_schema"].schema["model"].config["options"] == [
-        {"value": "openai/gpt-4", "label": "OpenAI: GPT-4"},
-    ]
+    expect(result["data_schema"].schema["model"].config["options"]).to_equal(
+        [{"value": "openai/gpt-4", "label": "OpenAI: GPT-4"}]
+    )
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {CONF_MODEL: "openai/gpt-4"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_MODEL: "openai/gpt-4"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({CONF_MODEL: "openai/gpt-4"})
 
 
-@pytest.mark.parametrize(
-    "subentry_type",
-    ["conversation", "ai_task_data"],
+@test.cases(
+    test.case(
+        "conversation_connect_error",
+        "conversation",
+        OpenRouterError("exception"),
+        "cannot_connect",
+    ),
+    test.case("conversation_unknown_error", "conversation", Exception, "unknown"),
+    test.case(
+        "ai_task_connect_error",
+        "ai_task_data",
+        OpenRouterError("exception"),
+        "cannot_connect",
+    ),
+    test.case("ai_task_unknown_error", "ai_task_data", Exception, "unknown"),
 )
-@pytest.mark.parametrize(
-    ("exception", "reason"),
-    [(OpenRouterError("exception"), "cannot_connect"), (Exception, "unknown")],
-)
-async def test_subentry_exceptions(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_openai_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+async def subentry_exceptions(
     subentry_type: str,
-    exception: Exception,
+    exception: type[Exception] | Exception,
     reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_openai_client: AsyncMock = Depends(mock_openai_client_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test subentry flow exceptions."""
     await setup_integration(hass, mock_config_entry)
@@ -268,27 +306,26 @@ async def test_subentry_exceptions(
         (mock_config_entry.entry_id, subentry_type),
         context={"source": SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(reason)
 
 
-async def test_reconfigure_conversation_agent(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_openai_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure_conversation_agent(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_openai_client: AsyncMock = Depends(mock_openai_client_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test reconfiguring a conversation agent."""
     await setup_integration(hass, mock_config_entry)
 
     subentry_id = get_subentry_id(mock_config_entry, "conversation")
 
-    # Now reconfigure it
     result = await mock_config_entry.start_subentry_reconfigure_flow(hass, subentry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
-    # Update the configuration
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {
@@ -299,21 +336,22 @@ async def test_reconfigure_conversation_agent(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
     subentry = mock_config_entry.subentries[subentry_id]
-    assert subentry.data[CONF_MODEL] == "openai/gpt-4"
-    assert subentry.data[CONF_PROMPT] == "updated prompt"
-    assert subentry.data[CONF_LLM_HASS_API] == ["assist"]
-    assert subentry.data[CONF_WEB_SEARCH] is True
+    expect(subentry.data[CONF_MODEL]).to_equal("openai/gpt-4")
+    expect(subentry.data[CONF_PROMPT]).to_equal("updated prompt")
+    expect(subentry.data[CONF_LLM_HASS_API]).to_equal(["assist"])
+    expect(subentry.data[CONF_WEB_SEARCH]).to_be(True)
 
 
-async def test_reconfigure_ai_task(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_openai_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure_ai_task(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_openai_client: AsyncMock = Depends(mock_openai_client_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test reconfiguring an AI task."""
     await setup_integration(hass, mock_config_entry)
@@ -321,31 +359,30 @@ async def test_reconfigure_ai_task(
     subentry_id = get_subentry_id(mock_config_entry, "ai_task_data")
 
     result = await mock_config_entry.start_subentry_reconfigure_flow(hass, subentry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
-    # Update the configuration
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         {CONF_MODEL: "openai/gpt-4"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
 
-@pytest.mark.parametrize(
-    "subentry_type",
-    ["conversation", "ai_task_data"],
+@test.cases(
+    test.case("conversation", "conversation"),
+    test.case("ai_task_data", "ai_task_data"),
 )
-async def test_reconfigure_entry_not_loaded(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_openai_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+async def reconfigure_entry_not_loaded(
     subentry_type: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_openai_client: AsyncMock = Depends(mock_openai_client_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
-    """Test reconfiguring an AI task."""
+    """Test attempting subentry flow when the entry is not loaded."""
     mock_config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.subentries.async_init(
@@ -353,21 +390,21 @@ async def test_reconfigure_entry_not_loaded(
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "entry_not_loaded"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("entry_not_loaded")
 
 
-@pytest.mark.parametrize(
-    ("exception", "reason"),
-    [(OpenRouterError("exception"), "cannot_connect"), (Exception, "unknown")],
+@test.cases(
+    test.case("connect_error", OpenRouterError("exception"), "cannot_connect"),
+    test.case("unknown_error", Exception, "unknown"),
 )
-async def test_reconfigure_conversation_agent_abort(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_openai_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    exception: Exception,
+async def reconfigure_conversation_agent_abort(
+    exception: type[Exception] | Exception,
     reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_openai_client: AsyncMock = Depends(mock_openai_client_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test reconfiguring a conversation agent with error and recovery."""
     await setup_integration(hass, mock_config_entry)
@@ -377,62 +414,59 @@ async def test_reconfigure_conversation_agent_abort(
     mock_open_router_client.get_models.side_effect = exception
 
     result = await mock_config_entry.start_subentry_reconfigure_flow(hass, subentry_id)
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(reason)
 
 
-@pytest.mark.parametrize(
-    ("exception", "reason"),
-    [(OpenRouterError("exception"), "cannot_connect"), (Exception, "unknown")],
+@test.cases(
+    test.case("connect_error", OpenRouterError("exception"), "cannot_connect"),
+    test.case("unknown_error", Exception, "unknown"),
 )
-async def test_reconfigure_ai_task_abort(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_openai_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    exception: Exception,
+async def reconfigure_ai_task_abort(
+    exception: type[Exception] | Exception,
     reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_openai_client: AsyncMock = Depends(mock_openai_client_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test reconfiguring an AI task with error and recovery."""
     await setup_integration(hass, mock_config_entry)
 
     subentry_id = get_subentry_id(mock_config_entry, "ai_task_data")
 
-    # Trigger an error during reconfiguration
     mock_open_router_client.get_models.side_effect = exception
 
     result = await mock_config_entry.start_subentry_reconfigure_flow(hass, subentry_id)
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(reason)
 
 
-@pytest.mark.parametrize(
-    ("web_search", "expected_web_search"),
-    [(True, True), (False, False)],
-    indirect=["web_search"],
+@test.cases(
+    test.case("web_search_true", True, True),
+    test.case("web_search_false", False, False),
 )
-async def test_create_conversation_agent_web_search(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+async def create_conversation_agent_web_search(
     web_search: bool,
     expected_web_search: bool,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test creating a conversation agent with web search enabled/disabled."""
+    mock_config_entry = make_mock_config_entry(web_search=web_search)
     await setup_integration(hass, mock_config_entry)
 
     result = await hass.config_entries.subentries.async_init(
         (mock_config_entry.entry_id, "conversation"),
         context={"source": SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
-    # Verify web_search field is present in schema with correct default
     schema = result["data_schema"].schema
     key = next(k for k in schema if k == CONF_WEB_SEARCH)
-    assert key.default() is False
+    expect(key.default()).to_be(False)
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -444,21 +478,21 @@ async def test_create_conversation_agent_web_search(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_WEB_SEARCH] is expected_web_search
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_WEB_SEARCH]).to_be(expected_web_search)
 
 
-@pytest.mark.parametrize(
-    ("current_web_search", "expected_default"),
-    [(True, True), (False, False)],
+@test.cases(
+    test.case("current_true", True, True),
+    test.case("current_false", False, False),
 )
-async def test_reconfigure_conversation_subentry_web_search_default(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+async def reconfigure_conversation_subentry_web_search_default(
     current_web_search: bool,
     expected_default: bool,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test web_search field default reflects existing value when reconfiguring."""
     await setup_integration(hass, mock_config_entry)
@@ -475,30 +509,29 @@ async def test_reconfigure_conversation_subentry_web_search_default(
         hass, subentry.subentry_id
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     schema = result["data_schema"].schema
     key = next(k for k in schema if k == CONF_WEB_SEARCH)
-    assert key.default() is expected_default
+    expect(key.default()).to_be(expected_default)
 
 
-@pytest.mark.parametrize(
-    ("current_llm_apis", "suggested_llm_apis", "expected_options"),
-    [
-        (["assist"], ["assist"], ["assist"]),
-        (["non-existent"], [], ["assist"]),
-        (["assist", "non-existent"], ["assist"], ["assist"]),
-    ],
+@test.cases(
+    test.case("valid_assist", ["assist"], ["assist"], ["assist"]),
+    test.case("invalid_only", ["non-existent"], [], ["assist"]),
+    test.case(
+        "valid_and_invalid", ["assist", "non-existent"], ["assist"], ["assist"]
+    ),
 )
-async def test_reconfigure_conversation_subentry_llm_api_schema(
-    hass: HomeAssistant,
-    mock_open_router_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+async def reconfigure_conversation_subentry_llm_api_schema(
     current_llm_apis: list[str],
     suggested_llm_apis: list[str],
     expected_options: list[str],
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_open_router_client: AsyncMock = Depends(mock_open_router_client_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test llm_hass_api field values when reconfiguring a conversation subentry."""
     await setup_integration(hass, mock_config_entry)
@@ -515,17 +548,16 @@ async def test_reconfigure_conversation_subentry_llm_api_schema(
         hass, subentry.subentry_id
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
-    # Only valid LLM APIs should be suggested and shown as options
     schema = result["data_schema"].schema
     key = next(k for k in schema if k == CONF_LLM_HASS_API)
 
-    assert key.default() == suggested_llm_apis
+    expect(key.default()).to_equal(suggested_llm_apis)
 
     field_schema = schema[key]
-    assert field_schema.config
-    assert [
-        opt["value"] for opt in field_schema.config.get("options")
-    ] == expected_options
+    expect(bool(field_schema.config)).to_be(True)
+    expect(
+        [opt["value"] for opt in field_schema.config.get("options")]
+    ).to_equal(expected_options)

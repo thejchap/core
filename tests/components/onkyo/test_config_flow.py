@@ -1,9 +1,12 @@
 """Test Onkyo config flow."""
 
-from contextlib import AbstractContextManager, nullcontext
+from __future__ import annotations
+
+from contextlib import nullcontext
+from unittest.mock import AsyncMock
 
 from aioonkyo import ReceiverInfo
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.onkyo.const import (
@@ -23,42 +26,53 @@ from homeassistant.helpers.service_info.ssdp import (
     SsdpServiceInfo,
 )
 
-from . import RECEIVER_INFO, RECEIVER_INFO_2, mock_discovery, setup_integration
-
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+from . import RECEIVER_INFO, RECEIVER_INFO_2, mock_discovery, setup_integration
+from ._fixtures import (
+    mock_config_entry as mock_config_entry_fx,
+    mock_default_discovery,
+    mock_setup_entry as mock_setup_entry_fx,
+)
 
 
 def _receiver_display_name(receiver_info: ReceiverInfo) -> str:
     return f"{receiver_info.model_name} ({receiver_info.host})"
 
 
-@pytest.fixture(autouse=True)
-def mock_setup_entry(mock_setup_entry) -> None:
-    """Use async_setup_entry fixture in all tests."""
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry_fx),
+    _discovery: None = Depends(mock_default_discovery),
+) -> None:
+    """Wire autouse fixtures for every test."""
 
 
-async def test_manual(hass: HomeAssistant) -> None:
+@test
+async def manual(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test successful manual."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "manual"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_HOST: RECEIVER_INFO_2.host}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "configure_receiver"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("configure_receiver")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -69,53 +83,52 @@ async def test_manual(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_HOST] == RECEIVER_INFO_2.host
-    assert result["result"].unique_id == RECEIVER_INFO_2.identifier
-    assert result["title"] == RECEIVER_INFO_2.model_name
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_HOST]).to_equal(RECEIVER_INFO_2.host)
+    expect(result["result"].unique_id).to_equal(RECEIVER_INFO_2.identifier)
+    expect(result["title"]).to_equal(RECEIVER_INFO_2.model_name)
 
 
-@pytest.mark.parametrize(
-    ("mock_discovery", "error_reason"),
-    [
-        (mock_discovery(None), "unknown"),
-        (mock_discovery([]), "cannot_connect"),
-        (mock_discovery([RECEIVER_INFO]), "cannot_connect"),
-    ],
+@test.cases(
+    test.case("discovery_unknown", None, "unknown"),
+    test.case("discovery_empty", [], "cannot_connect"),
+    test.case("discovery_other_host", [RECEIVER_INFO], "cannot_connect"),
 )
-async def test_manual_recoverable_error(
-    hass: HomeAssistant, mock_discovery: AbstractContextManager, error_reason: str
+async def manual_recoverable_error(
+    discovery_receivers: list[ReceiverInfo] | None,
+    error_reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test manual with a recoverable error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "manual"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
 
-    with mock_discovery:
+    with mock_discovery(discovery_receivers):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={CONF_HOST: RECEIVER_INFO_2.host}
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
-    assert result["errors"] == {"base": error_reason}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
+    expect(result["errors"]).to_equal({"base": error_reason})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_HOST: RECEIVER_INFO_2.host}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "configure_receiver"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("configure_receiver")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -126,14 +139,16 @@ async def test_manual_recoverable_error(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_HOST] == RECEIVER_INFO_2.host
-    assert result["result"].unique_id == RECEIVER_INFO_2.identifier
-    assert result["title"] == RECEIVER_INFO_2.model_name
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_HOST]).to_equal(RECEIVER_INFO_2.host)
+    expect(result["result"].unique_id).to_equal(RECEIVER_INFO_2.identifier)
+    expect(result["title"]).to_equal(RECEIVER_INFO_2.model_name)
 
 
-async def test_manual_error(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def manual_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test manual with an error."""
     await setup_integration(hass, mock_config_entry)
@@ -142,26 +157,28 @@ async def test_manual_error(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "manual"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_HOST: RECEIVER_INFO.host}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_eiscp_discovery(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def eiscp_discovery(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test successful eiscp discovery."""
     await setup_integration(hass, mock_config_entry)
@@ -170,27 +187,27 @@ async def test_eiscp_discovery(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "eiscp_discovery"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "eiscp_discovery"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("eiscp_discovery")
 
     devices = result["data_schema"].schema["device"].container
-    assert devices == {
-        RECEIVER_INFO_2.identifier: _receiver_display_name(RECEIVER_INFO_2)
-    }
+    expect(devices).to_equal(
+        {RECEIVER_INFO_2.identifier: _receiver_display_name(RECEIVER_INFO_2)}
+    )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={"device": RECEIVER_INFO_2.identifier}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "configure_receiver"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("configure_receiver")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -201,25 +218,22 @@ async def test_eiscp_discovery(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_HOST] == RECEIVER_INFO_2.host
-    assert result["result"].unique_id == RECEIVER_INFO_2.identifier
-    assert result["title"] == RECEIVER_INFO_2.model_name
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_HOST]).to_equal(RECEIVER_INFO_2.host)
+    expect(result["result"].unique_id).to_equal(RECEIVER_INFO_2.identifier)
+    expect(result["title"]).to_equal(RECEIVER_INFO_2.model_name)
 
 
-@pytest.mark.parametrize(
-    ("mock_discovery", "error_reason"),
-    [
-        (mock_discovery(None), "unknown"),
-        (mock_discovery([]), "no_devices_found"),
-        (mock_discovery([RECEIVER_INFO]), "no_devices_found"),
-    ],
+@test.cases(
+    test.case("discovery_unknown", None, "unknown"),
+    test.case("discovery_empty", [], "no_devices_found"),
+    test.case("discovery_other_host", [RECEIVER_INFO], "no_devices_found"),
 )
-async def test_eiscp_discovery_error(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_discovery: AbstractContextManager,
+async def eiscp_discovery_error(
+    discovery_receivers: list[ReceiverInfo] | None,
     error_reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test eiscp discovery with an error."""
     await setup_integration(hass, mock_config_entry)
@@ -228,20 +242,22 @@ async def test_eiscp_discovery_error(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("user")
 
-    with mock_discovery:
+    with mock_discovery(discovery_receivers):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"next_step_id": "eiscp_discovery"}
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == error_reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(error_reason)
 
 
-async def test_eiscp_discovery_replace_ignored_entry(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def eiscp_discovery_replace_ignored_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test eiscp discovery can replace an ignored config entry."""
     mock_config_entry.source = SOURCE_IGNORE
@@ -251,28 +267,30 @@ async def test_eiscp_discovery_replace_ignored_entry(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "eiscp_discovery"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "eiscp_discovery"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("eiscp_discovery")
 
     devices = result["data_schema"].schema["device"].container
-    assert devices == {
-        RECEIVER_INFO.identifier: _receiver_display_name(RECEIVER_INFO),
-        RECEIVER_INFO_2.identifier: _receiver_display_name(RECEIVER_INFO_2),
-    }
+    expect(devices).to_equal(
+        {
+            RECEIVER_INFO.identifier: _receiver_display_name(RECEIVER_INFO),
+            RECEIVER_INFO_2.identifier: _receiver_display_name(RECEIVER_INFO_2),
+        }
+    )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={"device": RECEIVER_INFO.identifier}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "configure_receiver"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("configure_receiver")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -283,16 +301,18 @@ async def test_eiscp_discovery_replace_ignored_entry(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_HOST] == RECEIVER_INFO.host
-    assert result["result"].unique_id == RECEIVER_INFO.identifier
-    assert result["title"] == RECEIVER_INFO.model_name
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_HOST]).to_equal(RECEIVER_INFO.host)
+    expect(result["result"].unique_id).to_equal(RECEIVER_INFO.identifier)
+    expect(result["title"]).to_equal(RECEIVER_INFO.model_name)
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
 
-async def test_ssdp_discovery(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def ssdp_discovery(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test successful SSDP discovery."""
     await setup_integration(hass, mock_config_entry)
@@ -309,8 +329,8 @@ async def test_ssdp_discovery(
         DOMAIN, context={"source": config_entries.SOURCE_SSDP}, data=discovery_info
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "configure_receiver"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("configure_receiver")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -321,33 +341,51 @@ async def test_ssdp_discovery(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_HOST] == RECEIVER_INFO_2.host
-    assert result["result"].unique_id == RECEIVER_INFO_2.identifier
-    assert result["title"] == RECEIVER_INFO_2.model_name
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_HOST]).to_equal(RECEIVER_INFO_2.host)
+    expect(result["result"].unique_id).to_equal(RECEIVER_INFO_2.identifier)
+    expect(result["title"]).to_equal(RECEIVER_INFO_2.model_name)
 
 
-@pytest.mark.parametrize(
-    ("ssdp_location", "mock_discovery", "error_reason"),
-    [
-        (None, nullcontext(), "unknown"),
-        ("http://", nullcontext(), "unknown"),
-        (f"http://{RECEIVER_INFO_2.host}:8080", mock_discovery(None), "unknown"),
-        (f"http://{RECEIVER_INFO_2.host}:8080", mock_discovery([]), "cannot_connect"),
-        (
-            f"http://{RECEIVER_INFO_2.host}:8080",
-            mock_discovery([RECEIVER_INFO]),
-            "cannot_connect",
-        ),
-        (f"http://{RECEIVER_INFO.host}:8080", nullcontext(), "already_configured"),
-    ],
+@test.cases(
+    test.case("ssdp_location_none", None, False, None, "unknown"),
+    test.case("ssdp_location_bad", "http://", False, None, "unknown"),
+    test.case(
+        "discovery_unknown",
+        f"http://{RECEIVER_INFO_2.host}:8080",
+        True,
+        None,
+        "unknown",
+    ),
+    test.case(
+        "discovery_empty",
+        f"http://{RECEIVER_INFO_2.host}:8080",
+        True,
+        [],
+        "cannot_connect",
+    ),
+    test.case(
+        "discovery_other_host",
+        f"http://{RECEIVER_INFO_2.host}:8080",
+        True,
+        [RECEIVER_INFO],
+        "cannot_connect",
+    ),
+    test.case(
+        "already_configured",
+        f"http://{RECEIVER_INFO.host}:8080",
+        False,
+        None,
+        "already_configured",
+    ),
 )
-async def test_ssdp_discovery_error(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+async def ssdp_discovery_error(
     ssdp_location: str | None,
-    mock_discovery: AbstractContextManager,
+    use_mock_discovery: bool,
+    discovery_receivers: list[ReceiverInfo] | None,
     error_reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test SSDP discovery with an error."""
     await setup_integration(hass, mock_config_entry)
@@ -360,39 +398,45 @@ async def test_ssdp_discovery_error(
         ssdp_st="mock_st",
     )
 
-    with mock_discovery:
+    discovery_cm = (
+        mock_discovery(discovery_receivers) if use_mock_discovery else nullcontext()
+    )
+    with discovery_cm:
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": config_entries.SOURCE_SSDP}, data=discovery_info
+            DOMAIN,
+            context={"source": config_entries.SOURCE_SSDP},
+            data=discovery_info,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == error_reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(error_reason)
 
 
-async def test_configure(hass: HomeAssistant) -> None:
+@test
+async def configure(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test receiver configure."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "manual"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_HOST: RECEIVER_INFO.host}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "configure_receiver"
-    assert result["description_placeholders"]["name"] == _receiver_display_name(
-        RECEIVER_INFO
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("configure_receiver")
+    expect(result["description_placeholders"]["name"]).to_equal(
+        _receiver_display_name(RECEIVER_INFO)
     )
 
     result = await hass.config_entries.flow.async_configure(
@@ -404,9 +448,11 @@ async def test_configure(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "configure_receiver"
-    assert result["errors"] == {OPTION_INPUT_SOURCES: "empty_input_source_list"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("configure_receiver")
+    expect(result["errors"]).to_equal(
+        {OPTION_INPUT_SOURCES: "empty_input_source_list"}
+    )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -417,9 +463,11 @@ async def test_configure(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "configure_receiver"
-    assert result["errors"] == {OPTION_LISTENING_MODES: "empty_listening_mode_list"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("configure_receiver")
+    expect(result["errors"]).to_equal(
+        {OPTION_LISTENING_MODES: "empty_listening_mode_list"}
+    )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -430,17 +478,21 @@ async def test_configure(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["options"] == {
-        OPTION_VOLUME_RESOLUTION: 200,
-        OPTION_MAX_VOLUME: OPTION_MAX_VOLUME_DEFAULT,
-        OPTION_INPUT_SOURCES: {"12": "TV"},
-        OPTION_LISTENING_MODES: {"04": "THX"},
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["options"]).to_equal(
+        {
+            OPTION_VOLUME_RESOLUTION: 200,
+            OPTION_MAX_VOLUME: OPTION_MAX_VOLUME_DEFAULT,
+            OPTION_INPUT_SOURCES: {"12": "TV"},
+            OPTION_LISTENING_MODES: {"04": "THX"},
+        }
+    )
 
 
-async def test_reconfigure(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def reconfigure(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test successful reconfigure flow."""
     await setup_integration(hass, mock_config_entry)
@@ -450,33 +502,35 @@ async def test_reconfigure(
 
     result = await mock_config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_HOST: mock_config_entry.data[CONF_HOST]}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "configure_receiver"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("configure_receiver")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={OPTION_VOLUME_RESOLUTION: 200}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
-    assert mock_config_entry.data[CONF_HOST] == old_host
-    assert mock_config_entry.options[OPTION_VOLUME_RESOLUTION] == 200
+    expect(mock_config_entry.data[CONF_HOST]).to_equal(old_host)
+    expect(mock_config_entry.options[OPTION_VOLUME_RESOLUTION]).to_equal(200)
     for option, option_value in old_options.items():
         if option == OPTION_VOLUME_RESOLUTION:
             continue
-        assert mock_config_entry.options[option] == option_value
+        expect(mock_config_entry.options[option]).to_equal(option_value)
 
 
-async def test_reconfigure_error(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def reconfigure_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test reconfigure flow with an error."""
     await setup_integration(hass, mock_config_entry)
@@ -485,35 +539,24 @@ async def test_reconfigure_error(
 
     result = await mock_config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_HOST: RECEIVER_INFO_2.host}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unique_id_mismatch"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unique_id_mismatch")
 
-    # unique id should remain unchanged
-    assert mock_config_entry.unique_id == old_unique_id
+    # Unique id should remain unchanged.
+    expect(mock_config_entry.unique_id).to_equal(old_unique_id)
 
 
-@pytest.mark.parametrize(
-    "ignore_missing_translations",
-    [
-        [  # The schema is dynamically created from input sources and listening modes
-            "component.onkyo.options.step.names.sections.input_sources.data.TV",
-            "component.onkyo.options.step.names.sections.input_sources.data_description.TV",
-            "component.onkyo.options.step.names.sections.listening_modes.data.STEREO",
-            "component.onkyo.options.step.names.sections.listening_modes.data_description.STEREO",
-            # Legacy service uses media_player domain
-            "component.media_player.services.onkyo_select_hdmi_output.",
-        ]
-    ],
-)
-async def test_options_flow(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def options_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test options flow."""
     await setup_integration(hass, mock_config_entry)
@@ -522,8 +565,8 @@ async def test_options_flow(
 
     result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -534,9 +577,11 @@ async def test_options_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert result["errors"] == {OPTION_INPUT_SOURCES: "empty_input_source_list"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+    expect(result["errors"]).to_equal(
+        {OPTION_INPUT_SOURCES: "empty_input_source_list"}
+    )
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -547,9 +592,11 @@ async def test_options_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert result["errors"] == {OPTION_LISTENING_MODES: "empty_listening_mode_list"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+    expect(result["errors"]).to_equal(
+        {OPTION_LISTENING_MODES: "empty_listening_mode_list"}
+    )
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -560,8 +607,8 @@ async def test_options_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "names"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("names")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -571,10 +618,12 @@ async def test_options_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        OPTION_VOLUME_RESOLUTION: old_volume_resolution,
-        OPTION_MAX_VOLUME: 42.0,
-        OPTION_INPUT_SOURCES: {"12": "television"},
-        OPTION_LISTENING_MODES: {"00": "Duophonia"},
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            OPTION_VOLUME_RESOLUTION: old_volume_resolution,
+            OPTION_MAX_VOLUME: 42.0,
+            OPTION_INPUT_SOURCES: {"12": "television"},
+            OPTION_LISTENING_MODES: {"00": "Duophonia"},
+        }
+    )
