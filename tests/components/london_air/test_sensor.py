@@ -2,63 +2,73 @@
 
 from http import HTTPStatus
 
-import requests_mock
+import requests_mock as requests_mock_lib
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.london_air.sensor import CONF_LOCATIONS, URL
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
 from tests.common import async_load_fixture
+from tests.hass_fixtures import hass
 
 VALID_CONFIG = {"sensor": {"platform": "london_air", CONF_LOCATIONS: ["Merton"]}}
 
 
-async def test_valid_state(
-    hass: HomeAssistant, requests_mock: requests_mock.Mocker
-) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def valid_state(hass: HomeAssistant = Depends(hass)) -> None:
     """Test for operational london_air sensor with proper attributes."""
-    requests_mock.get(
-        URL,
-        text=await async_load_fixture(hass, "london_air.json", "london_air"),
-        status_code=HTTPStatus.OK,
-    )
-    assert await async_setup_component(hass, "sensor", VALID_CONFIG)
-    await hass.async_block_till_done()
+    with requests_mock_lib.Mocker() as requests_mock:
+        requests_mock.get(
+            URL,
+            text=await async_load_fixture(hass, "london_air.json", "london_air"),
+            status_code=HTTPStatus.OK,
+        )
+        result = await async_setup_component(hass, "sensor", VALID_CONFIG)
+        expect(result).to_be(True)
+        await hass.async_block_till_done()
 
     state = hass.states.get("sensor.merton")
-    assert state is not None
-    assert state.state == "Low"
-    assert state.attributes["icon"] == "mdi:cloud-outline"
-    assert state.attributes["updated"] == "2017-08-03 03:00:00"
-    assert state.attributes["sites"] == 2
-    assert state.attributes["friendly_name"] == "Merton"
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal("Low")
+    expect(state.attributes["icon"]).to_equal("mdi:cloud-outline")
+    expect(state.attributes["updated"]).to_equal("2017-08-03 03:00:00")
+    expect(state.attributes["sites"]).to_equal(2)
+    expect(state.attributes["friendly_name"]).to_equal("Merton")
 
     sites = state.attributes["data"]
-    assert sites is not None
-    assert len(sites) == 2
-    assert sites[0]["site_code"] == "ME2"
-    assert sites[0]["site_type"] == "Roadside"
-    assert sites[0]["site_name"] == "Merton Road"
-    assert sites[0]["pollutants_status"] == "Low"
+    expect(sites is not None).to_be(True)
+    expect(len(sites)).to_equal(2)
+    expect(sites[0]["site_code"]).to_equal("ME2")
+    expect(sites[0]["site_type"]).to_equal("Roadside")
+    expect(sites[0]["site_name"]).to_equal("Merton Road")
+    expect(sites[0]["pollutants_status"]).to_equal("Low")
 
     pollutants = sites[0]["pollutants"]
-    assert pollutants is not None
-    assert len(pollutants) == 1
-    assert pollutants[0]["code"] == "PM10"
-    assert pollutants[0]["quality"] == "Low"
-    assert int(pollutants[0]["index"]) == 2
-    assert pollutants[0]["summary"] == "PM10 is Low"
+    expect(pollutants is not None).to_be(True)
+    expect(len(pollutants)).to_equal(1)
+    expect(pollutants[0]["code"]).to_equal("PM10")
+    expect(pollutants[0]["quality"]).to_equal("Low")
+    expect(int(pollutants[0]["index"])).to_equal(2)
+    expect(pollutants[0]["summary"]).to_equal("PM10 is Low")
 
 
-async def test_api_failure(
-    hass: HomeAssistant, requests_mock: requests_mock.Mocker
-) -> None:
+@test
+async def api_failure(hass: HomeAssistant = Depends(hass)) -> None:
     """Test for failure in the API."""
-    requests_mock.get(URL, status_code=HTTPStatus.SERVICE_UNAVAILABLE)
-    assert await async_setup_component(hass, "sensor", VALID_CONFIG)
-    await hass.async_block_till_done()
+    with requests_mock_lib.Mocker() as requests_mock:
+        requests_mock.get(URL, status_code=HTTPStatus.SERVICE_UNAVAILABLE)
+        result = await async_setup_component(hass, "sensor", VALID_CONFIG)
+        expect(result).to_be(True)
+        await hass.async_block_till_done()
 
     state = hass.states.get("sensor.merton")
-    assert state is not None
-    assert state.attributes["updated"] is None
-    assert state.attributes["sites"] == 0
+    expect(state is not None).to_be(True)
+    expect(state.attributes["updated"] is None).to_be(True)
+    expect(state.attributes["sites"]).to_equal(0)
