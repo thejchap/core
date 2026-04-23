@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.min_max.const import DOMAIN
@@ -10,18 +10,28 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry, get_schema_suggested_value
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.parametrize("platform", ["sensor"])
-async def test_config_flow(hass: HomeAssistant, platform: str) -> None:
+@fixture
+def _trigger_executor(_mn: None = Depends(mock_network)) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test.cases(test.case("sensor", "sensor"))
+async def config_flow(
+    platform: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the config flow."""
     input_sensors = ["sensor.input_one", "sensor.input_two"]
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with patch(
         "homeassistant.components.min_max.async_setup_entry",
@@ -33,30 +43,37 @@ async def test_config_flow(hass: HomeAssistant, platform: str) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "My min_max"
-    assert result["data"] == {}
-    assert result["options"] == {
-        "entity_ids": input_sensors,
-        "name": "My min_max",
-        "round_digits": 2.0,
-        "type": "max",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("My min_max")
+    expect(result["data"]).to_equal({})
+    expect(result["options"]).to_equal(
+        {
+            "entity_ids": input_sensors,
+            "name": "My min_max",
+            "round_digits": 2.0,
+            "type": "max",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
     config_entry = hass.config_entries.async_entries(DOMAIN)[0]
-    assert config_entry.data == {}
-    assert config_entry.options == {
-        "entity_ids": input_sensors,
-        "name": "My min_max",
-        "round_digits": 2.0,
-        "type": "max",
-    }
-    assert config_entry.title == "My min_max"
+    expect(config_entry.data).to_equal({})
+    expect(config_entry.options).to_equal(
+        {
+            "entity_ids": input_sensors,
+            "name": "My min_max",
+            "round_digits": 2.0,
+            "type": "max",
+        }
+    )
+    expect(config_entry.title).to_equal("My min_max")
 
 
-@pytest.mark.parametrize("platform", ["sensor"])
-async def test_options(hass: HomeAssistant, platform: str) -> None:
+@test.cases(test.case("sensor", "sensor"))
+async def options(
+    platform: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reconfiguring."""
     hass.states.async_set("sensor.input_one", "10")
     hass.states.async_set("sensor.input_two", "20")
@@ -65,7 +82,6 @@ async def test_options(hass: HomeAssistant, platform: str) -> None:
     input_sensors1 = ["sensor.input_one", "sensor.input_two"]
     input_sensors2 = ["sensor.input_one", "sensor.input_two", "sensor.input_three"]
 
-    # Setup the config entry
     config_entry = MockConfigEntry(
         data={},
         domain=DOMAIN,
@@ -78,16 +94,16 @@ async def test_options(hass: HomeAssistant, platform: str) -> None:
         title="My min_max",
     )
     config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
 
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
     schema = result["data_schema"].schema
-    assert get_schema_suggested_value(schema, "entity_ids") == input_sensors1
-    assert get_schema_suggested_value(schema, "round_digits") == 0
-    assert get_schema_suggested_value(schema, "type") == "min"
+    expect(get_schema_suggested_value(schema, "entity_ids")).to_equal(input_sensors1)
+    expect(get_schema_suggested_value(schema, "round_digits")).to_equal(0)
+    expect(get_schema_suggested_value(schema, "type")).to_equal("min")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -97,28 +113,29 @@ async def test_options(hass: HomeAssistant, platform: str) -> None:
             "type": "mean",
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        "entity_ids": input_sensors2,
-        "name": "My min_max",
-        "round_digits": 1,
-        "type": "mean",
-    }
-    assert config_entry.data == {}
-    assert config_entry.options == {
-        "entity_ids": input_sensors2,
-        "name": "My min_max",
-        "round_digits": 1,
-        "type": "mean",
-    }
-    assert config_entry.title == "My min_max"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            "entity_ids": input_sensors2,
+            "name": "My min_max",
+            "round_digits": 1,
+            "type": "mean",
+        }
+    )
+    expect(config_entry.data).to_equal({})
+    expect(config_entry.options).to_equal(
+        {
+            "entity_ids": input_sensors2,
+            "name": "My min_max",
+            "round_digits": 1,
+            "type": "mean",
+        }
+    )
+    expect(config_entry.title).to_equal("My min_max")
 
-    # Check config entry is reloaded with new options
     await hass.async_block_till_done()
 
-    # Check the entity was updated, no new entity was created
-    assert len(hass.states.async_all()) == 4
+    expect(len(hass.states.async_all())).to_equal(4)
 
-    # Check the state of the entity has changed as expected
     state = hass.states.get(f"{platform}.my_min_max")
-    assert state.state == "21.1"
+    expect(state.state).to_equal("21.1")
