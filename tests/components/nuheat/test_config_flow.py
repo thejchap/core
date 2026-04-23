@@ -1,9 +1,12 @@
 """Test the NuHeat config flow."""
 
+from __future__ import annotations
+
 from http import HTTPStatus
 from unittest.mock import MagicMock, patch
 
 import requests
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.nuheat.const import CONF_SERIAL_NUMBER, DOMAIN
@@ -11,17 +14,24 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 from .mocks import _get_mock_thermostat_run
 
 
-async def test_form_user(hass: HomeAssistant) -> None:
-    """Test we get the form with user source."""
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
 
+
+@test
+async def form_user(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test we get the form with user source."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     mock_thermostat = _get_mock_thermostat_run()
 
@@ -48,17 +58,20 @@ async def test_form_user(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Master bathroom"
-    assert result2["data"] == {
-        CONF_SERIAL_NUMBER: "12345",
-        CONF_USERNAME: "test-username",
-        CONF_PASSWORD: "test-password",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Master bathroom")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_SERIAL_NUMBER: "12345",
+            CONF_USERNAME: "test-username",
+            CONF_PASSWORD: "test-password",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -77,8 +90,8 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
     response_mock = MagicMock()
     type(response_mock).status_code = 401
@@ -95,11 +108,12 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_invalid_thermostat(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_thermostat(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle invalid thermostats."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -127,11 +141,12 @@ async def test_form_invalid_thermostat(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_thermostat"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_thermostat"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -150,5 +165,5 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})

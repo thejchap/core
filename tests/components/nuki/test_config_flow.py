@@ -1,9 +1,12 @@
 """Test the nuki config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 from pynuki.bridge import InvalidCredentialsException
 from requests.exceptions import RequestException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.nuki.const import DOMAIN
@@ -12,17 +15,24 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 from .mock import DHCP_FORMATTED_MAC, HOST, MOCK_INFO, NAME, setup_nuki_integration
 
 
-async def test_form(hass: HomeAssistant) -> None:
-    """Test we get the form."""
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
 
+
+@test
+async def form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -44,17 +54,20 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "BC614E"
-    assert result2["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: 8080,
-        CONF_TOKEN: "test-token",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("BC614E")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_PORT: 8080,
+            CONF_TOKEN: "test-token",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -73,11 +86,12 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -96,11 +110,12 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_unknown_exception(hass: HomeAssistant) -> None:
+@test
+async def form_unknown_exception(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle unknown exceptions."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -119,11 +134,12 @@ async def test_form_unknown_exception(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_form_already_configured(hass: HomeAssistant) -> None:
+@test
+async def form_already_configured(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we get the form."""
     await setup_nuki_integration(hass)
     result = await hass.config_entries.flow.async_init(
@@ -143,11 +159,12 @@ async def test_form_already_configured(hass: HomeAssistant) -> None:
             },
         )
 
-        assert result2["type"] is FlowResultType.ABORT
-        assert result2["reason"] == "already_configured"
+        expect(result2["type"]).to_be(FlowResultType.ABORT)
+        expect(result2["reason"]).to_equal("already_configured")
 
 
-async def test_dhcp_flow(hass: HomeAssistant) -> None:
+@test
+async def dhcp_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that DHCP discovery for new bridge works."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -155,8 +172,8 @@ async def test_dhcp_flow(hass: HomeAssistant) -> None:
         context={"source": config_entries.SOURCE_DHCP},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == config_entries.SOURCE_USER
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(config_entries.SOURCE_USER)
 
     with (
         patch(
@@ -177,19 +194,24 @@ async def test_dhcp_flow(hass: HomeAssistant) -> None:
             },
         )
 
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
-        assert result2["title"] == "BC614E"
-        assert result2["data"] == {
-            CONF_HOST: "1.1.1.1",
-            CONF_PORT: 8080,
-            CONF_TOKEN: "test-token",
-        }
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result2["title"]).to_equal("BC614E")
+        expect(result2["data"]).to_equal(
+            {
+                CONF_HOST: "1.1.1.1",
+                CONF_PORT: 8080,
+                CONF_TOKEN: "test-token",
+            }
+        )
 
         await hass.async_block_till_done()
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_dhcp_flow_already_configured(hass: HomeAssistant) -> None:
+@test
+async def dhcp_flow_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that DHCP doesn't setup already configured devices."""
     await setup_nuki_integration(hass)
     result = await hass.config_entries.flow.async_init(
@@ -198,17 +220,18 @@ async def test_dhcp_flow_already_configured(hass: HomeAssistant) -> None:
         context={"source": config_entries.SOURCE_DHCP},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reauth_success(hass: HomeAssistant) -> None:
+@test
+async def reauth_success(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test starting a reauthentication flow."""
     entry = await setup_nuki_integration(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with (
         patch(
@@ -226,18 +249,19 @@ async def test_reauth_success(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        assert result2["type"] is FlowResultType.ABORT
-        assert result2["reason"] == "reauth_successful"
-        assert entry.data[CONF_TOKEN] == "new-token"
+        expect(result2["type"]).to_be(FlowResultType.ABORT)
+        expect(result2["reason"]).to_equal("reauth_successful")
+        expect(entry.data[CONF_TOKEN]).to_equal("new-token")
 
 
-async def test_reauth_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def reauth_invalid_auth(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test starting a reauthentication flow with invalid auth."""
     entry = await setup_nuki_integration(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.nuki.config_flow.NukiBridge.info",
@@ -248,18 +272,19 @@ async def test_reauth_invalid_auth(hass: HomeAssistant) -> None:
             user_input={CONF_TOKEN: "new-token"},
         )
 
-        assert result2["type"] is FlowResultType.FORM
-        assert result2["step_id"] == "reauth_confirm"
-        assert result2["errors"] == {"base": "invalid_auth"}
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["step_id"]).to_equal("reauth_confirm")
+        expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_reauth_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def reauth_cannot_connect(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test starting a reauthentication flow with cannot connect."""
     entry = await setup_nuki_integration(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.nuki.config_flow.NukiBridge.info",
@@ -270,18 +295,19 @@ async def test_reauth_cannot_connect(hass: HomeAssistant) -> None:
             user_input={CONF_TOKEN: "new-token"},
         )
 
-        assert result2["type"] is FlowResultType.FORM
-        assert result2["step_id"] == "reauth_confirm"
-        assert result2["errors"] == {"base": "cannot_connect"}
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["step_id"]).to_equal("reauth_confirm")
+        expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_reauth_unknown_exception(hass: HomeAssistant) -> None:
+@test
+async def reauth_unknown_exception(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test starting a reauthentication flow with an unknown exception."""
     entry = await setup_nuki_integration(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.nuki.config_flow.NukiBridge.info",
@@ -292,6 +318,6 @@ async def test_reauth_unknown_exception(hass: HomeAssistant) -> None:
             user_input={CONF_TOKEN: "new-token"},
         )
 
-        assert result2["type"] is FlowResultType.FORM
-        assert result2["step_id"] == "reauth_confirm"
-        assert result2["errors"] == {"base": "unknown"}
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["step_id"]).to_equal("reauth_confirm")
+        expect(result2["errors"]).to_equal({"base": "unknown"})
