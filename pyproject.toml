@@ -950,6 +950,8 @@ dev = [
     "lektricowifi==0.1",
     "letpot==0.6.4",
     "librehardwaremonitor-api==1.11.1",
+    "meater-python==0.0.8",
+    "py-madvr2==1.6.40",
     "pykmtronic>=0.3.0",
     "pykrakenapi>=0.3.2",
     "pylast>=7.0.2",
