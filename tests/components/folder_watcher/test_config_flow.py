@@ -3,7 +3,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.folder_watcher.const import (
@@ -15,18 +15,28 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.folder_watcher._fixtures import mock_setup_entry, tmp_path
+from tests.hass_fixtures import hass as hass_fixture
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(_m: None = Depends(mock_setup_entry)) -> None:
+    """Trigger the hook executor path."""
+    return None
 
 
-async def test_form(hass: HomeAssistant, tmp_path: Path) -> None:
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    tmp_path: Path = Depends(tmp_path),
+) -> None:
     """Test we get the form."""
     path = tmp_path.as_posix()
     hass.config.allowlist_external_dirs = {path}
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -34,12 +44,16 @@ async def test_form(hass: HomeAssistant, tmp_path: Path) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"Folder Watcher {path}"
-    assert result["options"] == {CONF_FOLDER: path, CONF_PATTERNS: ["*"]}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"Folder Watcher {path}")
+    expect(result["options"]).to_equal({CONF_FOLDER: path, CONF_PATTERNS: ["*"]})
 
 
-async def test_form_not_allowed_path(hass: HomeAssistant, tmp_path: Path) -> None:
+@test
+async def form_not_allowed_path(
+    hass: HomeAssistant = Depends(hass_fixture),
+    tmp_path: Path = Depends(tmp_path),
+) -> None:
     """Test we handle not allowed path."""
     path = tmp_path.as_posix()
     result = await hass.config_entries.flow.async_init(
@@ -51,8 +65,8 @@ async def test_form_not_allowed_path(hass: HomeAssistant, tmp_path: Path) -> Non
         {CONF_FOLDER: path},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "not_allowed_dir"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "not_allowed_dir"})
 
     hass.config.allowlist_external_dirs = {tmp_path}
 
@@ -62,12 +76,16 @@ async def test_form_not_allowed_path(hass: HomeAssistant, tmp_path: Path) -> Non
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"Folder Watcher {path}"
-    assert result["options"] == {CONF_FOLDER: path, CONF_PATTERNS: ["*"]}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"Folder Watcher {path}")
+    expect(result["options"]).to_equal({CONF_FOLDER: path, CONF_PATTERNS: ["*"]})
 
 
-async def test_form_not_directory(hass: HomeAssistant, tmp_path: Path) -> None:
+@test
+async def form_not_directory(
+    hass: HomeAssistant = Depends(hass_fixture),
+    tmp_path: Path = Depends(tmp_path),
+) -> None:
     """Test we handle not a directory."""
     path = tmp_path.as_posix()
     result = await hass.config_entries.flow.async_init(
@@ -79,8 +97,8 @@ async def test_form_not_directory(hass: HomeAssistant, tmp_path: Path) -> None:
         {CONF_FOLDER: "not_a_directory"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "not_dir"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "not_dir"})
 
     hass.config.allowlist_external_dirs = {path}
 
@@ -90,12 +108,16 @@ async def test_form_not_directory(hass: HomeAssistant, tmp_path: Path) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"Folder Watcher {path}"
-    assert result["options"] == {CONF_FOLDER: path, CONF_PATTERNS: ["*"]}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"Folder Watcher {path}")
+    expect(result["options"]).to_equal({CONF_FOLDER: path, CONF_PATTERNS: ["*"]})
 
 
-async def test_form_not_readable_dir(hass: HomeAssistant, tmp_path: Path) -> None:
+@test
+async def form_not_readable_dir(
+    hass: HomeAssistant = Depends(hass_fixture),
+    tmp_path: Path = Depends(tmp_path),
+) -> None:
     """Test we handle not able to read directory."""
     path = tmp_path.as_posix()
     result = await hass.config_entries.flow.async_init(
@@ -109,8 +131,8 @@ async def test_form_not_readable_dir(hass: HomeAssistant, tmp_path: Path) -> Non
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "not_readable_dir"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "not_readable_dir"})
 
     hass.config.allowlist_external_dirs = {path}
 
@@ -120,12 +142,16 @@ async def test_form_not_readable_dir(hass: HomeAssistant, tmp_path: Path) -> Non
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"Folder Watcher {path}"
-    assert result["options"] == {CONF_FOLDER: path, CONF_PATTERNS: ["*"]}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"Folder Watcher {path}")
+    expect(result["options"]).to_equal({CONF_FOLDER: path, CONF_PATTERNS: ["*"]})
 
 
-async def test_form_already_configured(hass: HomeAssistant, tmp_path: Path) -> None:
+@test
+async def form_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    tmp_path: Path = Depends(tmp_path),
+) -> None:
     """Test we abort when entry is already configured."""
     path = tmp_path.as_posix()
     hass.config.allowlist_external_dirs = {path}
@@ -146,5 +172,5 @@ async def test_form_already_configured(hass: HomeAssistant, tmp_path: Path) -> N
         {CONF_FOLDER: path},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
