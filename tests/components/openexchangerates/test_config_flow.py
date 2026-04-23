@@ -1,7 +1,8 @@
 """Test the Open Exchange Rates config flow."""
 
+from __future__ import annotations
+
 import asyncio
-from collections.abc import Generator
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -9,7 +10,7 @@ from aioopenexchangerates import (
     OpenExchangeRatesAuthError,
     OpenExchangeRatesClientError,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.openexchangerates.const import DOMAIN
@@ -17,29 +18,38 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+from ._fixtures import (
+    mock_config_entry as mock_config_entry_fx,
+    mock_currencies,
+    mock_latest_rates_config_flow as mock_latest_rates_config_flow_fx,
+    mock_setup_entry as mock_setup_entry_fx,
+)
 
 
-@pytest.fixture(name="currencies", autouse=True)
-def currencies_fixture(hass: HomeAssistant) -> Generator[AsyncMock]:
-    """Mock currencies."""
-    with patch(
-        "homeassistant.components.openexchangerates.config_flow.Client.get_currencies",
-        return_value={"USD": "United States Dollar", "EUR": "Euro"},
-    ) as mock_currencies:
-        yield mock_currencies
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _currencies: AsyncMock = Depends(mock_currencies),
+) -> None:
+    """Wire mock_network and mock_currencies for every test."""
 
 
-async def test_user_create_entry(
-    hass: HomeAssistant,
-    mock_latest_rates_config_flow: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def user_create_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_latest_rates_config_flow: AsyncMock = Depends(
+        mock_latest_rates_config_flow_fx
+    ),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -47,18 +57,23 @@ async def test_user_create_entry(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "USD"
-    assert result["data"] == {
-        "api_key": "test-api-key",
-        "base": "USD",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("USD")
+    expect(result["data"]).to_equal(
+        {
+            "api_key": "test-api-key",
+            "base": "USD",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(
-    hass: HomeAssistant,
-    mock_latest_rates_config_flow: AsyncMock,
+@test
+async def form_invalid_auth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_latest_rates_config_flow: AsyncMock = Depends(
+        mock_latest_rates_config_flow_fx
+    ),
 ) -> None:
     """Test we handle invalid auth."""
     mock_latest_rates_config_flow.side_effect = OpenExchangeRatesAuthError()
@@ -71,13 +86,16 @@ async def test_form_invalid_auth(
         {"api_key": "bad-api-key"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_cannot_connect(
-    hass: HomeAssistant,
-    mock_latest_rates_config_flow: AsyncMock,
+@test
+async def form_cannot_connect(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_latest_rates_config_flow: AsyncMock = Depends(
+        mock_latest_rates_config_flow_fx
+    ),
 ) -> None:
     """Test we handle cannot connect error."""
     mock_latest_rates_config_flow.side_effect = OpenExchangeRatesClientError()
@@ -90,13 +108,16 @@ async def test_form_cannot_connect(
         {"api_key": "test-api-key"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_unknown_error(
-    hass: HomeAssistant,
-    mock_latest_rates_config_flow: AsyncMock,
+@test
+async def form_unknown_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_latest_rates_config_flow: AsyncMock = Depends(
+        mock_latest_rates_config_flow_fx
+    ),
 ) -> None:
     """Test we handle unknown error."""
     mock_latest_rates_config_flow.side_effect = Exception()
@@ -109,43 +130,54 @@ async def test_form_unknown_error(
         {"api_key": "test-api-key"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "unknown"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_already_configured_service(
-    hass: HomeAssistant,
-    mock_latest_rates_config_flow: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def already_configured_service(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_latest_rates_config_flow: AsyncMock = Depends(
+        mock_latest_rates_config_flow_fx
+    ),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test we abort if the service is already configured."""
     mock_config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {"api_key": "test-api-key"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_no_currencies(hass: HomeAssistant, currencies: AsyncMock) -> None:
+@test
+async def no_currencies(
+    hass: HomeAssistant = Depends(hass_fixture),
+    currencies: AsyncMock = Depends(mock_currencies),
+) -> None:
     """Test we abort if the service fails to retrieve currencies."""
     currencies.side_effect = OpenExchangeRatesClientError()
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_currencies_timeout(hass: HomeAssistant, currencies: AsyncMock) -> None:
+@test
+async def currencies_timeout(
+    hass: HomeAssistant = Depends(hass_fixture),
+    currencies: AsyncMock = Depends(mock_currencies),
+) -> None:
     """Test we abort if the service times out retrieving currencies."""
 
     async def currencies_side_effect():
@@ -160,13 +192,16 @@ async def test_currencies_timeout(hass: HomeAssistant, currencies: AsyncMock) ->
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "timeout_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("timeout_connect")
 
 
-async def test_latest_rates_timeout(
-    hass: HomeAssistant,
-    mock_latest_rates_config_flow: AsyncMock,
+@test
+async def latest_rates_timeout(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_latest_rates_config_flow: AsyncMock = Depends(
+        mock_latest_rates_config_flow_fx
+    ),
 ) -> None:
     """Test we abort if the service times out retrieving latest rates."""
 
@@ -188,44 +223,43 @@ async def test_latest_rates_timeout(
             {"api_key": "test-api-key"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "timeout_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "timeout_connect"})
 
 
-async def test_reauth(
-    hass: HomeAssistant,
-    mock_latest_rates_config_flow: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_latest_rates_config_flow: AsyncMock = Depends(
+        mock_latest_rates_config_flow_fx
+    ),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test we can reauthenticate the config entry."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     mock_latest_rates_config_flow.side_effect = OpenExchangeRatesAuthError()
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            "api_key": "invalid-test-api-key",
-        },
+        {"api_key": "invalid-test-api-key"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
     mock_latest_rates_config_flow.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            "api_key": "new-test-api-key",
-        },
+        {"api_key": "new-test-api-key"},
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)

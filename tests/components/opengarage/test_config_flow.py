@@ -1,8 +1,11 @@
 """Test the OpenGarage config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 import aiohttp
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.opengarage.const import DOMAIN
@@ -10,16 +13,22 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with (
         patch(
@@ -37,18 +46,21 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Name of the device"
-    assert result2["data"] == {
-        "host": "http://1.1.1.1",
-        "device_key": "AfsasdnfkjDD",
-        "port": 80,
-        "verify_ssl": False,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Name of the device")
+    expect(result2["data"]).to_equal(
+        {
+            "host": "http://1.1.1.1",
+            "device_key": "AfsasdnfkjDD",
+            "port": 80,
+            "verify_ssl": False,
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -63,11 +75,12 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             {"host": "http://1.1.1.1", "device_key": "AfsasdnfkjDD"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -82,11 +95,12 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             {"host": "http://1.1.1.1", "device_key": "AfsasdnfkjDD"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_unknown_error(hass: HomeAssistant) -> None:
+@test
+async def form_unknown_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -101,11 +115,14 @@ async def test_form_unknown_error(hass: HomeAssistant) -> None:
             {"host": "http://1.1.1.1", "device_key": "AfsasdnfkjDD"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_flow_entry_already_exists(hass: HomeAssistant) -> None:
+@test
+async def flow_entry_already_exists(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user input for config_entry that already exists."""
     first_entry = MockConfigEntry(
         domain="opengarage",
@@ -132,5 +149,5 @@ async def test_flow_entry_already_exists(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

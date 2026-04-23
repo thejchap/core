@@ -1,8 +1,11 @@
 """Test the Opentherm Gateway config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, MagicMock
 
 from serial import SerialException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.opentherm_gw.const import (
@@ -23,41 +26,55 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+from ._fixtures import (
+    mock_pyotgw as mock_pyotgw_fx,
+    mock_setup_entry as mock_setup_entry_fx,
+)
 
 
-async def test_form_user(
-    hass: HomeAssistant,
-    mock_pyotgw: MagicMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def form_user(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_pyotgw: MagicMock = Depends(mock_pyotgw_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_NAME: "Test Entry 1", CONF_DEVICE: "/dev/ttyUSB0"}
     )
     await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Test Entry 1"
-    assert result2["data"] == {
-        CONF_NAME: "Test Entry 1",
-        CONF_DEVICE: "/dev/ttyUSB0",
-        CONF_ID: "test_entry_1",
-    }
-    assert mock_pyotgw.return_value.connect.await_count == 1
-    assert mock_pyotgw.return_value.disconnect.await_count == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Test Entry 1")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_NAME: "Test Entry 1",
+            CONF_DEVICE: "/dev/ttyUSB0",
+            CONF_ID: "test_entry_1",
+        }
+    )
+    expect(mock_pyotgw.return_value.connect.await_count).to_equal(1)
+    expect(mock_pyotgw.return_value.disconnect.await_count).to_equal(1)
 
 
-async def test_form_duplicate_entries(
-    hass: HomeAssistant,
-    mock_pyotgw: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def form_duplicate_entries(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_pyotgw: MagicMock = Depends(mock_pyotgw_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test duplicate device or id errors."""
     flow1 = await hass.config_entries.flow.async_init(
@@ -73,28 +90,29 @@ async def test_form_duplicate_entries(
     result1 = await hass.config_entries.flow.async_configure(
         flow1["flow_id"], {CONF_NAME: "Test Entry 1", CONF_DEVICE: "/dev/ttyUSB0"}
     )
-    assert result1["type"] is FlowResultType.CREATE_ENTRY
+    expect(result1["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     result2 = await hass.config_entries.flow.async_configure(
         flow2["flow_id"], {CONF_NAME: "Test Entry 1", CONF_DEVICE: "/dev/ttyUSB1"}
     )
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "id_exists"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "id_exists"})
 
     result3 = await hass.config_entries.flow.async_configure(
         flow3["flow_id"], {CONF_NAME: "Test Entry 2", CONF_DEVICE: "/dev/ttyUSB0"}
     )
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "already_configured"}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": "already_configured"})
 
-    assert mock_pyotgw.return_value.connect.await_count == 1
-    assert mock_pyotgw.return_value.disconnect.await_count == 1
+    expect(mock_pyotgw.return_value.connect.await_count).to_equal(1)
+    expect(mock_pyotgw.return_value.disconnect.await_count).to_equal(1)
 
 
-async def test_form_connection_timeout(
-    hass: HomeAssistant,
-    mock_pyotgw: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def form_connection_timeout(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_pyotgw: MagicMock = Depends(mock_pyotgw_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test we handle connection timeout."""
     flow = await hass.config_entries.flow.async_init(
@@ -108,16 +126,17 @@ async def test_form_connection_timeout(
         {CONF_NAME: "Test Entry 1", CONF_DEVICE: "socket://192.0.2.254:1234"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "timeout_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "timeout_connect"})
 
-    assert mock_pyotgw.return_value.connect.await_count == 1
+    expect(mock_pyotgw.return_value.connect.await_count).to_equal(1)
 
 
-async def test_form_connection_error(
-    hass: HomeAssistant,
-    mock_pyotgw: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def form_connection_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_pyotgw: MagicMock = Depends(mock_pyotgw_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test we handle serial connection error."""
     flow = await hass.config_entries.flow.async_init(
@@ -130,15 +149,16 @@ async def test_form_connection_error(
         flow["flow_id"], {CONF_NAME: "Test Entry 1", CONF_DEVICE: "/dev/ttyUSB0"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
-    assert mock_pyotgw.return_value.connect.await_count == 1
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
+    expect(mock_pyotgw.return_value.connect.await_count).to_equal(1)
 
 
-async def test_options_form(
-    hass: HomeAssistant,
-    mock_pyotgw: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def options_form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_pyotgw: MagicMock = Depends(mock_pyotgw_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test the options form."""
     entry = MockConfigEntry(
@@ -159,8 +179,8 @@ async def test_options_form(
     flow = await hass.config_entries.options.async_init(
         entry.entry_id, context={"source": "test"}, data=None
     )
-    assert flow["type"] is FlowResultType.FORM
-    assert flow["step_id"] == "init"
+    expect(flow["type"]).to_be(FlowResultType.FORM)
+    expect(flow["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         flow["flow_id"],
@@ -172,11 +192,11 @@ async def test_options_form(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_READ_PRECISION] == PRECISION_HALVES
-    assert result["data"][CONF_SET_PRECISION] == PRECISION_HALVES
-    assert result["data"][CONF_TEMPORARY_OVRD_MODE] is True
-    assert result["data"][CONF_FLOOR_TEMP] is True
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_READ_PRECISION]).to_equal(PRECISION_HALVES)
+    expect(result["data"][CONF_SET_PRECISION]).to_equal(PRECISION_HALVES)
+    expect(result["data"][CONF_TEMPORARY_OVRD_MODE]).to_be(True)
+    expect(result["data"][CONF_FLOOR_TEMP]).to_be(True)
 
     flow = await hass.config_entries.options.async_init(
         entry.entry_id, context={"source": "test"}, data=None
@@ -186,11 +206,11 @@ async def test_options_form(
         flow["flow_id"], user_input={CONF_READ_PRECISION: 0}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_READ_PRECISION] == 0.0
-    assert result["data"][CONF_SET_PRECISION] == PRECISION_HALVES
-    assert result["data"][CONF_TEMPORARY_OVRD_MODE] is True
-    assert result["data"][CONF_FLOOR_TEMP] is True
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_READ_PRECISION]).to_equal(0.0)
+    expect(result["data"][CONF_SET_PRECISION]).to_equal(PRECISION_HALVES)
+    expect(result["data"][CONF_TEMPORARY_OVRD_MODE]).to_be(True)
+    expect(result["data"][CONF_FLOOR_TEMP]).to_be(True)
 
     flow = await hass.config_entries.options.async_init(
         entry.entry_id, context={"source": "test"}, data=None
@@ -206,8 +226,8 @@ async def test_options_form(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_READ_PRECISION] == PRECISION_TENTHS
-    assert result["data"][CONF_SET_PRECISION] == PRECISION_HALVES
-    assert result["data"][CONF_TEMPORARY_OVRD_MODE] is False
-    assert result["data"][CONF_FLOOR_TEMP] is False
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_READ_PRECISION]).to_equal(PRECISION_TENTHS)
+    expect(result["data"][CONF_SET_PRECISION]).to_equal(PRECISION_HALVES)
+    expect(result["data"][CONF_TEMPORARY_OVRD_MODE]).to_be(False)
+    expect(result["data"][CONF_FLOOR_TEMP]).to_be(False)
