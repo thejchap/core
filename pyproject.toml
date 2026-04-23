@@ -946,6 +946,7 @@ property-decorators = ["propcache.api.cached_property"]
 
 [dependency-groups]
 dev = [
+    "aio-ownet>=0.0.5",
     "aiohttp-sse==2.2.0",
     "aiolichess>=1.2.0",
     "aiomealie==1.2.3",
@@ -987,6 +988,7 @@ dev = [
     "nyt-games>=0.5.0",
     "ohme>=1.8.0",
     "ollama>=0.6.1",
+    "omnilogic>=0.6.1",
     "py-madvr2==1.6.40",
     "py-nextbusnext==2.3.0",
     "py-nightscout==1.2.2",

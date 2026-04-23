@@ -1,16 +1,17 @@
 """Tests for 1-Wire config flow."""
 
+from __future__ import annotations
+
 from ipaddress import ip_address
 from unittest.mock import AsyncMock, patch
 
 from aio_ownet.exceptions import OWServerConnectionError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.onewire.const import (
     DOMAIN,
     INPUT_ENTRY_CLEAR_OPTIONS,
     INPUT_ENTRY_DEVICE_SELECTION,
-    MANUFACTURER_MAXIM,
 )
 from homeassistant.config_entries import SOURCE_HASSIO, SOURCE_USER, SOURCE_ZEROCONF
 from homeassistant.const import CONF_HOST, CONF_PORT
@@ -21,6 +22,12 @@ from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from tests.common import MockConfigEntry
+from tests.components.onewire._fixtures import (
+    config_entry,
+    filled_device_registry,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 _HASSIO_DISCOVERY = HassioServiceInfo(
     config={"host": "1302b8e0-owserver", "port": 4304, "addon": "owserver (1-wire)"},
@@ -38,27 +45,17 @@ _ZEROCONF_DISCOVERY = ZeroconfServiceInfo(
     properties={},
 )
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _mse: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Wire mock_network + mock_setup_entry for every test."""
 
 
-@pytest.fixture
-async def filled_device_registry(
-    config_entry: MockConfigEntry,
-    device_registry: dr.DeviceRegistry,
-) -> dr.DeviceRegistry:
-    """Fill device registry with mock devices."""
-    for key in ("28.111111111111", "28.222222222222", "28.222222222223"):
-        device_registry.async_get_or_create(
-            config_entry_id=config_entry.entry_id,
-            identifiers={(DOMAIN, key)},
-            manufacturer=MANUFACTURER_MAXIM,
-            model="DS18B20",
-            name=key,
-        )
-    return device_registry
-
-
-async def test_user_flow(hass: HomeAssistant) -> None:
+@test
+async def user_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test user flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -72,19 +69,19 @@ async def test_user_flow(hass: HomeAssistant) -> None:
             user_input={CONF_HOST: "1.2.3.4", CONF_PORT: 1234},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     new_entry = result["result"]
-    assert new_entry.title == "1.2.3.4"
-    assert new_entry.data == {CONF_HOST: "1.2.3.4", CONF_PORT: 1234}
+    expect(new_entry.title).to_equal("1.2.3.4")
+    expect(new_entry.data).to_equal({CONF_HOST: "1.2.3.4", CONF_PORT: 1234})
 
 
-async def test_user_flow_recovery(hass: HomeAssistant) -> None:
+@test
+async def user_flow_recovery(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test user flow recovery after invalid server."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    # Invalid server
     with patch(
         "homeassistant.components.onewire.onewirehub.OWServerStatelessProxy.validate",
         side_effect=OWServerConnectionError,
@@ -94,11 +91,10 @@ async def test_user_flow_recovery(hass: HomeAssistant) -> None:
             user_input={CONF_HOST: "1.2.3.4", CONF_PORT: 1234},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    # Valid server
     with patch(
         "homeassistant.components.onewire.onewirehub.OWServerStatelessProxy.validate",
     ):
@@ -107,46 +103,49 @@ async def test_user_flow_recovery(hass: HomeAssistant) -> None:
             user_input={CONF_HOST: "1.2.3.4", CONF_PORT: 1234},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     new_entry = result["result"]
-    assert new_entry.title == "1.2.3.4"
-    assert new_entry.data == {CONF_HOST: "1.2.3.4", CONF_PORT: 1234}
+    expect(new_entry.title).to_equal("1.2.3.4")
+    expect(new_entry.data).to_equal({CONF_HOST: "1.2.3.4", CONF_PORT: 1234})
 
 
-async def test_user_duplicate(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+@test
+async def user_duplicate(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test user duplicate flow."""
-    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_equal(False)
 
-    # Duplicate server
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "1.2.3.4", CONF_PORT: 1234},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reconfigure_flow(
-    hass: HomeAssistant, config_entry: MockConfigEntry, mock_setup_entry: AsyncMock
+@test
+async def reconfigure_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    setup_mock: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reconfigure flow."""
-    result = await config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-    assert not result["errors"]
+    result = await entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(bool(result["errors"])).to_equal(False)
 
-    # Invalid server
     with patch(
         "homeassistant.components.onewire.onewirehub.OWServerStatelessProxy.validate",
         side_effect=OWServerConnectionError,
@@ -156,11 +155,10 @@ async def test_reconfigure_flow(
             user_input={CONF_HOST: "2.3.4.5", CONF_PORT: 2345},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    # Valid server
     with patch(
         "homeassistant.components.onewire.onewirehub.OWServerStatelessProxy.validate",
     ):
@@ -169,15 +167,17 @@ async def test_reconfigure_flow(
             user_input={CONF_HOST: "2.3.4.5", CONF_PORT: 2345},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert config_entry.data == {CONF_HOST: "2.3.4.5", CONF_PORT: 2345}
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(entry.data).to_equal({CONF_HOST: "2.3.4.5", CONF_PORT: 2345})
+    expect(len(setup_mock.mock_calls)).to_equal(1)
 
-    assert len(mock_setup_entry.mock_calls) == 1
 
-
-async def test_reconfigure_duplicate(
-    hass: HomeAssistant, config_entry: MockConfigEntry, mock_setup_entry: AsyncMock
+@test
+async def reconfigure_duplicate(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    setup_mock: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reconfigure duplicate flow."""
     other_config_entry = MockConfigEntry(
@@ -191,36 +191,35 @@ async def test_reconfigure_duplicate(
     )
     other_config_entry.add_to_hass(hass)
 
-    result = await config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-    assert not result["errors"]
+    result = await entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(bool(result["errors"])).to_equal(False)
 
-    # Duplicate server
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "2.3.4.5", CONF_PORT: 2345},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert len(mock_setup_entry.mock_calls) == 0
-    assert config_entry.data == {CONF_HOST: "1.2.3.4", CONF_PORT: 1234}
-    assert other_config_entry.data == {CONF_HOST: "2.3.4.5", CONF_PORT: 2345}
+    expect(len(setup_mock.mock_calls)).to_equal(0)
+    expect(entry.data).to_equal({CONF_HOST: "1.2.3.4", CONF_PORT: 1234})
+    expect(other_config_entry.data).to_equal({CONF_HOST: "2.3.4.5", CONF_PORT: 2345})
 
 
-async def test_hassio_flow(hass: HomeAssistant) -> None:
+@test
+async def hassio_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test HassIO discovery flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_HASSIO},
         data=_HASSIO_DISCOVERY,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
+    expect(bool(result["errors"])).to_equal(False)
 
-    # Cannot connect to server => retry
     with patch(
         "homeassistant.components.onewire.onewirehub.OWServerStatelessProxy.validate",
         side_effect=OWServerConnectionError,
@@ -230,11 +229,10 @@ async def test_hassio_flow(hass: HomeAssistant) -> None:
             user_input={},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    # Connect OK
     with patch(
         "homeassistant.components.onewire.onewirehub.OWServerStatelessProxy.validate",
     ):
@@ -243,36 +241,39 @@ async def test_hassio_flow(hass: HomeAssistant) -> None:
             user_input={},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     new_entry = result["result"]
-    assert new_entry.title == "owserver (1-wire)"
-    assert new_entry.data == {CONF_HOST: "1302b8e0-owserver", CONF_PORT: 4304}
+    expect(new_entry.title).to_equal("owserver (1-wire)")
+    expect(new_entry.data).to_equal({CONF_HOST: "1302b8e0-owserver", CONF_PORT: 4304})
 
 
-@pytest.mark.usefixtures("config_entry")
-async def test_hassio_duplicate(hass: HomeAssistant) -> None:
+@test
+async def hassio_duplicate(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _entry: MockConfigEntry = Depends(config_entry),
+) -> None:
     """Test HassIO discovery duplicate flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_HASSIO},
         data=_HASSIO_DISCOVERY,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_zeroconf_flow(hass: HomeAssistant) -> None:
+@test
+async def zeroconf_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test zeroconf discovery flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_ZEROCONF},
         data=_ZEROCONF_DISCOVERY,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
+    expect(bool(result["errors"])).to_equal(False)
 
-    # Cannot connect to server => retry
     with patch(
         "homeassistant.components.onewire.onewirehub.OWServerStatelessProxy.validate",
         side_effect=OWServerConnectionError,
@@ -282,11 +283,10 @@ async def test_zeroconf_flow(hass: HomeAssistant) -> None:
             user_input={},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    # Connect OK
     with patch(
         "homeassistant.components.onewire.onewirehub.OWServerStatelessProxy.validate",
     ):
@@ -295,152 +295,155 @@ async def test_zeroconf_flow(hass: HomeAssistant) -> None:
             user_input={},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     new_entry = result["result"]
-    assert new_entry.title == "OWFS (1-wire) Server"
-    assert new_entry.data == {CONF_HOST: "ubuntu.local.", CONF_PORT: 4304}
+    expect(new_entry.title).to_equal("OWFS (1-wire) Server")
+    expect(new_entry.data).to_equal({CONF_HOST: "ubuntu.local.", CONF_PORT: 4304})
 
 
-@pytest.mark.usefixtures("config_entry")
-async def test_zeroconf_duplicate(hass: HomeAssistant) -> None:
+@test
+async def zeroconf_duplicate(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _entry: MockConfigEntry = Depends(config_entry),
+) -> None:
     """Test zeroconf discovery duplicate flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_ZEROCONF},
         data=_ZEROCONF_DISCOVERY,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures("filled_device_registry")
-async def test_user_options_clear(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+@test
+async def user_options_clear(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    _reg: dr.DeviceRegistry = Depends(filled_device_registry),
 ) -> None:
     """Test clearing the options."""
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    # Verify that first config step comes back with a selection list of all the 28-family devices
-    result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["data_schema"].schema["device_selection"].options == {
-        "28.111111111111": False,
-        "28.222222222222": False,
-        "28.222222222223": False,
-    }
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    expect(result["data_schema"].schema["device_selection"].options).to_equal(
+        {
+            "28.111111111111": False,
+            "28.222222222222": False,
+            "28.222222222223": False,
+        }
+    )
 
-    # Verify that the clear-input action clears the options dict
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={INPUT_ENTRY_CLEAR_OPTIONS: True},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({})
 
 
-@pytest.mark.usefixtures("filled_device_registry")
-async def test_user_options_empty_selection_recovery(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+@test
+async def user_options_empty_selection_recovery(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    _reg: dr.DeviceRegistry = Depends(filled_device_registry),
 ) -> None:
     """Test leaving the selection of devices empty."""
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    # Verify that first config step comes back with a selection list of all the 28-family devices
-    result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["data_schema"].schema["device_selection"].options == {
-        "28.111111111111": False,
-        "28.222222222222": False,
-        "28.222222222223": False,
-    }
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    expect(result["data_schema"].schema["device_selection"].options).to_equal(
+        {
+            "28.111111111111": False,
+            "28.222222222222": False,
+            "28.222222222223": False,
+        }
+    )
 
-    # Verify that an empty selection shows the form again
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={INPUT_ENTRY_DEVICE_SELECTION: []},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "device_selection"
-    assert result["errors"] == {"base": "device_not_selected"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("device_selection")
+    expect(result["errors"]).to_equal({"base": "device_not_selected"})
 
-    # Verify that a single selected device to configure comes back as a form with the device to configure
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={INPUT_ENTRY_DEVICE_SELECTION: ["28.111111111111"]},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["description_placeholders"]["sensor_id"] == "28.111111111111"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["description_placeholders"]["sensor_id"]).to_equal("28.111111111111")
 
-    # Verify that the setting for the device comes back as default when no input is given
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert (
-        result["data"]["device_options"]["28.111111111111"]["precision"]
-        == "temperature"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]["device_options"]["28.111111111111"]["precision"]).to_equal(
+        "temperature"
     )
 
 
-@pytest.mark.usefixtures("filled_device_registry")
-async def test_user_options_set_single(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+@test
+async def user_options_set_single(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    _reg: dr.DeviceRegistry = Depends(filled_device_registry),
 ) -> None:
     """Test configuring a single device."""
-    # Clear config options to certify functionality when starting from scratch
-    hass.config_entries.async_update_entry(config_entry, options={})
+    hass.config_entries.async_update_entry(entry, options={})
 
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    # Verify that first config step comes back with a selection list of all the 28-family devices
-    result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["data_schema"].schema["device_selection"].options == {
-        "28.111111111111": False,
-        "28.222222222222": False,
-        "28.222222222223": False,
-    }
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    expect(result["data_schema"].schema["device_selection"].options).to_equal(
+        {
+            "28.111111111111": False,
+            "28.222222222222": False,
+            "28.222222222223": False,
+        }
+    )
 
-    # Verify that a single selected device to configure comes back as a form with the device to configure
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={INPUT_ENTRY_DEVICE_SELECTION: ["28.111111111111"]},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["description_placeholders"]["sensor_id"] == "28.111111111111"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["description_placeholders"]["sensor_id"]).to_equal("28.111111111111")
 
-    # Verify that the setting for the device comes back as default when no input is given
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert (
-        result["data"]["device_options"]["28.111111111111"]["precision"]
-        == "temperature"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]["device_options"]["28.111111111111"]["precision"]).to_equal(
+        "temperature"
     )
 
 
-async def test_user_options_set_multiple(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    filled_device_registry: dr.DeviceRegistry,
+@test
+async def user_options_set_multiple(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    device_registry: dr.DeviceRegistry = Depends(filled_device_registry),
 ) -> None:
     """Test configuring multiple consecutive devices in a row."""
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    # Verify that first config step comes back with a selection list of all the 28-family devices
-    for entry in dr.async_entries_for_config_entry(
-        filled_device_registry, config_entry.entry_id
+    for reg_entry in dr.async_entries_for_config_entry(
+        device_registry, entry.entry_id
     ):
-        filled_device_registry.async_update_device(entry.id, name_by_user="Given Name")
-    result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["data_schema"].schema["device_selection"].options == {
-        "Given Name (28.111111111111)": False,
-        "Given Name (28.222222222222)": False,
-        "Given Name (28.222222222223)": False,
-    }
+        device_registry.async_update_device(reg_entry.id, name_by_user="Given Name")
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    expect(result["data_schema"].schema["device_selection"].options).to_equal(
+        {
+            "Given Name (28.111111111111)": False,
+            "Given Name (28.222222222222)": False,
+            "Given Name (28.222222222223)": False,
+        }
+    )
 
-    # Verify that selecting two devices to configure comes back as a
-    #  form with the first device to configure using it's long name as entry
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={
@@ -450,47 +453,42 @@ async def test_user_options_set_multiple(
             ]
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert (
-        result["description_placeholders"]["sensor_id"]
-        == "Given Name (28.222222222222)"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["description_placeholders"]["sensor_id"]).to_equal(
+        "Given Name (28.222222222222)"
     )
 
-    # Verify that next sensor is coming up for configuration after the first
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={"precision": "temperature"},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert (
-        result["description_placeholders"]["sensor_id"]
-        == "Given Name (28.111111111111)"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["description_placeholders"]["sensor_id"]).to_equal(
+        "Given Name (28.111111111111)"
     )
 
-    # Verify that the setting for the device comes back as default when no input is given
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={"precision": "temperature9"},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert (
-        result["data"]["device_options"]["28.222222222222"]["precision"]
-        == "temperature"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]["device_options"]["28.222222222222"]["precision"]).to_equal(
+        "temperature"
     )
-    assert (
-        result["data"]["device_options"]["28.111111111111"]["precision"]
-        == "temperature9"
+    expect(result["data"]["device_options"]["28.111111111111"]["precision"]).to_equal(
+        "temperature9"
     )
 
 
-async def test_user_options_no_devices(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+@test
+async def user_options_no_devices(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test that options does not change when no devices are available."""
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    # Verify that first config step comes back with an empty list of possible devices to choose from
-    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_configurable_devices"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_configurable_devices")
