@@ -1,9 +1,12 @@
 """Test the Plaato config flow."""
 
+from __future__ import annotations
+
+from collections.abc import Generator
 from unittest.mock import patch
 
 from pyplaato.models.device import PlaatoDeviceType
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.plaato.const import (
@@ -18,14 +21,16 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.setup import async_setup_component
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 
 BASE_URL = "http://example.com"
 WEBHOOK_ID = "webhook_id"
 UNIQUE_ID = "plaato_unique_id"
 
 
-@pytest.fixture(name="webhook_id")
-def mock_webhook_id():
+@fixture
+def webhook_id() -> Generator[None]:
     """Mock webhook_id."""
     with (
         patch(
@@ -40,18 +45,26 @@ def mock_webhook_id():
         yield
 
 
-async def test_show_config_form(hass: HomeAssistant) -> None:
-    """Test show configuration form."""
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
 
+
+@test
+async def show_config_form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test show configuration form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_show_config_form_device_type_airlock(hass: HomeAssistant) -> None:
+@test
+async def show_config_form_device_type_airlock(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test show configuration form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -62,13 +75,16 @@ async def test_show_config_form_device_type_airlock(hass: HomeAssistant) -> None
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "api_method"
-    assert result["data_schema"].schema.get(CONF_TOKEN) is str
-    assert result["data_schema"].schema.get(CONF_USE_WEBHOOK) is bool
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("api_method")
+    expect(result["data_schema"].schema.get(CONF_TOKEN)).to_be(str)
+    expect(result["data_schema"].schema.get(CONF_USE_WEBHOOK)).to_be(bool)
 
 
-async def test_show_config_form_device_type_keg(hass: HomeAssistant) -> None:
+@test
+async def show_config_form_device_type_keg(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test show configuration form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -76,23 +92,24 @@ async def test_show_config_form_device_type_keg(hass: HomeAssistant) -> None:
         data={CONF_DEVICE_TYPE: PlaatoDeviceType.Keg, CONF_DEVICE_NAME: "device_name"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "api_method"
-    assert result["data_schema"].schema.get(CONF_TOKEN) is str
-    assert result["data_schema"].schema.get(CONF_USE_WEBHOOK) is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("api_method")
+    expect(result["data_schema"].schema.get(CONF_TOKEN)).to_be(str)
+    expect(result["data_schema"].schema.get(CONF_USE_WEBHOOK)).to_be(None)
 
 
-async def test_show_config_form_validate_webhook(
-    hass: HomeAssistant, webhook_id
+@test
+async def show_config_form_validate_webhook(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _hook: None = Depends(webhook_id),
 ) -> None:
     """Test show configuration form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -102,10 +119,10 @@ async def test_show_config_form_validate_webhook(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "api_method"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("api_method")
 
-    assert await async_setup_component(hass, "cloud", {})
+    expect(bool(await async_setup_component(hass, "cloud", {}))).to_be(True)
     with (
         patch(
             "homeassistant.components.cloud.async_active_subscription",
@@ -126,21 +143,22 @@ async def test_show_config_form_validate_webhook(
             },
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "webhook"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("webhook")
 
 
-async def test_show_config_form_validate_webhook_not_connected(
-    hass: HomeAssistant, webhook_id
+@test
+async def show_config_form_validate_webhook_not_connected(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _hook: None = Depends(webhook_id),
 ) -> None:
     """Test validating webhook when not connected aborts."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -150,10 +168,10 @@ async def test_show_config_form_validate_webhook_not_connected(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "api_method"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("api_method")
 
-    assert await async_setup_component(hass, "cloud", {})
+    expect(bool(await async_setup_component(hass, "cloud", {}))).to_be(True)
     with (
         patch(
             "homeassistant.components.cloud.async_active_subscription",
@@ -174,13 +192,15 @@ async def test_show_config_form_validate_webhook_not_connected(
             },
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cloud_not_connected"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cloud_not_connected")
 
 
-async def test_show_config_form_validate_token(hass: HomeAssistant) -> None:
+@test
+async def show_config_form_validate_token(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test show configuration form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -193,29 +213,32 @@ async def test_show_config_form_validate_token(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "api_method"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("api_method")
 
     with patch("homeassistant.components.plaato.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={CONF_TOKEN: "valid_token"}
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == PlaatoDeviceType.Keg.name
-    assert result["data"] == {
-        CONF_USE_WEBHOOK: False,
-        CONF_TOKEN: "valid_token",
-        CONF_DEVICE_TYPE: PlaatoDeviceType.Keg,
-        CONF_DEVICE_NAME: "device_name",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(PlaatoDeviceType.Keg.name)
+    expect(result["data"]).to_equal(
+        {
+            CONF_USE_WEBHOOK: False,
+            CONF_TOKEN: "valid_token",
+            CONF_DEVICE_TYPE: PlaatoDeviceType.Keg,
+            CONF_DEVICE_NAME: "device_name",
+        }
+    )
 
 
-async def test_show_config_form_no_cloud_webhook(
-    hass: HomeAssistant, webhook_id
+@test
+async def show_config_form_no_cloud_webhook(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _hook: None = Depends(webhook_id),
 ) -> None:
     """Test show configuration form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -228,8 +251,8 @@ async def test_show_config_form_no_cloud_webhook(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "api_method"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("api_method")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -239,17 +262,17 @@ async def test_show_config_form_no_cloud_webhook(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "webhook"
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("webhook")
+    expect(result["errors"]).to_be(None)
 
 
-async def test_show_config_form_api_method_no_auth_token(
-    hass: HomeAssistant, webhook_id
+@test
+async def show_config_form_api_method_no_auth_token(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _hook: None = Depends(webhook_id),
 ) -> None:
     """Test show configuration form."""
-
-    # Using Keg
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -262,19 +285,18 @@ async def test_show_config_form_api_method_no_auth_token(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "api_method"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("api_method")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_TOKEN: ""}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "api_method"
-    assert len(result["errors"]) == 1
-    assert result["errors"]["base"] == "no_auth_token"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("api_method")
+    expect(len(result["errors"])).to_equal(1)
+    expect(result["errors"]["base"]).to_equal("no_auth_token")
 
-    # Using Airlock
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -287,20 +309,21 @@ async def test_show_config_form_api_method_no_auth_token(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "api_method"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("api_method")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_TOKEN: ""}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "api_method"
-    assert len(result["errors"]) == 1
-    assert result["errors"]["base"] == "no_api_method"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("api_method")
+    expect(len(result["errors"])).to_equal(1)
+    expect(result["errors"]["base"]).to_equal("no_api_method")
 
 
-async def test_options(hass: HomeAssistant) -> None:
+@test
+async def options(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test updating options."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -318,8 +341,8 @@ async def test_options(hass: HomeAssistant) -> None:
 
         result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
 
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -328,13 +351,17 @@ async def test_options(hass: HomeAssistant) -> None:
 
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"][CONF_SCAN_INTERVAL] == 10
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"][CONF_SCAN_INTERVAL]).to_equal(10)
 
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_options_webhook(hass: HomeAssistant, webhook_id) -> None:
+@test
+async def options_webhook(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _hook: None = Depends(webhook_id),
+) -> None:
     """Test updating options."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -352,9 +379,9 @@ async def test_options_webhook(hass: HomeAssistant, webhook_id) -> None:
 
         result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "webhook"
-        assert result["description_placeholders"] == {"webhook_url": ""}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("webhook")
+        expect(result["description_placeholders"]).to_equal({"webhook_url": ""})
 
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -363,7 +390,7 @@ async def test_options_webhook(hass: HomeAssistant, webhook_id) -> None:
 
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"][CONF_WEBHOOK_ID] == CONF_WEBHOOK_ID
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"][CONF_WEBHOOK_ID]).to_equal(CONF_WEBHOOK_ID)
 
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
