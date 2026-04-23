@@ -8,7 +8,7 @@ from pyezvizapi.exceptions import (
     InvalidURL,
     PyEzvizError,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.ezviz.const import (
     ATTR_SERIAL,
@@ -34,21 +34,39 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from . import setup_integration
-
 from tests.common import MockConfigEntry
+from tests.components.ezviz import setup_integration
+from tests.components.ezviz._fixtures import (
+    mock_camera_config_entry,
+    mock_config_entry,
+    mock_ezviz_client,
+    mock_ffmpeg,
+    mock_setup_entry,
+    mock_test_rtsp_auth,
+)
+from tests.hass_fixtures import hass as hass_fixture
 
 
-@pytest.mark.usefixtures("mock_ezviz_client")
-async def test_full_flow(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor() -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def full_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test the full flow."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -59,22 +77,27 @@ async def test_full_flow(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> No
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test-username"
-    assert result["data"] == {
-        CONF_SESSION_ID: "fake_token",
-        CONF_RFSESSION_ID: "fake_rf_token",
-        CONF_URL: "apiieu.ezvizlife.com",
-        CONF_TYPE: ATTR_TYPE_CLOUD,
-    }
-    assert result["result"].unique_id == "test-username"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("test-username")
+    expect(result["data"]).to_equal(
+        {
+            CONF_SESSION_ID: "fake_token",
+            CONF_RFSESSION_ID: "fake_rf_token",
+            CONF_URL: "apiieu.ezvizlife.com",
+            CONF_TYPE: ATTR_TYPE_CLOUD,
+        }
+    )
+    expect(result["result"].unique_id).to_equal("test-username")
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_ezviz_client")
-async def test_user_custom_url(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def user_custom_url(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test custom url step."""
     result = await hass.config_entries.flow.async_init(
@@ -90,37 +113,43 @@ async def test_user_custom_url(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user_custom_url"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user_custom_url")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_URL: "test-user"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_SESSION_ID: "fake_token",
-        CONF_RFSESSION_ID: "fake_rf_token",
-        CONF_URL: "apiieu.ezvizlife.com",
-        CONF_TYPE: ATTR_TYPE_CLOUD,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_SESSION_ID: "fake_token",
+            CONF_RFSESSION_ID: "fake_rf_token",
+            CONF_URL: "apiieu.ezvizlife.com",
+            CONF_TYPE: ATTR_TYPE_CLOUD,
+        }
+    )
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_ezviz_client", "mock_setup_entry")
-async def test_async_step_reauth(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def async_step_reauth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test the reauth step."""
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -131,16 +160,18 @@ async def test_async_step_reauth(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-@pytest.mark.usefixtures("mock_ezviz_client")
-async def test_step_discovery_abort_if_cloud_account_missing(
-    hass: HomeAssistant, mock_test_rtsp_auth: AsyncMock
+@test
+async def step_discovery_abort_if_cloud_account_missing(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    _mock_test_rtsp_auth: AsyncMock = Depends(mock_test_rtsp_auth),
 ) -> None:
     """Test discovery and confirm step, abort if cloud account was removed."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_INTEGRATION_DISCOVERY},
@@ -151,9 +182,9 @@ async def test_step_discovery_abort_if_cloud_account_missing(
             CONF_IP_ADDRESS: "127.0.0.1",
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -163,26 +194,34 @@ async def test_step_discovery_abort_if_cloud_account_missing(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "ezviz_cloud_account_missing"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("ezviz_cloud_account_missing")
 
 
-@pytest.mark.usefixtures("mock_ezviz_client", "mock_test_rtsp_auth")
-async def test_step_reauth_abort_if_cloud_account_missing(
-    hass: HomeAssistant, mock_camera_config_entry: MockConfigEntry
+@test
+async def step_reauth_abort_if_cloud_account_missing(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    _mock_test_rtsp_auth: AsyncMock = Depends(mock_test_rtsp_auth),
+    mock_camera_config_entry: MockConfigEntry = Depends(mock_camera_config_entry),
 ) -> None:
     """Test reauth and confirm step, abort if cloud account was removed."""
-
     mock_camera_config_entry.add_to_hass(hass)
 
     result = await mock_camera_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "ezviz_cloud_account_missing"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("ezviz_cloud_account_missing")
 
 
-@pytest.mark.usefixtures("mock_ezviz_client", "mock_test_rtsp_auth", "mock_setup_entry")
-async def test_async_step_integration_discovery(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def async_step_integration_discovery(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    _mock_test_rtsp_auth: AsyncMock = Depends(mock_test_rtsp_auth),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test discovery and confirm step."""
     mock_config_entry.add_to_hass(hass)
@@ -197,9 +236,9 @@ async def test_async_step_integration_discovery(
             CONF_IP_ADDRESS: "127.0.0.1",
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -209,64 +248,70 @@ async def test_async_step_integration_discovery(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_PASSWORD: "test-pass",
-        CONF_TYPE: ATTR_TYPE_CAMERA,
-        CONF_USERNAME: "test-user",
-    }
-    assert result["result"].unique_id == "C666666"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_PASSWORD: "test-pass",
+            CONF_TYPE: ATTR_TYPE_CAMERA,
+            CONF_USERNAME: "test-user",
+        }
+    )
+    expect(result["result"].unique_id).to_equal("C666666")
 
 
-@pytest.mark.usefixtures("mock_ezviz_client")
-async def test_options_flow(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def options_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test updating options."""
     await setup_integration(hass, mock_config_entry)
 
-    assert mock_config_entry.options[CONF_FFMPEG_ARGUMENTS] == DEFAULT_FFMPEG_ARGUMENTS
-    assert mock_config_entry.options[CONF_TIMEOUT] == DEFAULT_TIMEOUT
+    expect(mock_config_entry.options[CONF_FFMPEG_ARGUMENTS]).to_equal(
+        DEFAULT_FFMPEG_ARGUMENTS
+    )
+    expect(mock_config_entry.options[CONF_TIMEOUT]).to_equal(DEFAULT_TIMEOUT)
 
     result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_FFMPEG_ARGUMENTS: "/H.264", CONF_TIMEOUT: 25},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_FFMPEG_ARGUMENTS] == "/H.264"
-    assert result["data"][CONF_TIMEOUT] == 25
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_FFMPEG_ARGUMENTS]).to_equal("/H.264")
+    expect(result["data"][CONF_TIMEOUT]).to_equal(25)
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (InvalidURL, "invalid_host"),
-        (InvalidHost, "cannot_connect"),
-        (EzvizAuthVerificationCode, "mfa_required"),
-        (PyEzvizError, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("invalid_url", exception=InvalidURL, error="invalid_host"),
+    test.case("invalid_host", exception=InvalidHost, error="cannot_connect"),
+    test.case(
+        "mfa_required", exception=EzvizAuthVerificationCode, error="mfa_required"
+    ),
+    test.case("invalid_auth", exception=PyEzvizError, error="invalid_auth"),
 )
-async def test_user_flow_errors(
-    hass: HomeAssistant,
-    mock_ezviz_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def user_flow_errors(
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
-    """Test the full flow."""
-
+    """Test the user flow with errors."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     mock_ezviz_client.login.side_effect = exception
 
@@ -279,9 +324,9 @@ async def test_user_flow_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": error})
 
     mock_ezviz_client.login.side_effect = None
 
@@ -294,31 +339,35 @@ async def test_user_flow_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test-username"
-    assert result["data"] == {
-        CONF_SESSION_ID: "fake_token",
-        CONF_RFSESSION_ID: "fake_rf_token",
-        CONF_URL: "apiieu.ezvizlife.com",
-        CONF_TYPE: ATTR_TYPE_CLOUD,
-    }
-    assert result["result"].unique_id == "test-username"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("test-username")
+    expect(result["data"]).to_equal(
+        {
+            CONF_SESSION_ID: "fake_token",
+            CONF_RFSESSION_ID: "fake_rf_token",
+            CONF_URL: "apiieu.ezvizlife.com",
+            CONF_TYPE: ATTR_TYPE_CLOUD,
+        }
+    )
+    expect(result["result"].unique_id).to_equal("test-username")
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_user_flow_unknown_exception(
-    hass: HomeAssistant, mock_ezviz_client: AsyncMock
+@test
+async def user_flow_unknown_exception(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
 ) -> None:
-    """Test the full flow."""
-
+    """Test the user flow with unknown exception."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     mock_ezviz_client.login.side_effect = Exception
 
@@ -331,34 +380,33 @@ async def test_user_flow_unknown_exception(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (InvalidURL, "invalid_host"),
-        (InvalidHost, "cannot_connect"),
-        (EzvizAuthVerificationCode, "mfa_required"),
-        (PyEzvizError, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("invalid_url", exception=InvalidURL, error="invalid_host"),
+    test.case("invalid_host", exception=InvalidHost, error="cannot_connect"),
+    test.case(
+        "mfa_required", exception=EzvizAuthVerificationCode, error="mfa_required"
+    ),
+    test.case("invalid_auth", exception=PyEzvizError, error="invalid_auth"),
 )
-async def test_user_custom_url_errors(
-    hass: HomeAssistant,
-    mock_ezviz_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def user_custom_url_errors(
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
-    """Test the full flow."""
-
+    """Test the custom url flow with errors."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     mock_ezviz_client.login.side_effect = exception
 
@@ -371,18 +419,18 @@ async def test_user_custom_url_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user_custom_url"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user_custom_url")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_URL: "test-user"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user_custom_url"
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user_custom_url")
+    expect(result["errors"]).to_equal({"base": error})
 
     mock_ezviz_client.login.side_effect = None
 
@@ -391,31 +439,35 @@ async def test_user_custom_url_errors(
         {CONF_URL: "test-user"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test-username"
-    assert result["data"] == {
-        CONF_SESSION_ID: "fake_token",
-        CONF_RFSESSION_ID: "fake_rf_token",
-        CONF_URL: "apiieu.ezvizlife.com",
-        CONF_TYPE: ATTR_TYPE_CLOUD,
-    }
-    assert result["result"].unique_id == "test-username"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("test-username")
+    expect(result["data"]).to_equal(
+        {
+            CONF_SESSION_ID: "fake_token",
+            CONF_RFSESSION_ID: "fake_rf_token",
+            CONF_URL: "apiieu.ezvizlife.com",
+            CONF_TYPE: ATTR_TYPE_CLOUD,
+        }
+    )
+    expect(result["result"].unique_id).to_equal("test-username")
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_user_custom_url_unknown_exception(
-    hass: HomeAssistant, mock_ezviz_client: AsyncMock
+@test
+async def user_custom_url_unknown_exception(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
 ) -> None:
-    """Test the full flow."""
-
+    """Test the custom url flow with unknown exception."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     mock_ezviz_client.login.side_effect = Exception
 
@@ -428,46 +480,49 @@ async def test_user_custom_url_unknown_exception(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user_custom_url"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user_custom_url")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_URL: "test-user"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_already_configured(
-    hass: HomeAssistant,
-    mock_ezviz_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test the flow when the account is already configured."""
-
     mock_config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured_account"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured_account")
 
 
-async def test_async_step_integration_discovery_duplicate(
-    hass: HomeAssistant,
-    mock_ezviz_client: AsyncMock,
-    mock_test_rtsp_auth: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    mock_camera_config_entry: MockConfigEntry,
+@test
+async def async_step_integration_discovery_duplicate(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    _mock_test_rtsp_auth: AsyncMock = Depends(mock_test_rtsp_auth),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_camera_config_entry: MockConfigEntry = Depends(mock_camera_config_entry),
 ) -> None:
-    """Test discovery and confirm step."""
+    """Test discovery aborts when duplicate."""
     mock_config_entry.add_to_hass(hass)
     mock_camera_config_entry.add_to_hass(hass)
 
@@ -481,30 +536,29 @@ async def test_async_step_integration_discovery_duplicate(
             CONF_IP_ADDRESS: "127.0.0.1",
         },
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (InvalidURL, "invalid_host"),
-        (InvalidHost, "invalid_host"),
-        (EzvizAuthVerificationCode, "mfa_required"),
-        (PyEzvizError, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("invalid_url", exception=InvalidURL, error="invalid_host"),
+    test.case("invalid_host", exception=InvalidHost, error="invalid_host"),
+    test.case(
+        "mfa_required", exception=EzvizAuthVerificationCode, error="mfa_required"
+    ),
+    test.case("invalid_auth", exception=PyEzvizError, error="invalid_auth"),
 )
-async def test_camera_errors(
-    hass: HomeAssistant,
-    mock_ezviz_client: AsyncMock,
-    mock_test_rtsp_auth: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    exception: Exception,
+async def camera_errors(
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    _mock_test_rtsp_auth: AsyncMock = Depends(mock_test_rtsp_auth),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test the camera flow with errors."""
-
     mock_config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
@@ -517,9 +571,9 @@ async def test_camera_errors(
             CONF_IP_ADDRESS: "127.0.0.1",
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
+    expect(result["errors"]).to_equal({})
 
     mock_ezviz_client.login.side_effect = exception
 
@@ -531,9 +585,9 @@ async def test_camera_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
+    expect(result["errors"]).to_equal({"base": error})
 
     mock_ezviz_client.login.side_effect = None
 
@@ -545,25 +599,28 @@ async def test_camera_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "C666666"
-    assert result["data"] == {
-        CONF_TYPE: ATTR_TYPE_CAMERA,
-        CONF_USERNAME: "test-username",
-        CONF_PASSWORD: "test-password",
-    }
-    assert result["result"].unique_id == "C666666"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("C666666")
+    expect(result["data"]).to_equal(
+        {
+            CONF_TYPE: ATTR_TYPE_CAMERA,
+            CONF_USERNAME: "test-username",
+            CONF_PASSWORD: "test-password",
+        }
+    )
+    expect(result["result"].unique_id).to_equal("C666666")
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_camera_unknown_error(
-    hass: HomeAssistant,
-    mock_ezviz_client: AsyncMock,
-    mock_test_rtsp_auth: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def camera_unknown_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    _mock_test_rtsp_auth: AsyncMock = Depends(mock_test_rtsp_auth),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
-    """Test the camera flow with errors."""
-
+    """Test the camera flow with unknown error."""
     mock_config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
@@ -576,9 +633,9 @@ async def test_camera_unknown_error(
             CONF_IP_ADDRESS: "127.0.0.1",
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
+    expect(result["errors"]).to_equal({})
 
     mock_ezviz_client.login.side_effect = Exception
 
@@ -590,34 +647,34 @@ async def test_camera_unknown_error(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (InvalidURL, "invalid_host"),
-        (InvalidHost, "invalid_host"),
-        (EzvizAuthVerificationCode, "mfa_required"),
-        (PyEzvizError, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("invalid_url", exception=InvalidURL, error="invalid_host"),
+    test.case("invalid_host", exception=InvalidHost, error="invalid_host"),
+    test.case(
+        "mfa_required", exception=EzvizAuthVerificationCode, error="mfa_required"
+    ),
+    test.case("invalid_auth", exception=PyEzvizError, error="invalid_auth"),
 )
-async def test_reauth_errors(
-    hass: HomeAssistant,
-    mock_ezviz_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    exception: Exception,
+async def reauth_errors(
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
-    """Test the reauth step."""
+    """Test the reauth step with errors."""
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
 
     mock_ezviz_client.login.side_effect = exception
 
@@ -628,9 +685,9 @@ async def test_reauth_errors(
             CONF_PASSWORD: "test-password",
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({"base": error})
 
     mock_ezviz_client.login.side_effect = None
 
@@ -643,23 +700,25 @@ async def test_reauth_errors(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_reauth_unknown_exception(
-    hass: HomeAssistant,
-    mock_ezviz_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_unknown_exception(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_ezviz_client: AsyncMock = Depends(mock_ezviz_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
-    """Test the reauth step."""
+    """Test the reauth step with unknown exception."""
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
 
     mock_ezviz_client.login.side_effect = Exception
 
@@ -670,5 +729,5 @@ async def test_reauth_unknown_exception(
             CONF_PASSWORD: "test-password",
         },
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
