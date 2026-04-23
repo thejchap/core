@@ -1,8 +1,8 @@
 """Test the Downloader config flow."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.downloader.const import CONF_DOWNLOAD_DIR, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -10,11 +10,25 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.downloader._fixtures import mock_zeroconf
+from tests.hass_fixtures import hass, mock_network
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
 
 CONFIG = {CONF_DOWNLOAD_DIR: "download_dir"}
 
 
-async def test_user_form(hass: HomeAssistant) -> None:
+@test
+async def user_form(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -23,16 +37,16 @@ async def test_user_form(hass: HomeAssistant) -> None:
         result["flow_id"],
         user_input=CONFIG,
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
 
     with patch("os.path.isdir", return_value=False):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input=CONFIG,
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
-        assert result["errors"] == {"base": "directory_does_not_exist"}
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["step_id"]).to_equal("user")
+        expect(result["errors"]).to_equal({"base": "directory_does_not_exist"})
 
     with (
         patch(
@@ -48,23 +62,24 @@ async def test_user_form(hass: HomeAssistant) -> None:
             user_input=CONFIG,
         )
         await hass.async_block_till_done()
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "Downloader"
-        assert result["data"] == {"download_dir": "download_dir"}
+        expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+        expect(result["title"]).to_equal("Downloader")
+        expect(result["data"]).to_equal({"download_dir": "download_dir"})
 
 
-@pytest.mark.parametrize("source", [SOURCE_USER])
-async def test_single_instance_allowed(
-    hass: HomeAssistant,
-    source: str,
+@test
+async def single_instance_allowed(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
 ) -> None:
     """Test we abort if already setup."""
     mock_config_entry = MockConfigEntry(domain=DOMAIN)
     mock_config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": source}
+        DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("single_instance_allowed")
