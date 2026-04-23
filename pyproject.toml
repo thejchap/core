@@ -82,6 +82,8 @@ dependencies = [
   "webrtc-models==0.3.0",
   "zeroconf==0.148.0",
   "moehlenhoff-alpha2==1.4.0",
+  "mullvad-api==1.0.0",
+  "python-mystrom==2.5.0",
 ]
 
 [project.urls]
