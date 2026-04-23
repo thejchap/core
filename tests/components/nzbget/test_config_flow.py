@@ -1,14 +1,20 @@
 """Test the NZBGet config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 from pynzbgetapi import NZBGetAPIException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.nzbget.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.const import CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 from . import (
     ENTRY_CONFIG,
@@ -19,17 +25,20 @@ from . import (
     _patch_version,
 )
 
-from tests.common import MockConfigEntry
+
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
 
 
-async def test_user_form(hass: HomeAssistant) -> None:
+@test
+async def user_form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we get the user initiated form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         _patch_version(),
@@ -43,21 +52,23 @@ async def test_user_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "10.10.10.30"
-    assert result["data"] == {**USER_INPUT, CONF_VERIFY_SSL: False}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("10.10.10.30")
+    expect(result["data"]).to_equal({**USER_INPUT, CONF_VERIFY_SSL: False})
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_form_show_advanced_options(hass: HomeAssistant) -> None:
+@test
+async def user_form_show_advanced_options(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the user initiated form with advanced options shown."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER, "show_advanced_options": True}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     user_input_advanced = {
         **USER_INPUT,
@@ -76,14 +87,17 @@ async def test_user_form_show_advanced_options(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "10.10.10.30"
-    assert result["data"] == {**USER_INPUT, CONF_VERIFY_SSL: True}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("10.10.10.30")
+    expect(result["data"]).to_equal({**USER_INPUT, CONF_VERIFY_SSL: True})
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def user_form_cannot_connect(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -98,11 +112,14 @@ async def test_user_form_cannot_connect(hass: HomeAssistant) -> None:
             USER_INPUT,
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_user_form_unexpected_exception(hass: HomeAssistant) -> None:
+@test
+async def user_form_unexpected_exception(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle unexpected exception."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -117,11 +134,14 @@ async def test_user_form_unexpected_exception(hass: HomeAssistant) -> None:
             USER_INPUT,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_user_form_single_instance_allowed(hass: HomeAssistant) -> None:
+@test
+async def user_form_single_instance_allowed(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that configuring more than one instance is rejected."""
     entry = MockConfigEntry(domain=DOMAIN, data=ENTRY_CONFIG)
     entry.add_to_hass(hass)
@@ -131,5 +151,5 @@ async def test_user_form_single_instance_allowed(hass: HomeAssistant) -> None:
         context={"source": SOURCE_USER},
         data=USER_INPUT,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
