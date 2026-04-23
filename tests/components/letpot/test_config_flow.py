@@ -5,7 +5,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 from letpot.exceptions import LetPotAuthenticationException, LetPotConnectionException
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.letpot.const import (
     CONF_ACCESS_TOKEN_EXPIRES,
@@ -20,34 +20,47 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import AUTHENTICATION
+from ._fixtures import mock_client, mock_config_entry, mock_setup_entry
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_mn: None = Depends(mock_network)) -> None:
+    """Trigger the hook executor path."""
+    return None
 
 
 def _assert_result_success(result: Any) -> None:
     """Assert successful end of flow result, creating an entry."""
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == AUTHENTICATION.email
-    assert result["data"] == {
-        CONF_ACCESS_TOKEN: AUTHENTICATION.access_token,
-        CONF_ACCESS_TOKEN_EXPIRES: AUTHENTICATION.access_token_expires,
-        CONF_REFRESH_TOKEN: AUTHENTICATION.refresh_token,
-        CONF_REFRESH_TOKEN_EXPIRES: AUTHENTICATION.refresh_token_expires,
-        CONF_USER_ID: AUTHENTICATION.user_id,
-        CONF_EMAIL: AUTHENTICATION.email,
-    }
-    assert result["result"].unique_id == AUTHENTICATION.user_id
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(AUTHENTICATION.email)
+    expect(result["data"]).to_equal(
+        {
+            CONF_ACCESS_TOKEN: AUTHENTICATION.access_token,
+            CONF_ACCESS_TOKEN_EXPIRES: AUTHENTICATION.access_token_expires,
+            CONF_REFRESH_TOKEN: AUTHENTICATION.refresh_token,
+            CONF_REFRESH_TOKEN_EXPIRES: AUTHENTICATION.refresh_token_expires,
+            CONF_USER_ID: AUTHENTICATION.user_id,
+            CONF_EMAIL: AUTHENTICATION.email,
+        }
+    )
+    expect(result["result"].unique_id).to_equal(AUTHENTICATION.user_id)
 
 
-async def test_full_flow(
-    hass: HomeAssistant, mock_client: AsyncMock, mock_setup_entry: AsyncMock
+@test
+async def full_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_client: AsyncMock = Depends(mock_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test full flow with success."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -58,23 +71,20 @@ async def test_full_flow(
     )
 
     _assert_result_success(result)
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (LetPotAuthenticationException, "invalid_auth"),
-        (LetPotConnectionException, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", LetPotAuthenticationException, "invalid_auth"),
+    test.case("cannot_connect", LetPotConnectionException, "cannot_connect"),
+    test.case("unknown", Exception, "unknown"),
 )
-async def test_flow_exceptions(
-    hass: HomeAssistant,
-    mock_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def flow_exceptions(
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_client: AsyncMock = Depends(mock_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test flow with exception during login and recovery."""
     result = await hass.config_entries.flow.async_init(
@@ -90,10 +100,9 @@ async def test_flow_exceptions(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    # Retry to show recovery.
     mock_client.login.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -104,14 +113,15 @@ async def test_flow_exceptions(
     )
 
     _assert_result_success(result)
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_flow_duplicate(
-    hass: HomeAssistant,
-    mock_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def flow_duplicate(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_client: AsyncMock = Depends(mock_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test flow aborts when trying to add a previously added account."""
     mock_config_entry.add_to_hass(hass)
@@ -120,9 +130,9 @@ async def test_flow_duplicate(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -132,23 +142,24 @@ async def test_flow_duplicate(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_reauth_flow(
-    hass: HomeAssistant,
-    mock_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_client: AsyncMock = Depends(mock_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reauth flow with success."""
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     updated_auth = dataclasses.replace(
         AUTHENTICATION,
@@ -161,41 +172,40 @@ async def test_reauth_flow(
         {CONF_PASSWORD: "new-password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data == {
-        CONF_ACCESS_TOKEN: "new_access_token",
-        CONF_ACCESS_TOKEN_EXPIRES: AUTHENTICATION.access_token_expires,
-        CONF_REFRESH_TOKEN: "new_refresh_token",
-        CONF_REFRESH_TOKEN_EXPIRES: AUTHENTICATION.refresh_token_expires,
-        CONF_USER_ID: AUTHENTICATION.user_id,
-        CONF_EMAIL: AUTHENTICATION.email,
-    }
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_config_entry.data).to_equal(
+        {
+            CONF_ACCESS_TOKEN: "new_access_token",
+            CONF_ACCESS_TOKEN_EXPIRES: AUTHENTICATION.access_token_expires,
+            CONF_REFRESH_TOKEN: "new_refresh_token",
+            CONF_REFRESH_TOKEN_EXPIRES: AUTHENTICATION.refresh_token_expires,
+            CONF_USER_ID: AUTHENTICATION.user_id,
+            CONF_EMAIL: AUTHENTICATION.email,
+        }
+    )
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (LetPotAuthenticationException, "invalid_auth"),
-        (LetPotConnectionException, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", LetPotAuthenticationException, "invalid_auth"),
+    test.case("cannot_connect", LetPotConnectionException, "cannot_connect"),
+    test.case("unknown", Exception, "unknown"),
 )
-async def test_reauth_exceptions(
-    hass: HomeAssistant,
-    mock_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    exception: Exception,
+async def reauth_exceptions(
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_client: AsyncMock = Depends(mock_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reauth flow with exception during login and recovery."""
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     mock_client.login.side_effect = exception
     result = await hass.config_entries.flow.async_configure(
@@ -203,10 +213,9 @@ async def test_reauth_exceptions(
         {CONF_PASSWORD: "new-password"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    # Retry to show recovery.
     updated_auth = dataclasses.replace(
         AUTHENTICATION,
         access_token="new_access_token",
@@ -219,34 +228,37 @@ async def test_reauth_exceptions(
         {CONF_PASSWORD: "new-password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data == {
-        CONF_ACCESS_TOKEN: "new_access_token",
-        CONF_ACCESS_TOKEN_EXPIRES: AUTHENTICATION.access_token_expires,
-        CONF_REFRESH_TOKEN: "new_refresh_token",
-        CONF_REFRESH_TOKEN_EXPIRES: AUTHENTICATION.refresh_token_expires,
-        CONF_USER_ID: AUTHENTICATION.user_id,
-        CONF_EMAIL: AUTHENTICATION.email,
-    }
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_config_entry.data).to_equal(
+        {
+            CONF_ACCESS_TOKEN: "new_access_token",
+            CONF_ACCESS_TOKEN_EXPIRES: AUTHENTICATION.access_token_expires,
+            CONF_REFRESH_TOKEN: "new_refresh_token",
+            CONF_REFRESH_TOKEN_EXPIRES: AUTHENTICATION.refresh_token_expires,
+            CONF_USER_ID: AUTHENTICATION.user_id,
+            CONF_EMAIL: AUTHENTICATION.email,
+        }
+    )
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-async def test_reauth_different_user_id_new(
-    hass: HomeAssistant,
-    mock_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_different_user_id_new(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_client: AsyncMock = Depends(mock_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reauth flow with different, new user ID updating the existing entry."""
     mock_config_entry.add_to_hass(hass)
     config_entries = hass.config_entries.async_entries()
-    assert len(config_entries) == 1
-    assert config_entries[0].unique_id == AUTHENTICATION.user_id
+    expect(len(config_entries)).to_equal(1)
+    expect(config_entries[0].unique_id).to_equal(AUTHENTICATION.user_id)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     updated_auth = dataclasses.replace(AUTHENTICATION, user_id="new_user_id")
     mock_client.login.return_value = updated_auth
@@ -255,26 +267,29 @@ async def test_reauth_different_user_id_new(
         {CONF_PASSWORD: "new-password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data == {
-        CONF_ACCESS_TOKEN: AUTHENTICATION.access_token,
-        CONF_ACCESS_TOKEN_EXPIRES: AUTHENTICATION.access_token_expires,
-        CONF_REFRESH_TOKEN: AUTHENTICATION.refresh_token,
-        CONF_REFRESH_TOKEN_EXPIRES: AUTHENTICATION.refresh_token_expires,
-        CONF_USER_ID: "new_user_id",
-        CONF_EMAIL: AUTHENTICATION.email,
-    }
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_config_entry.data).to_equal(
+        {
+            CONF_ACCESS_TOKEN: AUTHENTICATION.access_token,
+            CONF_ACCESS_TOKEN_EXPIRES: AUTHENTICATION.access_token_expires,
+            CONF_REFRESH_TOKEN: AUTHENTICATION.refresh_token,
+            CONF_REFRESH_TOKEN_EXPIRES: AUTHENTICATION.refresh_token_expires,
+            CONF_USER_ID: "new_user_id",
+            CONF_EMAIL: AUTHENTICATION.email,
+        }
+    )
     config_entries = hass.config_entries.async_entries()
-    assert len(config_entries) == 1
-    assert config_entries[0].unique_id == "new_user_id"
+    expect(len(config_entries)).to_equal(1)
+    expect(config_entries[0].unique_id).to_equal("new_user_id")
 
 
-async def test_reauth_different_user_id_existing(
-    hass: HomeAssistant,
-    mock_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_different_user_id_existing(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_client: AsyncMock = Depends(mock_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reauth flow with different, existing user ID aborting."""
     mock_config_entry.add_to_hass(hass)
@@ -284,8 +299,8 @@ async def test_reauth_different_user_id_existing(
     mock_other.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     updated_auth = dataclasses.replace(AUTHENTICATION, user_id="other_user_id")
     mock_client.login.return_value = updated_auth
@@ -294,6 +309,6 @@ async def test_reauth_different_user_id_existing(
         {CONF_PASSWORD: "new-password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert len(hass.config_entries.async_entries()) == 2
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(len(hass.config_entries.async_entries())).to_equal(2)
