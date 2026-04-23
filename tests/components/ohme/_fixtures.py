@@ -1,0 +1,74 @@
+"""Tryke fixtures for Ohme tests."""
+
+from __future__ import annotations
+
+from collections.abc import Generator
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from ohme import ChargerPower, ChargerStatus
+from tryke import fixture
+
+from homeassistant.components.ohme.const import DOMAIN
+from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
+
+from tests.common import MockConfigEntry
+
+
+@fixture
+def mock_setup_entry() -> Generator[AsyncMock]:
+    """Override async_setup_entry."""
+    with patch(
+        "homeassistant.components.ohme.async_setup_entry", return_value=True
+    ) as mock_setup_entry:
+        yield mock_setup_entry
+
+
+@fixture
+def mock_config_entry() -> MockConfigEntry:
+    """Return the default mocked config entry."""
+    return MockConfigEntry(
+        title="test@example.com",
+        domain=DOMAIN,
+        version=1,
+        data={
+            CONF_EMAIL: "test@example.com",
+            CONF_PASSWORD: "hunter2",
+        },
+    )
+
+
+@fixture
+def mock_client() -> Generator[MagicMock]:
+    """Mock the OhmeApiClient."""
+    with (
+        patch(
+            "homeassistant.components.ohme.config_flow.OhmeApiClient",
+            autospec=True,
+        ) as client,
+        patch(
+            "homeassistant.components.ohme.OhmeApiClient",
+            new=client,
+        ),
+    ):
+        client = client.return_value
+        client.async_login.return_value = True
+        client.status = ChargerStatus.CHARGING
+        client.power = ChargerPower(0, 0, 0)
+        client.available = True
+        client.target_soc = 50
+        client.target_time = (8, 0)
+        client.battery = 80
+        client.preconditioning = 15
+        client.serial = "chargerid"
+        client.ct_connected = True
+        client.cap_available = True
+        client.cap_enabled = True
+        client.energy = 1000
+        client.device_info = {
+            "name": "Ohme Home Pro",
+            "model": "Home Pro",
+            "sw_version": "v2.65",
+        }
+        client.vehicles = ["Nissan Leaf", "Tesla Model 3"]
+        client.current_vehicle = "Nissan Leaf"
+        yield client

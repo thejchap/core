@@ -1,9 +1,10 @@
 """Test the Obihai config flow."""
 
-from collections.abc import Generator
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.obihai.const import DOMAIN
@@ -11,22 +12,34 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.components.obihai._fixtures import mock_gaierror, mock_setup_entry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 from . import DHCP_SERVICE_INFO, USER_INPUT, MockPyObihai, get_schema_suggestion
 
 VALIDATE_AUTH_PATCH = "homeassistant.components.obihai.config_flow.validate_auth"
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _mse: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Wire mock_network + mock_setup_entry for every test."""
 
 
-async def test_user_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@test
+async def user_form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_mock: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the user initiated form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(VALIDATE_AUTH_PATCH, return_value=MockPyObihai()),
@@ -38,14 +51,14 @@ async def test_user_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> No
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "10.10.10.30"
-    assert result["data"] == {**USER_INPUT}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("10.10.10.30")
+    expect(result["data"]).to_equal({**USER_INPUT})
+    expect(len(setup_mock.mock_calls)).to_equal(1)
 
-    assert len(mock_setup_entry.mock_calls) == 1
 
-
-async def test_auth_failure(hass: HomeAssistant) -> None:
+@test
+async def auth_failure(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we get the authentication error for user flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -61,14 +74,17 @@ async def test_auth_failure(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"]["base"] == "invalid_auth"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]["base"]).to_equal("invalid_auth")
 
 
-async def test_connect_failure(hass: HomeAssistant, mock_gaierror: Generator) -> None:
+@test
+async def connect_failure(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _gaierror: AsyncMock = Depends(mock_gaierror),
+) -> None:
     """Test we get the connection error for user flow."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -79,14 +95,14 @@ async def test_connect_failure(hass: HomeAssistant, mock_gaierror: Generator) ->
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"]["base"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]["base"]).to_equal("cannot_connect")
 
 
-async def test_dhcp_flow(hass: HomeAssistant) -> None:
+@test
+async def dhcp_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that DHCP discovery works."""
-
     with (
         patch(VALIDATE_AUTH_PATCH, return_value=MockPyObihai()),
         patch("homeassistant.components.obihai.config_flow.gethostbyname"),
@@ -98,34 +114,32 @@ async def test_dhcp_flow(hass: HomeAssistant) -> None:
         )
 
         flows = hass.config_entries.flow.async_progress()
-        assert result["type"] is FlowResultType.FORM
-        assert len(flows) == 1
-        assert (
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(len(flows)).to_equal(1)
+        expect(
             get_schema_suggestion(result["data_schema"].schema, CONF_USERNAME)
-            == USER_INPUT[CONF_USERNAME]
-        )
-        assert (
+        ).to_equal(USER_INPUT[CONF_USERNAME])
+        expect(
             get_schema_suggestion(result["data_schema"].schema, CONF_PASSWORD)
-            == USER_INPUT[CONF_PASSWORD]
-        )
-        assert (
+        ).to_equal(USER_INPUT[CONF_PASSWORD])
+        expect(
             get_schema_suggestion(result["data_schema"].schema, CONF_HOST)
-            == DHCP_SERVICE_INFO.ip
+        ).to_equal(DHCP_SERVICE_INFO.ip)
+        expect(flows[0].get("context", {}).get("source")).to_equal(
+            config_entries.SOURCE_DHCP
         )
-        assert flows[0].get("context", {}).get("source") == config_entries.SOURCE_DHCP
 
-        # Verify we get dropped into the normal user flow with non-default credentials
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=USER_INPUT
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_dhcp_flow_auth_failure(hass: HomeAssistant) -> None:
+@test
+async def dhcp_flow_auth_failure(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that DHCP fails if creds aren't default."""
-
     with (
         patch(VALIDATE_AUTH_PATCH, return_value=False),
         patch("homeassistant.components.obihai.config_flow.gethostbyname"),
@@ -136,18 +150,18 @@ async def test_dhcp_flow_auth_failure(hass: HomeAssistant) -> None:
             context={"source": config_entries.SOURCE_DHCP},
         )
 
-        assert result["step_id"] == "dhcp_confirm"
-        assert get_schema_suggestion(result["data_schema"].schema, CONF_USERNAME) == ""
-        assert get_schema_suggestion(result["data_schema"].schema, CONF_PASSWORD) == ""
-        assert (
+        expect(result["step_id"]).to_equal("dhcp_confirm")
+        expect(
+            get_schema_suggestion(result["data_schema"].schema, CONF_USERNAME)
+        ).to_equal("")
+        expect(
+            get_schema_suggestion(result["data_schema"].schema, CONF_PASSWORD)
+        ).to_equal("")
+        expect(
             get_schema_suggestion(result["data_schema"].schema, CONF_HOST)
-            == DHCP_SERVICE_INFO.ip
-        )
+        ).to_equal(DHCP_SERVICE_INFO.ip)
 
-    with (
-        patch("homeassistant.components.obihai.config_flow.gethostbyname"),
-    ):
-        # Verify we get dropped into the normal user flow with non-default credentials
+    with patch("homeassistant.components.obihai.config_flow.gethostbyname"):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={
@@ -157,5 +171,5 @@ async def test_dhcp_flow_auth_failure(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result["errors"]["base"] == "invalid_auth"
-    assert result["step_id"] == "user"
+    expect(result["errors"]["base"]).to_equal("invalid_auth")
+    expect(result["step_id"]).to_equal("user")
