@@ -81,6 +81,7 @@ dependencies = [
   "yarl==1.23.0",
   "webrtc-models==0.3.0",
   "zeroconf==0.148.0",
+  "moehlenhoff-alpha2==1.4.0",
 ]
 
 [project.urls]
