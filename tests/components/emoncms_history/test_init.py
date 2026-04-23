@@ -6,39 +6,22 @@ from unittest.mock import AsyncMock, patch
 
 import aiohttp
 from freezegun.api import FrozenDateTimeFactory
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.const import CONF_API_KEY, CONF_URL, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
-
-async def test_setup_valid_config(hass: HomeAssistant) -> None:
-    """Test setting up the emoncms_history component with valid configuration."""
-    config = {
-        "emoncms_history": {
-            CONF_API_KEY: "dummy",
-            CONF_URL: "https://emoncms.example",
-            "inputnode": 42,
-            "whitelist": ["sensor.temp"],
-        }
-    }
-    # Simulate a sensor
-    hass.states.async_set("sensor.temp", "23.4", {"unit_of_measurement": "°C"})
-    await hass.async_block_till_done()
-
-    assert await async_setup_component(hass, "emoncms_history", config)
-    await hass.async_block_till_done()
+from tests.hass_fixtures import LogCapture, caplog, freezer, hass, mock_network
 
 
-async def test_setup_missing_config(hass: HomeAssistant) -> None:
-    """Test setting up the emoncms_history component with missing configuration."""
-    config = {"emoncms_history": {"api_key": "dummy"}}
-    success = await async_setup_component(hass, "emoncms_history", config)
-    assert not success
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
 
 
-@pytest.fixture
+@fixture
 async def emoncms_client() -> AsyncGenerator[AsyncMock]:
     """Mock pyemoncms client with successful responses."""
     with patch(
@@ -49,11 +32,42 @@ async def emoncms_client() -> AsyncGenerator[AsyncMock]:
         yield client
 
 
-async def test_emoncms_send_data(
-    hass: HomeAssistant,
-    emoncms_client: AsyncMock,
-    caplog: pytest.LogCaptureFixture,
-    freezer: FrozenDateTimeFactory,
+@test
+async def setup_valid_config(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
+    """Test setting up the emoncms_history component with valid configuration."""
+    config = {
+        "emoncms_history": {
+            CONF_API_KEY: "dummy",
+            CONF_URL: "https://emoncms.example",
+            "inputnode": 42,
+            "whitelist": ["sensor.temp"],
+        }
+    }
+    hass.states.async_set("sensor.temp", "23.4", {"unit_of_measurement": "°C"})
+    await hass.async_block_till_done()
+
+    expect(await async_setup_component(hass, "emoncms_history", config)).to_be(True)
+    await hass.async_block_till_done()
+
+
+@test
+async def setup_missing_config(hass: HomeAssistant = Depends(hass)) -> None:
+    """Test setting up the emoncms_history component with missing configuration."""
+    config = {"emoncms_history": {"api_key": "dummy"}}
+    success = await async_setup_component(hass, "emoncms_history", config)
+    expect(success).to_be(False)
+
+
+@test
+async def emoncms_send_data(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    emoncms_client: AsyncMock = Depends(emoncms_client),
+    caplog: LogCapture = Depends(caplog),
+    freezer: FrozenDateTimeFactory = Depends(freezer),
 ) -> None:
     """Test sending data to Emoncms with and without success."""
 
@@ -66,7 +80,7 @@ async def test_emoncms_send_data(
         }
     }
 
-    assert await async_setup_component(hass, "emoncms_history", config)
+    expect(await async_setup_component(hass, "emoncms_history", config)).to_be(True)
     await hass.async_block_till_done()
 
     for state in None, "", STATE_UNAVAILABLE, STATE_UNKNOWN:
@@ -76,7 +90,7 @@ async def test_emoncms_send_data(
         freezer.tick(timedelta(seconds=60))
         await hass.async_block_till_done()
 
-        assert emoncms_client.async_input_post.call_args is None
+        expect(emoncms_client.async_input_post.call_args is None).to_be(True)
 
     hass.states.async_set("sensor.temp", "not_a_number", {"unit_of_measurement": "°C"})
     await hass.async_block_till_done()
@@ -93,11 +107,11 @@ async def test_emoncms_send_data(
     await hass.async_block_till_done()
 
     emoncms_client.async_input_post.assert_called_once()
-    assert emoncms_client.async_input_post.return_value == '{"success": true}'
+    expect(emoncms_client.async_input_post.return_value).to_equal('{"success": true}')
 
     _, kwargs = emoncms_client.async_input_post.call_args
-    assert kwargs["data"] == {"sensor.temp": 23.4}
-    assert kwargs["node"] == "42"
+    expect(kwargs["data"]).to_equal({"sensor.temp": 23.4})
+    expect(kwargs["node"]).to_equal("42")
 
     emoncms_client.async_input_post.side_effect = aiohttp.ClientError(
         "Connection refused"
@@ -107,10 +121,12 @@ async def test_emoncms_send_data(
     freezer.tick(timedelta(seconds=60))
     await hass.async_block_till_done()
 
-    assert any(
-        "Network error when sending data to Emoncms" in message
-        for message in caplog.text.splitlines()
-    )
+    expect(
+        any(
+            "Network error when sending data to Emoncms" in message
+            for message in caplog.text.splitlines()
+        )
+    ).to_be(True)
 
     emoncms_client.async_input_post.side_effect = ValueError("Invalid value format")
 
@@ -119,7 +135,9 @@ async def test_emoncms_send_data(
     freezer.tick(timedelta(seconds=60))
     await hass.async_block_till_done()
 
-    assert any(
-        "Value error when preparing data for Emoncms" in message
-        for message in caplog.text.splitlines()
-    )
+    expect(
+        any(
+            "Value error when preparing data for Emoncms" in message
+            for message in caplog.text.splitlines()
+        )
+    ).to_be(True)

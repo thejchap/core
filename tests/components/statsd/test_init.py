@@ -1,49 +1,61 @@
 """The tests for the StatsD feeder."""
 
+from collections.abc import Generator
 from unittest import mock
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 import voluptuous as vol
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components import statsd
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
+from tests.hass_fixtures import hass
 
-@pytest.fixture
-def mock_client():
+
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@fixture
+def mock_client() -> Generator[MagicMock]:
     """Pytest fixture for statsd library."""
     with patch("statsd.StatsClient") as mock_client:
         yield mock_client.return_value
 
 
-def test_invalid_config() -> None:
+@test
+def invalid_config() -> None:
     """Test configuration with defaults."""
     config = {"statsd": {"host1": "host1"}}
 
-    with pytest.raises(vol.Invalid):
-        statsd.CONFIG_SCHEMA(None)
-    with pytest.raises(vol.Invalid):
-        statsd.CONFIG_SCHEMA(config)
+    expect(lambda: statsd.CONFIG_SCHEMA(None)).to_raise(vol.Invalid)
+    expect(lambda: statsd.CONFIG_SCHEMA(config)).to_raise(vol.Invalid)
 
 
-async def test_statsd_setup_full(hass: HomeAssistant) -> None:
+@test
+async def statsd_setup_full(hass: HomeAssistant = Depends(hass)) -> None:
     """Test setup with all data."""
     config = {"statsd": {"host": "host", "port": 123, "rate": 1, "prefix": "foo"}}
     with patch("statsd.StatsClient") as mock_init:
-        assert await async_setup_component(hass, statsd.DOMAIN, config)
+        expect(await async_setup_component(hass, statsd.DOMAIN, config)).to_be(True)
 
-        assert mock_init.call_count == 1
-        assert mock_init.call_args == mock.call(host="host", port=123, prefix="foo")
+        expect(mock_init.call_count).to_equal(1)
+        expect(mock_init.call_args).to_equal(
+            mock.call(host="host", port=123, prefix="foo")
+        )
 
         hass.states.async_set("domain.test", "on")
         await hass.async_block_till_done()
-        assert len(mock_init.mock_calls) == 3
+        expect(len(mock_init.mock_calls)).to_equal(3)
 
 
-async def test_statsd_setup_defaults(hass: HomeAssistant) -> None:
+@test
+async def statsd_setup_defaults(hass: HomeAssistant = Depends(hass)) -> None:
     """Test setup with defaults."""
     config = {"statsd": {"host": "host"}}
 
@@ -51,16 +63,22 @@ async def test_statsd_setup_defaults(hass: HomeAssistant) -> None:
     config["statsd"][statsd.CONF_PREFIX] = statsd.DEFAULT_PREFIX
 
     with patch("statsd.StatsClient") as mock_init:
-        assert await async_setup_component(hass, statsd.DOMAIN, config)
+        expect(await async_setup_component(hass, statsd.DOMAIN, config)).to_be(True)
 
-        assert mock_init.call_count == 1
-        assert mock_init.call_args == mock.call(host="host", port=8125, prefix="hass")
+        expect(mock_init.call_count).to_equal(1)
+        expect(mock_init.call_args).to_equal(
+            mock.call(host="host", port=8125, prefix="hass")
+        )
         hass.states.async_set("domain.test", "on")
         await hass.async_block_till_done()
-        assert len(mock_init.mock_calls) == 3
+        expect(len(mock_init.mock_calls)).to_equal(3)
 
 
-async def test_event_listener_defaults(hass: HomeAssistant, mock_client) -> None:
+@test
+async def event_listener_defaults(
+    hass: HomeAssistant = Depends(hass),
+    mock_client: MagicMock = Depends(mock_client),
+) -> None:
     """Test event listener."""
     config = {"statsd": {"host": "host", "value_mapping": {"custom": 3}}}
 
@@ -78,20 +96,24 @@ async def test_event_listener_defaults(hass: HomeAssistant, mock_client) -> None
 
         mock_client.gauge.reset_mock()
 
-        assert mock_client.incr.call_count == 1
-        assert mock_client.incr.call_args == mock.call(
-            "domain.test", rate=statsd.DEFAULT_RATE
+        expect(mock_client.incr.call_count).to_equal(1)
+        expect(mock_client.incr.call_args).to_equal(
+            mock.call("domain.test", rate=statsd.DEFAULT_RATE)
         )
         mock_client.incr.reset_mock()
 
     for invalid in ("foo", "", object):
         hass.states.async_set("domain.test", invalid, {})
         await hass.async_block_till_done()
-        assert not mock_client.gauge.called
-        assert mock_client.incr.called
+        expect(mock_client.gauge.called).to_be(False)
+        expect(mock_client.incr.called).to_be(True)
 
 
-async def test_event_listener_attr_details(hass: HomeAssistant, mock_client) -> None:
+@test
+async def event_listener_attr_details(
+    hass: HomeAssistant = Depends(hass),
+    mock_client: MagicMock = Depends(mock_client),
+) -> None:
     """Test event listener."""
     config = {"statsd": {"host": "host", "log_attributes": True}}
 
@@ -112,14 +134,14 @@ async def test_event_listener_attr_details(hass: HomeAssistant, mock_client) -> 
 
         mock_client.gauge.reset_mock()
 
-        assert mock_client.incr.call_count == 1
-        assert mock_client.incr.call_args == mock.call(
-            "domain.test", rate=statsd.DEFAULT_RATE
+        expect(mock_client.incr.call_count).to_equal(1)
+        expect(mock_client.incr.call_args).to_equal(
+            mock.call("domain.test", rate=statsd.DEFAULT_RATE)
         )
         mock_client.incr.reset_mock()
 
     for invalid in ("foo", "", object):
         hass.states.async_set("domain.test", invalid, {})
         await hass.async_block_till_done()
-        assert not mock_client.gauge.called
-        assert mock_client.incr.called
+        expect(mock_client.gauge.called).to_be(False)
+        expect(mock_client.incr.called).to_be(True)
