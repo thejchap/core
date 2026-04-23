@@ -7,7 +7,7 @@ from pyliebherrhomeapi.exceptions import (
     LiebherrAuthenticationError,
     LiebherrConnectionError,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.liebherr.const import DOMAIN
@@ -16,7 +16,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
+from ._fixtures import (
+    mock_config_entry,
+    mock_liebherr_client,
+    mock_setup_entry,
+    patch_refresh_delay,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 MOCK_API_KEY = "test-api-key"
 MOCK_USER_INPUT = {CONF_API_KEY: MOCK_API_KEY}
@@ -32,90 +40,105 @@ MOCK_ZEROCONF_SERVICE_INFO = ZeroconfServiceInfo(
 )
 
 
-async def test_form(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_liebherr_client: MagicMock,
+@fixture
+def _trigger_executor(
+    _mn: None = Depends(mock_network),
+    _pr: None = Depends(patch_refresh_delay),
+) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_liebherr_client: MagicMock = Depends(mock_liebherr_client),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
-    assert result.get("errors") == {}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
+    expect(result.get("errors")).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], MOCK_USER_INPUT
     )
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == "Liebherr"
-    assert result.get("data") == MOCK_USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal("Liebherr")
+    expect(result.get("data")).to_equal(MOCK_USER_INPUT)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (LiebherrAuthenticationError("Invalid"), "invalid_auth"),
-        (LiebherrConnectionError("Failed"), "cannot_connect"),
-        (Exception("Unexpected"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        LiebherrAuthenticationError("Invalid"),
+        "invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        LiebherrConnectionError("Failed"),
+        "cannot_connect",
+    ),
+    test.case("unknown", Exception("Unexpected"), "unknown"),
 )
-async def test_form_errors_with_recovery(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_liebherr_client: MagicMock,
+async def form_errors_with_recovery(
     side_effect: Exception,
     expected_error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_liebherr_client: MagicMock = Depends(mock_liebherr_client),
 ) -> None:
     """Test error handling with successful recovery."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({})
 
-    # Trigger error
     mock_liebherr_client.get_devices.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], MOCK_USER_INPUT
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {"base": expected_error}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({"base": expected_error})
 
-    # Recover and complete successfully
     mock_liebherr_client.get_devices.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], MOCK_USER_INPUT
     )
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == "Liebherr"
-    assert result.get("data") == MOCK_USER_INPUT
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal("Liebherr")
+    expect(result.get("data")).to_equal(MOCK_USER_INPUT)
 
 
-async def test_form_no_devices(
-    hass: HomeAssistant,
-    mock_liebherr_client: MagicMock,
+@test
+async def form_no_devices(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_liebherr_client: MagicMock = Depends(mock_liebherr_client),
 ) -> None:
     """Test we handle no devices found."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.FORM
+    expect(result.get("type")).to_be(FlowResultType.FORM)
 
     mock_liebherr_client.get_devices.return_value = []
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], MOCK_USER_INPUT
     )
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "no_devices"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("no_devices")
 
 
-async def test_form_already_configured(
-    hass: HomeAssistant,
-    mock_liebherr_client: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def form_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_liebherr_client: MagicMock = Depends(mock_liebherr_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we abort if already configured."""
     mock_config_entry.add_to_hass(hass)
@@ -123,19 +146,20 @@ async def test_form_already_configured(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.FORM
+    expect(result.get("type")).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], MOCK_USER_INPUT
     )
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "already_configured"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("already_configured")
 
 
-async def test_zeroconf_discovery(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_liebherr_client: MagicMock,
+@test
+async def zeroconf_discovery(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_liebherr_client: MagicMock = Depends(mock_liebherr_client),
 ) -> None:
     """Test zeroconf discovery triggers the config flow."""
     result = await hass.config_entries.flow.async_init(
@@ -143,20 +167,21 @@ async def test_zeroconf_discovery(
         context={"source": config_entries.SOURCE_ZEROCONF},
         data=MOCK_ZEROCONF_SERVICE_INFO,
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], MOCK_USER_INPUT
     )
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == "Liebherr"
-    assert result.get("data") == MOCK_USER_INPUT
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal("Liebherr")
+    expect(result.get("data")).to_equal(MOCK_USER_INPUT)
 
 
-async def test_zeroconf_already_configured(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def zeroconf_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test zeroconf discovery aborts if already configured."""
     mock_config_entry.add_to_hass(hass)
@@ -166,69 +191,73 @@ async def test_zeroconf_already_configured(
         context={"source": config_entries.SOURCE_ZEROCONF},
         data=MOCK_ZEROCONF_SERVICE_INFO,
     )
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "already_configured"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("already_configured")
 
 
-async def test_reauth_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_liebherr_client: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_liebherr_client: MagicMock = Depends(mock_liebherr_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reauth flow."""
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "reauth_confirm"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("reauth_confirm")
 
     new_api_key = "new-api-key"
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_API_KEY: new_api_key}
     )
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reauth_successful"
-    assert mock_config_entry.data[CONF_API_KEY] == new_api_key
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("reauth_successful")
+    expect(mock_config_entry.data[CONF_API_KEY]).to_equal(new_api_key)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (LiebherrAuthenticationError("Invalid"), "invalid_auth"),
-        (LiebherrConnectionError("Failed"), "cannot_connect"),
-        (Exception("Unexpected"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        LiebherrAuthenticationError("Invalid"),
+        "invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        LiebherrConnectionError("Failed"),
+        "cannot_connect",
+    ),
+    test.case("unknown", Exception("Unexpected"), "unknown"),
 )
-async def test_reauth_flow_errors_with_recovery(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_liebherr_client: MagicMock,
-    mock_config_entry: MockConfigEntry,
+async def reauth_flow_errors_with_recovery(
     side_effect: Exception,
     expected_error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_liebherr_client: MagicMock = Depends(mock_liebherr_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reauth flow error handling with successful recovery."""
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "reauth_confirm"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("reauth_confirm")
 
-    # Trigger error
     mock_liebherr_client.get_devices.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_API_KEY: "new-api-key"}
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {"base": expected_error}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({"base": expected_error})
 
-    # Recover and complete successfully
     mock_liebherr_client.get_devices.side_effect = None
     new_api_key = "new-api-key-recovered"
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_API_KEY: new_api_key}
     )
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reauth_successful"
-    assert mock_config_entry.data[CONF_API_KEY] == new_api_key
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("reauth_successful")
+    expect(mock_config_entry.data[CONF_API_KEY]).to_equal(new_api_key)
