@@ -1,6 +1,6 @@
 """Define tests for the Bravia TV config flow."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pybravia import (
     BraviaAuthError,
@@ -8,7 +8,7 @@ from pybravia import (
     BraviaError,
     BraviaNotSupported,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.braviatv.const import (
     CONF_NICKNAME,
@@ -30,6 +30,8 @@ from homeassistant.helpers.service_info.ssdp import (
 )
 
 from tests.common import MockConfigEntry
+from tests.components.braviatv._fixtures import mock_setup_entry, mock_zeroconf
+from tests.hass_fixtures import hass, mock_network
 
 BRAVIA_SYSTEM_INFO = {
     "product": "TV",
@@ -90,20 +92,36 @@ FAKE_BRAVIA_SSDP = SsdpServiceInfo(
     },
 )
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
 
 
-async def test_show_form(hass: HomeAssistant) -> None:
+@test
+async def show_form(
+    hass: HomeAssistant = Depends(hass),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that the form is served with no input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_ssdp_discovery(hass: HomeAssistant) -> None:
+@test
+async def ssdp_discovery(
+    hass: HomeAssistant = Depends(hass),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that the device is discovered."""
     uuid = await instance_id.async_get(hass)
     result = await hass.config_entries.flow.async_init(
@@ -111,8 +129,8 @@ async def test_ssdp_discovery(hass: HomeAssistant) -> None:
         context={"source": SOURCE_SSDP},
         data=BRAVIA_SSDP,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("confirm")
 
     with (
         patch("pybravia.BraviaClient.connect"),
@@ -128,35 +146,43 @@ async def test_ssdp_discovery(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "authorize"
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["step_id"]).to_equal("authorize")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={CONF_USE_PSK: False, CONF_USE_SSL: False}
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "pin"
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["step_id"]).to_equal("pin")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={CONF_PIN: "1234"}
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["result"].unique_id == "very_unique_string"
-        assert result["title"] == "BRAVIA TV-Model"
-        assert result["data"] == {
-            CONF_HOST: "bravia-host",
-            CONF_PIN: "1234",
-            CONF_USE_PSK: False,
-            CONF_USE_SSL: False,
-            CONF_MAC: "AA:BB:CC:DD:EE:FF",
-            CONF_CLIENT_ID: uuid,
-            CONF_NICKNAME: f"{NICKNAME_PREFIX} {uuid[:6]}",
-        }
+        expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+        expect(result["result"].unique_id).to_equal("very_unique_string")
+        expect(result["title"]).to_equal("BRAVIA TV-Model")
+        expect(result["data"]).to_equal(
+            {
+                CONF_HOST: "bravia-host",
+                CONF_PIN: "1234",
+                CONF_USE_PSK: False,
+                CONF_USE_SSL: False,
+                CONF_MAC: "AA:BB:CC:DD:EE:FF",
+                CONF_CLIENT_ID: uuid,
+                CONF_NICKNAME: f"{NICKNAME_PREFIX} {uuid[:6]}",
+            }
+        )
 
 
-async def test_ssdp_discovery_fake(hass: HomeAssistant) -> None:
+@test
+async def ssdp_discovery_fake(
+    hass: HomeAssistant = Depends(hass),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that not Bravia device is not discovered."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -164,11 +190,17 @@ async def test_ssdp_discovery_fake(hass: HomeAssistant) -> None:
         data=FAKE_BRAVIA_SSDP,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_bravia_device"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("not_bravia_device")
 
 
-async def test_ssdp_discovery_exist(hass: HomeAssistant) -> None:
+@test
+async def ssdp_discovery_exist(
+    hass: HomeAssistant = Depends(hass),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that the existed device is not discovered."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -188,28 +220,38 @@ async def test_ssdp_discovery_exist(hass: HomeAssistant) -> None:
         data=BRAVIA_SSDP,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_user_invalid_host(hass: HomeAssistant) -> None:
+@test
+async def user_invalid_host(
+    hass: HomeAssistant = Depends(hass),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that errors are shown when the host is invalid."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data={CONF_HOST: "invalid/host"}
     )
 
-    assert result["errors"] == {CONF_HOST: "invalid_host"}
+    expect(result["errors"]).to_equal({CONF_HOST: "invalid_host"})
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_message"),
-    [
-        (BraviaAuthError, "invalid_auth"),
-        (BraviaNotSupported, "unsupported_model"),
-        (BraviaConnectionError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("invalid_auth", BraviaAuthError, "invalid_auth"),
+    test.case("unsupported_model", BraviaNotSupported, "unsupported_model"),
+    test.case("cannot_connect", BraviaConnectionError, "cannot_connect"),
 )
-async def test_pin_form_error(hass: HomeAssistant, side_effect, error_message) -> None:
+async def pin_form_error(
+    side_effect: type[Exception],
+    error_message: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that PIN form errors are correct."""
     with (
         patch(
@@ -228,18 +270,22 @@ async def test_pin_form_error(hass: HomeAssistant, side_effect, error_message) -
             result["flow_id"], user_input={CONF_PIN: "1234"}
         )
 
-        assert result["errors"] == {"base": error_message}
+        expect(result["errors"]).to_equal({"base": error_message})
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_message"),
-    [
-        (BraviaAuthError, "invalid_auth"),
-        (BraviaNotSupported, "unsupported_model"),
-        (BraviaConnectionError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("invalid_auth", BraviaAuthError, "invalid_auth"),
+    test.case("unsupported_model", BraviaNotSupported, "unsupported_model"),
+    test.case("cannot_connect", BraviaConnectionError, "cannot_connect"),
 )
-async def test_psk_form_error(hass: HomeAssistant, side_effect, error_message) -> None:
+async def psk_form_error(
+    side_effect: type[Exception],
+    error_message: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that PSK form errors are correct."""
     with patch(
         "pybravia.BraviaClient.connect",
@@ -255,10 +301,16 @@ async def test_psk_form_error(hass: HomeAssistant, side_effect, error_message) -
             result["flow_id"], user_input={CONF_PIN: "mypsk"}
         )
 
-        assert result["errors"] == {"base": error_message}
+        expect(result["errors"]).to_equal({"base": error_message})
 
 
-async def test_no_ip_control(hass: HomeAssistant) -> None:
+@test
+async def no_ip_control(
+    hass: HomeAssistant = Depends(hass),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that error are shown when IP Control is disabled on the TV."""
     with patch("pybravia.BraviaClient.pair", side_effect=BraviaError):
         result = await hass.config_entries.flow.async_init(
@@ -268,11 +320,17 @@ async def test_no_ip_control(hass: HomeAssistant) -> None:
             result["flow_id"], user_input={CONF_USE_PSK: False}
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "no_ip_control"
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result["reason"]).to_equal("no_ip_control")
 
 
-async def test_duplicate_error(hass: HomeAssistant) -> None:
+@test
+async def duplicate_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that error are shown when duplicates are added."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -305,20 +363,24 @@ async def test_duplicate_error(hass: HomeAssistant) -> None:
             result["flow_id"], user_input={CONF_PIN: "1234"}
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("use_psk", "use_ssl"),
-    [
-        (True, False),
-        (False, False),
-        (True, True),
-        (False, True),
-    ],
+@test.cases(
+    test.case("psk_no_ssl", True, False),
+    test.case("pin_no_ssl", False, False),
+    test.case("psk_ssl", True, True),
+    test.case("pin_ssl", False, True),
 )
-async def test_create_entry(hass: HomeAssistant, use_psk, use_ssl) -> None:
+async def create_entry(
+    use_psk: bool,
+    use_ssl: bool,
+    hass: HomeAssistant = Depends(hass),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that entry is added correctly."""
     uuid = await instance_id.async_get(hass)
 
@@ -335,48 +397,54 @@ async def test_create_entry(hass: HomeAssistant, use_psk, use_ssl) -> None:
             DOMAIN, context={"source": SOURCE_USER}, data={CONF_HOST: "bravia-host"}
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "authorize"
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["step_id"]).to_equal("authorize")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={CONF_USE_PSK: use_psk, CONF_USE_SSL: use_ssl}
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "psk" if use_psk else "pin"
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["step_id"]).to_equal("psk" if use_psk else "pin")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={CONF_PIN: "secret"}
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["result"].unique_id == "very_unique_string"
-        assert result["title"] == "BRAVIA TV-Model"
-        assert result["data"] == {
-            CONF_HOST: "bravia-host",
-            CONF_PIN: "secret",
-            CONF_USE_PSK: use_psk,
-            CONF_USE_SSL: use_ssl,
-            CONF_MAC: "AA:BB:CC:DD:EE:FF",
-            **(
-                {
-                    CONF_CLIENT_ID: uuid,
-                    CONF_NICKNAME: f"{NICKNAME_PREFIX} {uuid[:6]}",
-                }
-                if not use_psk
-                else {}
-            ),
-        }
+        expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+        expect(result["result"].unique_id).to_equal("very_unique_string")
+        expect(result["title"]).to_equal("BRAVIA TV-Model")
+        expect(result["data"]).to_equal(
+            {
+                CONF_HOST: "bravia-host",
+                CONF_PIN: "secret",
+                CONF_USE_PSK: use_psk,
+                CONF_USE_SSL: use_ssl,
+                CONF_MAC: "AA:BB:CC:DD:EE:FF",
+                **(
+                    {
+                        CONF_CLIENT_ID: uuid,
+                        CONF_NICKNAME: f"{NICKNAME_PREFIX} {uuid[:6]}",
+                    }
+                    if not use_psk
+                    else {}
+                ),
+            }
+        )
 
 
-@pytest.mark.parametrize(
-    ("use_psk", "new_pin"),
-    [
-        (True, "7777"),
-        (False, "newpsk"),
-    ],
+@test.cases(
+    test.case("psk", True, "7777"),
+    test.case("pin", False, "newpsk"),
 )
-async def test_reauth_successful(hass: HomeAssistant, use_psk, new_pin) -> None:
+async def reauth_successful(
+    use_psk: bool,
+    new_pin: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that the reauthorization is successful."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -390,8 +458,8 @@ async def test_reauth_successful(hass: HomeAssistant, use_psk, new_pin) -> None:
     )
     config_entry.add_to_hass(hass)
     result = await config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "authorize"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("authorize")
 
     with (
         patch("pybravia.BraviaClient.connect"),
@@ -415,6 +483,6 @@ async def test_reauth_successful(hass: HomeAssistant, use_psk, new_pin) -> None:
             result["flow_id"], user_input={CONF_PIN: new_pin}
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "reauth_successful"
-        assert config_entry.data[CONF_PIN] == new_pin
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result["reason"]).to_equal("reauth_successful")
+        expect(config_entry.data[CONF_PIN]).to_equal(new_pin)
