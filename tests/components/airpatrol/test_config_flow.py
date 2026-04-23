@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from airpatrol.api import AirPatrolAPI, AirPatrolAuthenticationError, AirPatrolError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.airpatrol.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -12,6 +12,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.airpatrol._fixtures import get_client, mock_config_entry
+from tests.hass_fixtures import hass, mock_network
 
 TEST_USER_INPUT = {
     CONF_EMAIL: "test@example.com",
@@ -19,60 +21,76 @@ TEST_USER_INPUT = {
 }
 
 
-async def test_user_flow_success(
-    hass: HomeAssistant,
-    get_client: AirPatrolAPI,
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def user_flow_success(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _get_client: AirPatrolAPI = Depends(get_client),
 ) -> None:
     """Test successful user flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=TEST_USER_INPUT
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_USER_INPUT[CONF_EMAIL]
-    assert result["data"] == {
-        **TEST_USER_INPUT,
-        CONF_ACCESS_TOKEN: "test_access_token",
-    }
-    assert result["result"].unique_id == "test_user_id"
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(TEST_USER_INPUT[CONF_EMAIL])
+    expect(result["data"]).to_equal(
+        {
+            **TEST_USER_INPUT,
+            CONF_ACCESS_TOKEN: "test_access_token",
+        }
+    )
+    expect(result["result"].unique_id).to_equal("test_user_id")
 
 
-async def test_async_step_reauth_confirm_success(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry, get_client: AirPatrolAPI
+@test
+async def async_step_reauth_confirm_success(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _get_client: AirPatrolAPI = Depends(get_client),
 ) -> None:
     """Test successful reauthentication via async_step_reauth_confirm."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=TEST_USER_INPUT
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("reauth_successful")
 
-    assert mock_config_entry.data[CONF_PASSWORD] == "test_password"
-    assert mock_config_entry.data[CONF_ACCESS_TOKEN] == "test_access_token"
+    expect(mock_config_entry.data[CONF_PASSWORD]).to_equal("test_password")
+    expect(mock_config_entry.data[CONF_ACCESS_TOKEN]).to_equal("test_access_token")
 
 
-async def test_async_step_reauth_confirm_invalid_auth(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    get_client: AirPatrolAPI,
+@test
+async def async_step_reauth_confirm_invalid_auth(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _get_client: AirPatrolAPI = Depends(get_client),
 ) -> None:
     """Test reauthentication failure due to invalid credentials."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.airpatrol.config_flow.AirPatrolAPI.authenticate",
@@ -81,29 +99,33 @@ async def test_async_step_reauth_confirm_invalid_auth(
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=TEST_USER_INPUT
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "reauth_confirm"
-        assert result["errors"] == {"base": "invalid_auth"}
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["step_id"]).to_equal("reauth_confirm")
+        expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=TEST_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data[CONF_PASSWORD] == "test_password"
-    assert mock_config_entry.data[CONF_ACCESS_TOKEN] == "test_access_token"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_config_entry.data[CONF_PASSWORD]).to_equal("test_password")
+    expect(mock_config_entry.data[CONF_ACCESS_TOKEN]).to_equal("test_access_token")
 
 
-async def test_async_step_reauth_confirm_another_account_failure(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry, get_client: AirPatrolAPI
+@test
+async def async_step_reauth_confirm_another_account_failure(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    get_client: AirPatrolAPI = Depends(get_client),
 ) -> None:
     """Test reauthentication failure due to another account."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     get_client.get_unique_id.return_value = "different_user_id"
 
@@ -112,29 +134,27 @@ async def test_async_step_reauth_confirm_another_account_failure(
         user_input={CONF_EMAIL: "test2@example.com", CONF_PASSWORD: "test_password2"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unique_id_mismatch"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("unique_id_mismatch")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (AirPatrolError("fail"), "cannot_connect"),
-        (AirPatrolAuthenticationError("fail"), "invalid_auth"),
-    ],
+@test.cases(
+    test.case("cannot_connect", AirPatrolError("fail"), "cannot_connect"),
+    test.case("invalid_auth", AirPatrolAuthenticationError("fail"), "invalid_auth"),
 )
-async def test_user_flow_error(
-    hass: HomeAssistant,
-    side_effect,
-    expected_error,
-    get_client: AirPatrolAPI,
+async def user_flow_error(
+    side_effect: Exception,
+    expected_error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _get_client: AirPatrolAPI = Depends(get_client),
 ) -> None:
     """Test user flow with invalid authentication."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     with patch(
         "homeassistant.components.airpatrol.config_flow.AirPatrolAPI.authenticate",
@@ -144,26 +164,30 @@ async def test_user_flow_error(
             result["flow_id"], user_input=TEST_USER_INPUT
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": expected_error}
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["errors"]).to_equal({"base": expected_error})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=TEST_USER_INPUT
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_USER_INPUT[CONF_EMAIL]
-    assert result["data"] == {
-        **TEST_USER_INPUT,
-        CONF_ACCESS_TOKEN: "test_access_token",
-    }
-    assert result["result"].unique_id == "test_user_id"
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(TEST_USER_INPUT[CONF_EMAIL])
+    expect(result["data"]).to_equal(
+        {
+            **TEST_USER_INPUT,
+            CONF_ACCESS_TOKEN: "test_access_token",
+        }
+    )
+    expect(result["result"].unique_id).to_equal("test_user_id")
 
 
-async def test_user_flow_already_configured(
-    hass: HomeAssistant,
-    get_client: AirPatrolAPI,
-    mock_config_entry: MockConfigEntry,
+@test
+async def user_flow_already_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _get_client: AirPatrolAPI = Depends(get_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test user flow when already configured."""
     mock_config_entry.add_to_hass(hass)
@@ -171,12 +195,12 @@ async def test_user_flow_already_configured(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=TEST_USER_INPUT
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
