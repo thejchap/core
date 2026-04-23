@@ -5,7 +5,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from azure.eventhub.exceptions import EventHubError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.azure_event_hub.const import (
@@ -30,55 +30,71 @@ from .const import (
 )
 
 from tests.common import MockConfigEntry
+from tests.components.azure_event_hub._fixtures import (
+    entry,
+    mock_from_connection_string,
+    mock_get_eventhub_properties,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import hass, mock_network
 
 _LOGGER = logging.getLogger(__name__)
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
 
 
-@pytest.mark.parametrize(
-    ("step1_config", "step_id", "step2_config", "data_config"),
-    [
-        (BASE_CONFIG_CS, STEP_CONN_STRING, CS_CONFIG, CS_CONFIG_FULL),
-        (BASE_CONFIG_SAS, STEP_SAS, SAS_CONFIG, SAS_CONFIG_FULL),
-    ],
-    ids=["connection_string", "sas"],
+@test.cases(
+    test.case(
+        "connection_string", BASE_CONFIG_CS, STEP_CONN_STRING, CS_CONFIG, CS_CONFIG_FULL
+    ),
+    test.case("sas", BASE_CONFIG_SAS, STEP_SAS, SAS_CONFIG, SAS_CONFIG_FULL),
 )
-@pytest.mark.usefixtures("mock_from_connection_string")
-async def test_form(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+async def form(
     step1_config: dict[str, Any],
     step_id: str,
     step2_config: dict[str, str],
     data_config: dict[str, str],
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_get_eventhub_properties: AsyncMock = Depends(mock_get_eventhub_properties),
+    _mock_from_connection_string: MagicMock = Depends(mock_from_connection_string),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}, data=None
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"] is None).to_be(True)
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         step1_config.copy(),
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == step_id
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["step_id"]).to_equal(step_id)
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"],
         step2_config.copy(),
     )
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == "test-instance"
-    assert result3["data"] == data_config
-    mock_setup_entry.assert_called_once()
+    expect(result3["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result3["title"]).to_equal("test-instance")
+    expect(result3["data"]).to_equal(data_config)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_import(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@test
+async def import_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_get_eventhub_properties: AsyncMock = Depends(mock_get_eventhub_properties),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form."""
-
     import_config = IMPORT_CONFIG.copy()
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -86,23 +102,28 @@ async def test_import(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
         data=IMPORT_CONFIG.copy(),
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test-instance"
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal("test-instance")
     options = {
         CONF_SEND_INTERVAL: import_config.pop(CONF_SEND_INTERVAL),
         CONF_MAX_DELAY: import_config.pop(CONF_MAX_DELAY),
     }
-    assert result["data"] == import_config
-    assert result["options"] == options
-    mock_setup_entry.assert_called_once()
+    expect(result["data"]).to_equal(import_config)
+    expect(result["options"]).to_equal(options)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    "source",
-    [config_entries.SOURCE_USER, config_entries.SOURCE_IMPORT],
-    ids=["user", "import"],
+@test.cases(
+    test.case("user", config_entries.SOURCE_USER),
+    test.case("import", config_entries.SOURCE_IMPORT),
 )
-async def test_single_instance(hass: HomeAssistant, source: str) -> None:
+async def single_instance(
+    source: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_get_eventhub_properties: AsyncMock = Depends(mock_get_eventhub_properties),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test uniqueness of username."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -116,20 +137,21 @@ async def test_single_instance(hass: HomeAssistant, source: str) -> None:
         context={"source": source},
         data=BASE_CONFIG_CS.copy(),
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("single_instance_allowed")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_message"),
-    [(EventHubError("test"), "cannot_connect"), (Exception, "unknown")],
-    ids=["cannot_connect", "unknown"],
+@test.cases(
+    test.case("cannot_connect", EventHubError("test"), "cannot_connect"),
+    test.case("unknown", Exception, "unknown"),
 )
-async def test_connection_error_sas(
-    hass: HomeAssistant,
-    mock_get_eventhub_properties: AsyncMock,
+async def connection_error_sas(
     side_effect: Exception,
     error_message: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_get_eventhub_properties: AsyncMock = Depends(mock_get_eventhub_properties),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we handle connection errors."""
     result = await hass.config_entries.flow.async_init(
@@ -137,28 +159,30 @@ async def test_connection_error_sas(
         context={"source": config_entries.SOURCE_USER},
         data=BASE_CONFIG_SAS.copy(),
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"] is None).to_be(True)
 
     mock_get_eventhub_properties.side_effect = side_effect
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         SAS_CONFIG.copy(),
     )
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": error_message}
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["errors"]).to_equal({"base": error_message})
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_message"),
-    [(EventHubError("test"), "cannot_connect"), (Exception, "unknown")],
-    ids=["cannot_connect", "unknown"],
+@test.cases(
+    test.case("cannot_connect", EventHubError("test"), "cannot_connect"),
+    test.case("unknown", Exception, "unknown"),
 )
-async def test_connection_error_cs(
-    hass: HomeAssistant,
-    mock_from_connection_string: MagicMock,
+async def connection_error_cs(
     side_effect: Exception,
     error_message: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_get_eventhub_properties: AsyncMock = Depends(mock_get_eventhub_properties),
+    mock_from_connection_string: MagicMock = Depends(mock_from_connection_string),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we handle connection errors."""
     result = await hass.config_entries.flow.async_init(
@@ -166,8 +190,8 @@ async def test_connection_error_cs(
         context={"source": config_entries.SOURCE_USER},
         data=BASE_CONFIG_CS.copy(),
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"] is None).to_be(True)
     mock_from_connection_string.return_value.get_eventhub_properties.side_effect = (
         side_effect
     )
@@ -175,21 +199,27 @@ async def test_connection_error_cs(
         result["flow_id"],
         CS_CONFIG.copy(),
     )
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": error_message}
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["errors"]).to_equal({"base": error_message})
 
 
-async def test_options_flow(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+@test
+async def options_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    entry: MockConfigEntry = Depends(entry),
+) -> None:
     """Test options flow."""
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert result["last_step"]
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("init")
+    expect(bool(result["last_step"])).to_be(True)
 
     updated = await hass.config_entries.options.async_configure(
         result["flow_id"], UPDATE_OPTIONS
     )
-    assert updated["type"] is FlowResultType.CREATE_ENTRY
-    assert updated["data"] == UPDATE_OPTIONS
+    expect(updated["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(updated["data"]).to_equal(UPDATE_OPTIONS)
     await hass.async_block_till_done()
