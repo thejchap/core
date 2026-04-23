@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 from anthemav.device_error import DeviceError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.anthemav.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -10,17 +11,33 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.anthemav._fixtures import (
+    mock_anthemav,
+    mock_config_entry,
+    mock_connection_create,
+)
+from tests.hass_fixtures import hass, mock_network
 
 
-async def test_form_with_valid_connection(
-    hass: HomeAssistant, mock_connection_create: AsyncMock, mock_anthemav: AsyncMock
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def form_with_valid_connection(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_connection_create: AsyncMock = Depends(mock_connection_create),
+    _mock_anthemav: AsyncMock = Depends(mock_anthemav),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"] is None).to_be(True)
 
     with patch(
         "homeassistant.components.anthemav.async_setup_entry",
@@ -36,18 +53,24 @@ async def test_form_with_valid_connection(
 
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Anthem AV"
-    assert result2["data"] == {
-        "host": "1.1.1.1",
-        "port": 14999,
-        "mac": "00:00:00:00:00:01",
-        "model": "MRX 520",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result2["title"]).to_equal("Anthem AV")
+    expect(result2["data"]).to_equal(
+        {
+            "host": "1.1.1.1",
+            "port": 14999,
+            "mac": "00:00:00:00:00:01",
+            "model": "MRX 520",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_device_info_error(hass: HomeAssistant) -> None:
+@test
+async def form_device_info_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test we handle DeviceError from library."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -67,11 +90,15 @@ async def test_form_device_info_error(hass: HomeAssistant) -> None:
 
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_receive_deviceinfo"}
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["errors"]).to_equal({"base": "cannot_receive_deviceinfo"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -91,15 +118,17 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
 
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_device_already_configured(
-    hass: HomeAssistant,
-    mock_connection_create: AsyncMock,
-    mock_anthemav: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def device_already_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_connection_create: AsyncMock = Depends(mock_connection_create),
+    _mock_anthemav: AsyncMock = Depends(mock_anthemav),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we import existing configuration."""
     config = {
@@ -112,5 +141,5 @@ async def test_device_already_configured(
         DOMAIN, context={"source": SOURCE_USER}, data=config
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "already_configured"
+    expect(result.get("type") is FlowResultType.ABORT).to_be(True)
+    expect(result.get("reason")).to_equal("already_configured")
