@@ -1,8 +1,8 @@
 """Test the Duck DNS config flow."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.duckdns import DOMAIN
 from homeassistant.config_entries import SOURCE_IMPORT, SOURCE_USER
@@ -12,22 +12,39 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
 
-from .conftest import NEW_TOKEN, TEST_SUBDOMAIN, TEST_TOKEN
-
 from tests.common import MockConfigEntry
+from tests.components.duckdns._fixtures import (
+    NEW_TOKEN,
+    TEST_SUBDOMAIN,
+    TEST_TOKEN,
+    config_entry,
+    mock_setup_entry,
+    mock_update_duckdns,
+    mock_zeroconf,
+)
+from tests.hass_fixtures import hass, issue_registry, mock_network
 
 
-@pytest.mark.usefixtures("mock_update_duckdns")
-async def test_form(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_update_duckdns: AsyncMock = Depends(mock_update_duckdns),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -37,19 +54,24 @@ async def test_form(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"{TEST_SUBDOMAIN}.duckdns.org"
-    assert result["data"] == {
-        CONF_DOMAIN: TEST_SUBDOMAIN,
-        CONF_ACCESS_TOKEN: TEST_TOKEN,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(f"{TEST_SUBDOMAIN}.duckdns.org")
+    expect(result["data"]).to_equal(
+        {
+            CONF_DOMAIN: TEST_SUBDOMAIN,
+            CONF_ACCESS_TOKEN: TEST_TOKEN,
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_update_duckdns")
-async def test_form_already_configured(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
+@test
+async def form_already_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_update_duckdns: AsyncMock = Depends(mock_update_duckdns),
+    config_entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test we abort if already configured."""
     config_entry.add_to_hass(hass)
@@ -57,8 +79,8 @@ async def test_form_already_configured(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -68,23 +90,22 @@ async def test_form_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "text_error"),
-    [
-        ([ValueError, True], "unknown"),
-        ([False, True], "update_failed"),
-    ],
+@test.cases(
+    test.case("unknown", [ValueError, True], "unknown"),
+    test.case("update_failed", [False, True], "update_failed"),
 )
-async def test_form_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_update_duckdns: AsyncMock,
-    side_effect: list[Exception | bool],
+async def form_errors(
+    side_effect: list[type[Exception] | bool],
     text_error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_update_duckdns: AsyncMock = Depends(mock_update_duckdns),
 ) -> None:
     """Test we handle errors."""
     result = await hass.config_entries.flow.async_init(
@@ -100,8 +121,8 @@ async def test_form_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": text_error}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({"base": text_error})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -111,20 +132,25 @@ async def test_form_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"{TEST_SUBDOMAIN}.duckdns.org"
-    assert result["data"] == {
-        CONF_DOMAIN: TEST_SUBDOMAIN,
-        CONF_ACCESS_TOKEN: TEST_TOKEN,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(f"{TEST_SUBDOMAIN}.duckdns.org")
+    expect(result["data"]).to_equal(
+        {
+            CONF_DOMAIN: TEST_SUBDOMAIN,
+            CONF_ACCESS_TOKEN: TEST_TOKEN,
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_update_duckdns")
-async def test_import(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    issue_registry: ir.IssueRegistry,
+@test
+async def _import(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_update_duckdns: AsyncMock = Depends(mock_update_duckdns),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry),
 ) -> None:
     """Test import flow."""
 
@@ -137,24 +163,32 @@ async def test_import(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"{TEST_SUBDOMAIN}.duckdns.org"
-    assert result["data"] == {
-        CONF_DOMAIN: TEST_SUBDOMAIN,
-        CONF_ACCESS_TOKEN: TEST_TOKEN,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert issue_registry.async_get_issue(
-        domain=HOMEASSISTANT_DOMAIN,
-        issue_id=f"deprecated_yaml_{DOMAIN}",
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(f"{TEST_SUBDOMAIN}.duckdns.org")
+    expect(result["data"]).to_equal(
+        {
+            CONF_DOMAIN: TEST_SUBDOMAIN,
+            CONF_ACCESS_TOKEN: TEST_TOKEN,
+        }
     )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+    expect(
+        issue_registry.async_get_issue(
+            domain=HOMEASSISTANT_DOMAIN,
+            issue_id=f"deprecated_yaml_{DOMAIN}",
+        )
+        is not None
+    ).to_be(True)
 
 
-async def test_import_failed(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    issue_registry: ir.IssueRegistry,
-    mock_update_duckdns: AsyncMock,
+@test
+async def import_failed(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry),
+    mock_update_duckdns: AsyncMock = Depends(mock_update_duckdns),
 ) -> None:
     """Test import flow failed."""
     mock_update_duckdns.return_value = False
@@ -167,22 +201,28 @@ async def test_import_failed(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "update_failed"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("update_failed")
 
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
-    assert issue_registry.async_get_issue(
-        domain=DOMAIN,
-        issue_id="deprecated_yaml_import_issue_error",
-    )
+    expect(
+        issue_registry.async_get_issue(
+            domain=DOMAIN,
+            issue_id="deprecated_yaml_import_issue_error",
+        )
+        is not None
+    ).to_be(True)
 
 
-async def test_import_exception(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    issue_registry: ir.IssueRegistry,
-    mock_update_duckdns: AsyncMock,
+@test
+async def import_exception(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry),
+    mock_update_duckdns: AsyncMock = Depends(mock_update_duckdns),
 ) -> None:
     """Test import flow failed unknown."""
     mock_update_duckdns.side_effect = ValueError
@@ -195,21 +235,27 @@ async def test_import_exception(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("unknown")
 
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
-    assert issue_registry.async_get_issue(
-        domain=DOMAIN,
-        issue_id="deprecated_yaml_import_issue_error",
-    )
+    expect(
+        issue_registry.async_get_issue(
+            domain=DOMAIN,
+            issue_id="deprecated_yaml_import_issue_error",
+        )
+        is not None
+    ).to_be(True)
 
 
-@pytest.mark.usefixtures("mock_update_duckdns")
-async def test_init_import_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+@test
+async def init_import_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_update_duckdns: AsyncMock = Depends(mock_update_duckdns),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test yaml triggers import flow."""
 
@@ -218,22 +264,26 @@ async def test_init_import_flow(
         DOMAIN,
         {"duckdns": {CONF_DOMAIN: TEST_SUBDOMAIN, CONF_ACCESS_TOKEN: TEST_TOKEN}},
     )
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_update_duckdns", "mock_setup_entry")
-async def test_flow_reconfigure(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
+@test
+async def flow_reconfigure(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_update_duckdns: AsyncMock = Depends(mock_update_duckdns),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test reconfigure flow."""
 
     config_entry.add_to_hass(hass)
     result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -242,34 +292,32 @@ async def test_flow_reconfigure(
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert config_entry.data[CONF_ACCESS_TOKEN] == NEW_TOKEN
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data[CONF_ACCESS_TOKEN]).to_equal(NEW_TOKEN)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "text_error"),
-    [
-        ([ValueError, True], "unknown"),
-        ([False, True], "update_failed"),
-    ],
+@test.cases(
+    test.case("unknown", [ValueError, True], "unknown"),
+    test.case("update_failed", [False, True], "update_failed"),
 )
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_flow_reconfigure_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_update_duckdns: AsyncMock,
-    config_entry: MockConfigEntry,
-    side_effect: list[Exception | bool],
+async def flow_reconfigure_errors(
+    side_effect: list[type[Exception] | bool],
     text_error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_update_duckdns: AsyncMock = Depends(mock_update_duckdns),
+    config_entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test we handle errors."""
 
     config_entry.add_to_hass(hass)
     result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     mock_update_duckdns.side_effect = side_effect
 
@@ -278,15 +326,15 @@ async def test_flow_reconfigure_errors(
         {CONF_ACCESS_TOKEN: NEW_TOKEN},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": text_error}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({"base": text_error})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_ACCESS_TOKEN: NEW_TOKEN},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
-    assert config_entry.data[CONF_ACCESS_TOKEN] == NEW_TOKEN
+    expect(config_entry.data[CONF_ACCESS_TOKEN]).to_equal(NEW_TOKEN)
