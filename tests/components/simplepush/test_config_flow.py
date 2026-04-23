@@ -1,9 +1,10 @@
 """Test Simplepush config flow."""
 
+from collections.abc import Generator
 from unittest.mock import patch
 
-import pytest
 from simplepush import UnknownError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.simplepush.const import CONF_DEVICE_KEY, CONF_SALT, DOMAIN
@@ -12,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass, mock_network
 
 MOCK_CONFIG = {
     CONF_DEVICE_KEY: "abc",
@@ -19,8 +21,14 @@ MOCK_CONFIG = {
 }
 
 
-@pytest.fixture(autouse=True)
-def simplepush_setup_fixture():
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@fixture
+def simplepush_setup_fixture() -> Generator[None]:
     """Patch simplepush setup entry."""
     with patch(
         "homeassistant.components.simplepush.async_setup_entry", return_value=True
@@ -28,14 +36,20 @@ def simplepush_setup_fixture():
         yield
 
 
-@pytest.fixture(autouse=True)
-def mock_api_request():
+@fixture
+def mock_api_request() -> Generator[None]:
     """Patch simplepush api request."""
     with patch("homeassistant.components.simplepush.config_flow.send"):
         yield
 
 
-async def test_flow_successful(hass: HomeAssistant) -> None:
+@test
+async def flow_successful(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _simplepush_setup_fixture: None = Depends(simplepush_setup_fixture),
+    _mock_api_request: None = Depends(mock_api_request),
+) -> None:
     """Test user initialized flow with minimum config."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -45,12 +59,18 @@ async def test_flow_successful(hass: HomeAssistant) -> None:
         result["flow_id"],
         user_input=MOCK_CONFIG,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "simplepush"
-    assert result["data"] == MOCK_CONFIG
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal("simplepush")
+    expect(result["data"]).to_equal(MOCK_CONFIG)
 
 
-async def test_flow_with_password(hass: HomeAssistant) -> None:
+@test
+async def flow_with_password(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _simplepush_setup_fixture: None = Depends(simplepush_setup_fixture),
+    _mock_api_request: None = Depends(mock_api_request),
+) -> None:
     """Test user initialized flow with password and salt."""
     mock_config_pass = {**MOCK_CONFIG, CONF_PASSWORD: "password", CONF_SALT: "salt"}
     result = await hass.config_entries.flow.async_init(
@@ -61,12 +81,18 @@ async def test_flow_with_password(hass: HomeAssistant) -> None:
         result["flow_id"],
         user_input=mock_config_pass,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "simplepush"
-    assert result["data"] == mock_config_pass
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal("simplepush")
+    expect(result["data"]).to_equal(mock_config_pass)
 
 
-async def test_flow_user_device_key_already_configured(hass: HomeAssistant) -> None:
+@test
+async def flow_user_device_key_already_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _simplepush_setup_fixture: None = Depends(simplepush_setup_fixture),
+    _mock_api_request: None = Depends(mock_api_request),
+) -> None:
     """Test user initialized flow with duplicate device key."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -84,11 +110,17 @@ async def test_flow_user_device_key_already_configured(hass: HomeAssistant) -> N
         result["flow_id"],
         user_input=MOCK_CONFIG,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_flow_user_name_already_configured(hass: HomeAssistant) -> None:
+@test
+async def flow_user_name_already_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _simplepush_setup_fixture: None = Depends(simplepush_setup_fixture),
+    _mock_api_request: None = Depends(mock_api_request),
+) -> None:
     """Test user initialized flow with duplicate name."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -109,11 +141,16 @@ async def test_flow_user_name_already_configured(hass: HomeAssistant) -> None:
         result["flow_id"],
         user_input=MOCK_CONFIG,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_error_on_connection_failure(hass: HomeAssistant) -> None:
+@test
+async def error_on_connection_failure(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _simplepush_setup_fixture: None = Depends(simplepush_setup_fixture),
+) -> None:
     """Test when connection to api fails."""
     with patch(
         "homeassistant.components.simplepush.config_flow.send",
@@ -127,5 +164,5 @@ async def test_error_on_connection_failure(hass: HomeAssistant) -> None:
             result["flow_id"],
             user_input=MOCK_CONFIG,
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": "cannot_connect"}
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["errors"]).to_equal({"base": "cannot_connect"})

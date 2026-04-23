@@ -3,10 +3,10 @@
 from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 
-import pytest
+from tryke import fixture
 
 
-@pytest.fixture
+@fixture
 def mock_setup_entry() -> Generator[AsyncMock]:
     """Override async_setup_entry."""
     with patch(
