@@ -3,31 +3,42 @@
 from unittest.mock import AsyncMock, patch
 
 from lacrosse_view import Location, LoginError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.lacrosse_view.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _mn: None = Depends(mock_network),
+    _mse: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Trigger the hook executor path."""
+    return None
 
 
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with (
-        patch(
-            "lacrosse_view.LaCrosse.login",
-            return_value=True,
-        ),
+        patch("lacrosse_view.LaCrosse.login", return_value=True),
         patch(
             "lacrosse_view.LaCrosse.get_locations",
             return_value=[Location(id="1", name="Test")],
@@ -42,53 +53,49 @@ async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "location"
-    assert result2["errors"] is None
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("location")
+    expect(result2["errors"]).to_be(None)
 
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"],
-        {
-            "location": "1",
-        },
+        {"location": "1"},
     )
     await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == "Test"
-    assert result3["data"] == {
-        "username": "test-username",
-        "password": "test-password",
-        "id": "1",
-        "name": "Test",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Test")
+    expect(result3["data"]).to_equal(
+        {
+            "username": "test-username",
+            "password": "test-password",
+            "id": "1",
+            "name": "Test",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_auth_false(hass: HomeAssistant) -> None:
-    """Test we handle invalid auth."""
+@test
+async def form_auth_false(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test we handle invalid auth (login returns False)."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    with patch(
-        "lacrosse_view.LaCrosse.login",
-        return_value=False,
-    ):
+    with patch("lacrosse_view.LaCrosse.login", return_value=False):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
+            {"username": "test-username", "password": "test-password"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
-    """Test we handle invalid auth."""
+@test
+async def form_invalid_auth(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test we handle invalid auth (login raises LoginError)."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -96,18 +103,16 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
     with patch("lacrosse_view.LaCrosse.login", side_effect=LoginError):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
+            {"username": "test-username", "password": "test-password"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_login_first(hass: HomeAssistant) -> None:
-    """Test we handle invalid auth."""
+@test
+async def form_login_first(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test we handle invalid auth at get_locations."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -118,43 +123,36 @@ async def test_form_login_first(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
+            {"username": "test-username", "password": "test-password"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_no_locations(hass: HomeAssistant) -> None:
-    """Test we handle invalid auth."""
+@test
+async def form_no_locations(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test we handle no locations."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
     with (
         patch("lacrosse_view.LaCrosse.login", return_value=True),
-        patch(
-            "lacrosse_view.LaCrosse.get_locations",
-            return_value=None,
-        ),
+        patch("lacrosse_view.LaCrosse.get_locations", return_value=None),
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
+            {"username": "test-username", "password": "test-password"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "no_locations"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "no_locations"})
 
 
-async def test_form_unexpected_error(hass: HomeAssistant) -> None:
-    """Test we handle invalid auth."""
+@test
+async def form_unexpected_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Test we handle unexpected errors."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -165,20 +163,19 @@ async def test_form_unexpected_error(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
+            {"username": "test-username", "password": "test-password"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_already_configured_device(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def already_configured_device(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
-    """Test we handle invalid auth."""
+    """Test abort for already configured device."""
     mock_config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -191,19 +188,14 @@ async def test_already_configured_device(
     )
     mock_config_entry.add_to_hass(hass)
 
-    # Now that we did the config once, let's try to do it again, this should raise the abort for already configured device
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with (
-        patch(
-            "lacrosse_view.LaCrosse.login",
-            return_value=True,
-        ),
+        patch("lacrosse_view.LaCrosse.login", return_value=True),
         patch(
             "lacrosse_view.LaCrosse.get_locations",
             return_value=[Location(id="1", name="Test")],
@@ -211,31 +203,26 @@ async def test_already_configured_device(
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
+            {"username": "test-username", "password": "test-password"},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "location"
-    assert result2["errors"] is None
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("location")
 
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"],
-        {
-            "location": "1",
-        },
+        {"location": "1"},
     )
     await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.ABORT
-    assert result3["reason"] == "already_configured"
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result3["type"]).to_be(FlowResultType.ABORT)
+    expect(result3["reason"]).to_equal("already_configured")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_reauth(hass: HomeAssistant) -> None:
+@test
+async def reauth(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test reauthentication."""
     data = {
         "username": "test-username",
@@ -252,8 +239,8 @@ async def test_reauth(hass: HomeAssistant) -> None:
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     new_username = "new-username"
     new_password = "new-password"
@@ -267,20 +254,19 @@ async def test_reauth(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "username": new_username,
-                "password": new_password,
-            },
+            {"username": new_username, "password": new_password},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
 
-    assert len(hass.config_entries.async_entries()) == 1
-    assert hass.config_entries.async_entries()[0].data == {
-        "username": new_username,
-        "password": new_password,
-        "id": "1",
-        "name": "Test",
-    }
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+    expect(hass.config_entries.async_entries()[0].data).to_equal(
+        {
+            "username": new_username,
+            "password": new_password,
+            "id": "1",
+            "name": "Test",
+        }
+    )

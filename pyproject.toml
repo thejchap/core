@@ -944,5 +944,10 @@ property-decorators = ["propcache.api.cached_property"]
 dev = [
     "kiosker-python-api>=1.2.9",
     "knocki>=0.4.2",
+    "krakenex>=2.2.2",
+    "lacrosse-view>=1.1.1",
     "pykmtronic>=0.3.0",
+    "pykrakenapi>=0.3.2",
+    "pyserial>=3.5",
+    "ultraheat-api>=0.5.7",
 ]
