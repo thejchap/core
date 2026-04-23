@@ -2,6 +2,8 @@
 
 from datetime import date
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.date import DOMAIN, SERVICE_SET_VALUE
 from homeassistant.const import (
     ATTR_DATE,
@@ -15,9 +17,17 @@ from homeassistant.setup import async_setup_component
 from .common import MockDateEntity
 
 from tests.common import setup_test_component_platform
+from tests.hass_fixtures import hass
 
 
-async def test_date(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def date_entity(hass: HomeAssistant = Depends(hass)) -> None:
     """Test date entity."""
     entity = MockDateEntity(
         name="test",
@@ -26,12 +36,16 @@ async def test_date(hass: HomeAssistant) -> None:
     )
     setup_test_component_platform(hass, DOMAIN, [entity])
 
-    assert await async_setup_component(hass, DOMAIN, {DOMAIN: {CONF_PLATFORM: "test"}})
+    result = await async_setup_component(
+        hass, DOMAIN, {DOMAIN: {CONF_PLATFORM: "test"}}
+    )
+    expect(result).to_be(True)
     await hass.async_block_till_done()
 
     state = hass.states.get("date.test")
-    assert state.state == "2020-01-01"
-    assert state.attributes == {ATTR_FRIENDLY_NAME: "test"}
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal("2020-01-01")
+    expect(state.attributes).to_equal({ATTR_FRIENDLY_NAME: "test"})
 
     await hass.services.async_call(
         DOMAIN,
@@ -42,8 +56,8 @@ async def test_date(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     state = hass.states.get("date.test")
-    assert state.state == "2021-01-01"
+    expect(state.state).to_equal("2021-01-01")
 
     date_entity = MockDateEntity(native_value=None)
-    assert date_entity.state is None
-    assert date_entity.state_attributes is None
+    expect(date_entity.state is None).to_be(True)
+    expect(date_entity.state_attributes is None).to_be(True)
