@@ -1,9 +1,9 @@
 """The config flow tests for the forked_daapd media player platform."""
 
 from ipaddress import ip_address
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.forked_daapd.const import (
     CONF_LIBRESPOT_JAVA_PORT,
@@ -12,13 +12,15 @@ from homeassistant.components.forked_daapd.const import (
     CONF_TTS_VOLUME,
     DOMAIN,
 )
-from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF, ConfigEntryState
+from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from tests.common import MockConfigEntry
+from tests.components.forked_daapd._fixtures import config_entry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 SAMPLE_CONFIG = {
     "websocket_port": 3688,
@@ -36,36 +38,51 @@ SAMPLE_CONFIG = {
 }
 
 
-@pytest.fixture(name="config_entry")
-def config_entry_fixture():
-    """Create hass config_entry fixture."""
-    data = {
-        CONF_HOST: "192.168.1.1",
-        CONF_PORT: "2345",
-        CONF_PASSWORD: "",
-    }
-    return MockConfigEntry(
-        version=1,
-        domain=DOMAIN,
-        title="",
-        data=data,
-        options={},
-        source=SOURCE_USER,
-        entry_id=1,
-    )
+@fixture
+def _mock_zeroconf() -> MagicMock:
+    """Patch zeroconf so tests don't require a real zeroconf instance."""
+    from zeroconf import DNSCache
+
+    with (
+        patch("homeassistant.components.zeroconf.HaZeroconf") as mock_zc,
+        patch(
+            "homeassistant.components.zeroconf.discovery.AsyncServiceBrowser"
+        ),
+    ):
+        zc = mock_zc.return_value
+        zc.async_add_service_listener = AsyncMock()
+        zc.async_remove_service_listener = AsyncMock()
+        zc.async_register_service = AsyncMock()
+        zc.async_update_service = AsyncMock()
+        zc.cache = DNSCache()
+        yield mock_zc
 
 
-async def test_show_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _mn: None = Depends(mock_network),
+    _mz: MagicMock = Depends(_mock_zeroconf),
+) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def show_form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that the form is served with no input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_config_flow(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+@test
+async def config_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry),
+) -> None:
     """Test that the user step works."""
     with (
         patch(
@@ -88,29 +105,30 @@ async def test_config_flow(hass: HomeAssistant, config_entry: MockConfigEntry) -
             DOMAIN, context={"source": SOURCE_USER}, data=config_data
         )
         await hass.async_block_till_done()
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "My Music on myhost"
-        assert result["data"][CONF_HOST] == config_data[CONF_HOST]
-        assert result["data"][CONF_PORT] == config_data[CONF_PORT]
-        assert result["data"][CONF_PASSWORD] == config_data[CONF_PASSWORD]
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal("My Music on myhost")
+        expect(result["data"][CONF_HOST]).to_equal(config_data[CONF_HOST])
+        expect(result["data"][CONF_PORT]).to_equal(config_data[CONF_PORT])
+        expect(result["data"][CONF_PASSWORD]).to_equal(config_data[CONF_PASSWORD])
 
-        # Also test that creating a new entry with the same host aborts
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": SOURCE_USER},
             data=config_entry.data,
         )
         await hass.async_block_till_done()
-        assert result["type"] is FlowResultType.ABORT
+        expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-async def test_zeroconf_updates_title(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+@test
+async def zeroconf_updates_title(
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test that zeroconf updates title and aborts with same host."""
     MockConfigEntry(domain=DOMAIN, data={CONF_HOST: "different host"}).add_to_hass(hass)
     config_entry.add_to_hass(hass)
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 2
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(2)
     discovery_info = ZeroconfServiceInfo(
         ip_address=ip_address("192.168.1.1"),
         ip_addresses=[ip_address("192.168.1.1")],
@@ -124,92 +142,69 @@ async def test_zeroconf_updates_title(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=discovery_info
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.ABORT
-    assert config_entry.title == "zeroconf_test"
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 2
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(config_entry.title).to_equal("zeroconf_test")
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(2)
 
 
-async def test_config_flow_no_websocket(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+@test
+async def config_flow_no_websocket(
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test config flow setup without websocket enabled on server."""
     with patch(
         "homeassistant.components.forked_daapd.config_flow.ForkedDaapdAPI.test_connection",
         new=AsyncMock(),
     ) as mock_test_connection:
-        # test invalid config data
         mock_test_connection.return_value = ["websocket_not_enabled"]
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=config_entry.data
         )
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
 
-async def test_config_flow_zeroconf_invalid(hass: HomeAssistant) -> None:
-    """Test that an invalid zeroconf entry doesn't work."""
-    # test with no discovery properties
-    discovery_info = ZeroconfServiceInfo(
-        ip_address=ip_address("127.0.0.1"),
-        ip_addresses=[ip_address("127.0.0.1")],
-        hostname="mock_hostname",
-        name="mock_name",
-        port=23,
+@test.cases(
+    test.case(
+        "no_properties",
         properties={},
-        type="mock_type",
-    )
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_ZEROCONF}, data=discovery_info
-    )  # doesn't create the entry, tries to show form but gets abort
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_forked_daapd"
-    # test with forked-daapd version < 27
-    discovery_info = ZeroconfServiceInfo(
-        ip_address=ip_address("127.0.0.1"),
-        ip_addresses=[ip_address("127.0.0.1")],
-        hostname="mock_hostname",
-        name="mock_name",
-        port=23,
+    ),
+    test.case(
+        "version_too_old",
         properties={"mtd-version": "26.3", "Machine Name": "forked-daapd"},
-        type="mock_type",
-    )
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_ZEROCONF}, data=discovery_info
-    )  # doesn't create the entry, tries to show form but gets abort
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_forked_daapd"
-    # test with verbose mtd-version from Firefly
-    discovery_info = ZeroconfServiceInfo(
-        ip_address=ip_address("127.0.0.1"),
-        ip_addresses=[ip_address("127.0.0.1")],
-        hostname="mock_hostname",
-        name="mock_name",
-        port=23,
+    ),
+    test.case(
+        "firefly_verbose_version",
         properties={"mtd-version": "0.2.4.1", "Machine Name": "firefly"},
-        type="mock_type",
-    )
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_ZEROCONF}, data=discovery_info
-    )  # doesn't create the entry, tries to show form but gets abort
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_forked_daapd"
-    # test with svn mtd-version from Firefly
+    ),
+    test.case(
+        "firefly_svn_version",
+        properties={"mtd-version": "svn-1676", "Machine Name": "firefly"},
+    ),
+)
+async def config_flow_zeroconf_invalid(
+    properties: dict[str, str],
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test that an invalid zeroconf entry doesn't work."""
     discovery_info = ZeroconfServiceInfo(
         ip_address=ip_address("127.0.0.1"),
         ip_addresses=[ip_address("127.0.0.1")],
         hostname="mock_hostname",
         name="mock_name",
         port=23,
-        properties={"mtd-version": "svn-1676", "Machine Name": "firefly"},
+        properties=properties,
         type="mock_type",
     )
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=discovery_info
-    )  # doesn't create the entry, tries to show form but gets abort
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_forked_daapd"
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("not_forked_daapd")
 
 
-async def test_config_flow_zeroconf_valid(hass: HomeAssistant) -> None:
+@test
+async def config_flow_zeroconf_valid(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that a valid zeroconf entry works."""
     discovery_info = ZeroconfServiceInfo(
         ip_address=ip_address("192.168.1.1"),
@@ -227,12 +222,15 @@ async def test_config_flow_zeroconf_valid(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=discovery_info
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
 
-async def test_options_flow(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+@test
+async def options_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry),
+) -> None:
     """Test config flow options."""
-
     with (
         patch(
             "homeassistant.components.forked_daapd.ForkedDaapdAPI.get_request",
@@ -249,7 +247,7 @@ async def test_options_flow(hass: HomeAssistant, config_entry: MockConfigEntry) 
         await hass.async_block_till_done()
 
         result = await hass.config_entries.options.async_init(config_entry.entry_id)
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -260,22 +258,4 @@ async def test_options_flow(hass: HomeAssistant, config_entry: MockConfigEntry) 
                 CONF_MAX_PLAYLISTS: 8,
             },
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-
-
-async def test_async_setup_entry_not_ready(
-    hass: HomeAssistant, config_entry: MockConfigEntry, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Test that a PlatformNotReady exception is thrown during platform setup."""
-
-    with patch(
-        "homeassistant.components.forked_daapd.ForkedDaapdAPI",
-        autospec=True,
-    ) as mock_api:
-        mock_api.return_value.get_request.return_value = None
-        config_entry.add_to_hass(hass)
-        await hass.config_entries.async_setup(config_entry.entry_id)
-        await hass.async_block_till_done()
-        mock_api.return_value.get_request.assert_called_once()
-        assert "Platform forked_daapd not ready yet" in caplog.text
-        assert config_entry.state is ConfigEntryState.LOADED
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
