@@ -1,8 +1,11 @@
 """Test the Canary config flow."""
 
-from unittest.mock import patch
+from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
 
 from requests import ConnectTimeout, HTTPError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.canary.const import (
     CONF_FFMPEG_ARGUMENTS,
@@ -15,17 +18,36 @@ from homeassistant.const import CONF_TIMEOUT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from . import USER_INPUT, _patch_async_setup_entry, init_integration
+from tests.components.canary import USER_INPUT, _patch_async_setup_entry, init_integration
+from tests.components.canary._fixtures import (
+    canary,
+    canary_config_flow,
+    mock_ffmpeg,
+    mock_zeroconf,
+)
+from tests.hass_fixtures import hass, mock_network
 
 
-async def test_user_form(hass: HomeAssistant, canary_config_flow) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def user_form(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    canary_config_flow: MagicMock = Depends(canary_config_flow),
+) -> None:
     """Test we get the user initiated form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({})
 
     with _patch_async_setup_entry() as mock_setup_entry:
         result = await hass.config_entries.flow.async_configure(
@@ -34,15 +56,19 @@ async def test_user_form(hass: HomeAssistant, canary_config_flow) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test-username"
-    assert result["data"] == {**USER_INPUT, CONF_TIMEOUT: DEFAULT_TIMEOUT}
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal("test-username")
+    expect(result["data"]).to_equal({**USER_INPUT, CONF_TIMEOUT: DEFAULT_TIMEOUT})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
-    assert len(mock_setup_entry.mock_calls) == 1
 
-
-async def test_user_form_cannot_connect(
-    hass: HomeAssistant, canary_config_flow
+@test
+async def user_form_cannot_connect(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    canary_config_flow: MagicMock = Depends(canary_config_flow),
 ) -> None:
     """Test we handle errors that should trigger the cannot connect error."""
     canary_config_flow.side_effect = HTTPError()
@@ -56,8 +82,8 @@ async def test_user_form_cannot_connect(
         USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     canary_config_flow.side_effect = ConnectTimeout()
 
@@ -66,12 +92,17 @@ async def test_user_form_cannot_connect(
         USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_user_form_unexpected_exception(
-    hass: HomeAssistant, canary_config_flow
+@test
+async def user_form_unexpected_exception(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    canary_config_flow: MagicMock = Depends(canary_config_flow),
 ) -> None:
     """Test we handle unexpected exception."""
     canary_config_flow.side_effect = Exception()
@@ -85,12 +116,17 @@ async def test_user_form_unexpected_exception(
         USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_user_form_single_instance_allowed(
-    hass: HomeAssistant, canary_config_flow
+@test
+async def user_form_single_instance_allowed(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _canary_config_flow: MagicMock = Depends(canary_config_flow),
 ) -> None:
     """Test that configuring more than one instance is rejected."""
     await init_integration(hass, skip_entry_setup=True)
@@ -100,21 +136,28 @@ async def test_user_form_single_instance_allowed(
         context={"source": SOURCE_USER},
         data=USER_INPUT,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("single_instance_allowed")
 
 
-async def test_options_flow(hass: HomeAssistant, canary) -> None:
+@test
+async def options_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_ffmpeg: None = Depends(mock_ffmpeg),
+    _canary: MagicMock = Depends(canary),
+) -> None:
     """Test updating options."""
     with patch("homeassistant.components.canary.PLATFORMS", []):
         entry = await init_integration(hass)
 
-    assert entry.options[CONF_FFMPEG_ARGUMENTS] == DEFAULT_FFMPEG_ARGUMENTS
-    assert entry.options[CONF_TIMEOUT] == DEFAULT_TIMEOUT
+    expect(entry.options[CONF_FFMPEG_ARGUMENTS]).to_equal(DEFAULT_FFMPEG_ARGUMENTS)
+    expect(entry.options[CONF_TIMEOUT]).to_equal(DEFAULT_TIMEOUT)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("init")
 
     with _patch_async_setup_entry():
         result = await hass.config_entries.options.async_configure(
@@ -123,6 +166,6 @@ async def test_options_flow(hass: HomeAssistant, canary) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_FFMPEG_ARGUMENTS] == "-v"
-    assert result["data"][CONF_TIMEOUT] == 7
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["data"][CONF_FFMPEG_ARGUMENTS]).to_equal("-v")
+    expect(result["data"][CONF_TIMEOUT]).to_equal(7)
