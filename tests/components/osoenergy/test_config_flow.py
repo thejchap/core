@@ -1,8 +1,11 @@
 """Test the OSO Energy config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 from apyosoenergyapi.helper import osoenergy_exceptions
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.osoenergy.const import DOMAIN
@@ -11,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 SUBSCRIPTION_KEY = "valid subscription key"
 SCAN_INTERVAL = 120
@@ -18,14 +22,20 @@ TEST_USER_EMAIL = "test_user_email@domain.com"
 UPDATED_SCAN_INTERVAL = 60
 
 
-async def test_user_flow(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def user_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test the user flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -42,17 +52,16 @@ async def test_user_flow(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == TEST_USER_EMAIL
-    assert result2["data"] == {
-        CONF_API_KEY: SUBSCRIPTION_KEY,
-    }
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(TEST_USER_EMAIL)
+    expect(result2["data"]).to_equal({CONF_API_KEY: SUBSCRIPTION_KEY})
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
 
-async def test_reauth_flow(hass: HomeAssistant) -> None:
+@test
+async def reauth_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test the reauth flow."""
     mock_config = MockConfigEntry(
         domain=DOMAIN,
@@ -67,9 +76,9 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
     ):
         result = await mock_config.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_be(None)
 
     with patch(
         "homeassistant.components.osoenergy.config_flow.OSOEnergy.get_user_email",
@@ -77,19 +86,18 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_API_KEY: SUBSCRIPTION_KEY,
-            },
+            {CONF_API_KEY: SUBSCRIPTION_KEY},
         )
     await hass.async_block_till_done()
 
-    assert mock_config.data.get(CONF_API_KEY) == SUBSCRIPTION_KEY
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(mock_config.data.get(CONF_API_KEY)).to_equal(SUBSCRIPTION_KEY)
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
 
-async def test_abort_if_existing_entry(hass: HomeAssistant) -> None:
+@test
+async def abort_if_existing_entry(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Check flow abort when an entry already exist."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -105,23 +113,24 @@ async def test_abort_if_existing_entry(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": config_entries.SOURCE_USER},
-            data={
-                CONF_API_KEY: SUBSCRIPTION_KEY,
-            },
+            data={CONF_API_KEY: SUBSCRIPTION_KEY},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_user_flow_invalid_subscription_key(hass: HomeAssistant) -> None:
+@test
+async def user_flow_invalid_subscription_key(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user flow with invalid username."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.osoenergy.config_flow.OSOEnergy.get_user_email",
@@ -132,21 +141,22 @@ async def test_user_flow_invalid_subscription_key(hass: HomeAssistant) -> None:
             {CONF_API_KEY: SUBSCRIPTION_KEY},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "user"
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("user")
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_user_flow_exception_on_subscription_key_check(
-    hass: HomeAssistant,
+@test
+async def user_flow_exception_on_subscription_key_check(
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test user flow with invalid username."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.osoenergy.config_flow.OSOEnergy.get_user_email",
@@ -157,6 +167,6 @@ async def test_user_flow_exception_on_subscription_key_check(
             {CONF_API_KEY: SUBSCRIPTION_KEY},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "user"
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("user")
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
