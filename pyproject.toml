@@ -1030,6 +1030,7 @@ dev = [
     "pyosoenergyapi==1.2.4",
     "pyotgw==2.2.3",
     "pyotp==2.9.0",
+    "pyoverkiz==1.20.0",
     "pyrail==0.4.1",
     "pyserial>=3.5",
     "pyspeex-noise>=2.0.0",
