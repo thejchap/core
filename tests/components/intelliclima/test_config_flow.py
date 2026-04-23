@@ -1,13 +1,13 @@
 """Test the IntelliClima config flow."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pyintelliclima.api import (
     IntelliClimaAPIError,
     IntelliClimaAuthError,
     IntelliClimaDevices,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.intelliclima.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -16,6 +16,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.intelliclima._fixtures import (
+    mock_cloud_interface,
+    mock_config_entry,
+    mock_setup_entry,
+    single_eco_device,
+)
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 DATA_CONFIG = {
     CONF_USERNAME: "SuperUser",
@@ -23,42 +30,70 @@ DATA_CONFIG = {
 }
 
 
-async def test_user_flow(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_cloud_interface
+@fixture
+def _mock_zeroconf() -> MagicMock:
+    """Patch zeroconf so tests don't require a real zeroconf instance."""
+    from zeroconf import DNSCache
+
+    with (
+        patch("homeassistant.components.zeroconf.HaZeroconf") as mock_zc,
+        patch("homeassistant.components.zeroconf.discovery.AsyncServiceBrowser"),
+    ):
+        zc = mock_zc.return_value
+        zc.async_add_service_listener = AsyncMock()
+        zc.async_remove_service_listener = AsyncMock()
+        zc.async_register_service = AsyncMock()
+        zc.async_update_service = AsyncMock()
+        zc.cache = DNSCache()
+        yield mock_zc
+
+
+@fixture
+def _trigger_executor(
+    _mn: None = Depends(mock_network),
+    _mz: MagicMock = Depends(_mock_zeroconf),
+) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def user_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_cloud_interface: AsyncMock = Depends(mock_cloud_interface),
 ) -> None:
     """Test the full config flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], DATA_CONFIG
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "IntelliClima (SuperUser)"
-    assert result["data"] == DATA_CONFIG
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("IntelliClima (SuperUser)")
+    expect(result["data"]).to_equal(DATA_CONFIG)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        # invalid_auth
-        (IntelliClimaAuthError, "invalid_auth"),
-        # cannot_connect
-        (IntelliClimaAPIError, "cannot_connect"),
-        # unknown
-        (RuntimeError("Unexpected error"), "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=IntelliClimaAuthError, error="invalid_auth"),
+    test.case(
+        "cannot_connect", side_effect=IntelliClimaAPIError, error="cannot_connect"
+    ),
+    test.case(
+        "unknown", side_effect=RuntimeError("Unexpected error"), error="unknown"
+    ),
 )
-async def test_form_auth_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_cloud_interface: AsyncMock,
-    side_effect: Exception,
+async def form_auth_errors(
+    side_effect: type[Exception] | Exception,
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_cloud_interface: AsyncMock = Depends(mock_cloud_interface),
 ) -> None:
     """Test we handle authentication-related errors and recover."""
     mock_cloud_interface.authenticate.side_effect = side_effect
@@ -71,29 +106,28 @@ async def test_form_auth_errors(
         result["flow_id"], DATA_CONFIG
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    # Recover: clear side effect and complete flow successfully
     mock_cloud_interface.authenticate.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], DATA_CONFIG
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "IntelliClima (SuperUser)"
-    assert result["data"] == DATA_CONFIG
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("IntelliClima (SuperUser)")
+    expect(result["data"]).to_equal(DATA_CONFIG)
 
 
-async def test_form_no_devices(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_cloud_interface: AsyncMock,
-    single_eco_device: IntelliClimaDevices,
+@test
+async def form_no_devices(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_cloud_interface: AsyncMock = Depends(mock_cloud_interface),
+    single_eco_device: IntelliClimaDevices = Depends(single_eco_device),
 ) -> None:
     """Test we handle no devices found error."""
-    # Return empty devices list
     mock_cloud_interface.get_all_device_status.return_value = IntelliClimaDevices(
         ecocomfort2_devices={}, c800_devices={}
     )
@@ -106,32 +140,30 @@ async def test_form_no_devices(
         result["flow_id"], DATA_CONFIG
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "no_devices"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "no_devices"})
 
-    # Reset the return_value to its default state
     mock_cloud_interface.get_all_device_status.return_value = single_eco_device
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], DATA_CONFIG
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "IntelliClima (SuperUser)"
-    assert result["data"] == DATA_CONFIG
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("IntelliClima (SuperUser)")
+    expect(result["data"]).to_equal(DATA_CONFIG)
 
 
-async def test_form_already_configured(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_cloud_interface: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def form_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_cloud_interface: AsyncMock = Depends(mock_cloud_interface),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test creating a second config for the same account aborts."""
-
     mock_config_entry.add_to_hass(hass)
 
-    # Second attempt with the same account
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -139,5 +171,5 @@ async def test_form_already_configured(
         result["flow_id"], DATA_CONFIG
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
