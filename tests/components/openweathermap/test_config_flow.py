@@ -1,9 +1,11 @@
 """Define tests for the OpenWeatherMap config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock
 
 from pyopenweathermap import RequestError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.openweathermap.const import (
     DEFAULT_LANGUAGE,
@@ -24,9 +26,15 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import LATITUDE, LONGITUDE
-
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+from ._fixtures import (
+    LATITUDE,
+    LONGITUDE,
+    make_mock_config_entry,
+    owm_client_mock as owm_client_mock_fx,
+)
 
 CONFIG = {
     CONF_API_KEY: "foo",
@@ -46,66 +54,74 @@ USER_INPUT = {
 VALID_YAML_CONFIG = {CONF_API_KEY: "foo"}
 
 
-async def test_successful_config_flow(
-    hass: HomeAssistant,
-    owm_client_mock: AsyncMock,
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def successful_config_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    owm_client_mock: AsyncMock = Depends(owm_client_mock_fx),
 ) -> None:
     """Test that the form is served with valid input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
-    # create entry
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_NAME
-    assert result["data"][CONF_LATITUDE] == USER_INPUT[CONF_LOCATION][CONF_LATITUDE]
-    assert result["data"][CONF_LONGITUDE] == USER_INPUT[CONF_LOCATION][CONF_LONGITUDE]
-    assert result["data"][CONF_API_KEY] == USER_INPUT[CONF_API_KEY]
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_NAME)
+    expect(result["data"][CONF_LATITUDE]).to_equal(
+        USER_INPUT[CONF_LOCATION][CONF_LATITUDE]
+    )
+    expect(result["data"][CONF_LONGITUDE]).to_equal(
+        USER_INPUT[CONF_LOCATION][CONF_LONGITUDE]
+    )
+    expect(result["data"][CONF_API_KEY]).to_equal(USER_INPUT[CONF_API_KEY])
 
-    # validate entry state
     conf_entries = hass.config_entries.async_entries(DOMAIN)
     entry = conf_entries[0]
-    assert entry.state is ConfigEntryState.LOADED
+    expect(entry.state).to_be(ConfigEntryState.LOADED)
 
-    # unload entry
     await hass.config_entries.async_unload(conf_entries[0].entry_id)
     await hass.async_block_till_done()
-    assert entry.state is ConfigEntryState.NOT_LOADED
+    expect(entry.state).to_be(ConfigEntryState.NOT_LOADED)
 
 
-@pytest.mark.parametrize("mode", [OWM_MODE_V30], indirect=True)
-async def test_abort_config_flow(
-    hass: HomeAssistant,
-    owm_client_mock: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def abort_config_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    owm_client_mock: AsyncMock = Depends(owm_client_mock_fx),
 ) -> None:
     """Test that the form is served with same data."""
+    mock_config_entry = make_mock_config_entry(OWM_MODE_V30)
     mock_config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-async def test_config_flow_options_change(
-    hass: HomeAssistant,
-    owm_client_mock: AsyncMock,
+@test
+async def config_flow_options_change(
+    hass: HomeAssistant = Depends(hass_fixture),
+    owm_client_mock: AsyncMock = Depends(owm_client_mock_fx),
 ) -> None:
     """Test that the options form."""
     config_entry = MockConfigEntry(
@@ -116,12 +132,12 @@ async def test_config_flow_options_change(
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.LOADED
+    expect(config_entry.state).to_be(ConfigEntryState.LOADED)
 
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     new_language = "es"
     result = await hass.config_entries.options.async_configure(
@@ -129,87 +145,89 @@ async def test_config_flow_options_change(
         user_input={CONF_MODE: DEFAULT_OWM_MODE, CONF_LANGUAGE: new_language},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {
-        CONF_LANGUAGE: new_language,
-        CONF_MODE: DEFAULT_OWM_MODE,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal(
+        {
+            CONF_LANGUAGE: new_language,
+            CONF_MODE: DEFAULT_OWM_MODE,
+        }
+    )
 
     await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.LOADED
+    expect(config_entry.state).to_be(ConfigEntryState.LOADED)
 
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     updated_language = "es"
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input={CONF_LANGUAGE: updated_language}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {
-        CONF_LANGUAGE: updated_language,
-        CONF_MODE: DEFAULT_OWM_MODE,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal(
+        {
+            CONF_LANGUAGE: updated_language,
+            CONF_MODE: DEFAULT_OWM_MODE,
+        }
+    )
 
     await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.LOADED
+    expect(config_entry.state).to_be(ConfigEntryState.LOADED)
 
 
-async def test_form_invalid_api_key(
-    hass: HomeAssistant,
-    owm_client_mock: AsyncMock,
+@test
+async def form_invalid_api_key(
+    hass: HomeAssistant = Depends(hass_fixture),
+    owm_client_mock: AsyncMock = Depends(owm_client_mock_fx),
 ) -> None:
     """Test that the form is served with no input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
-    # invalid api key
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
     owm_client_mock.validate_key.return_value = False
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_api_key"}
-    # valid api key
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_api_key"})
     owm_client_mock.validate_key.return_value = True
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_form_api_call_error(
-    hass: HomeAssistant,
-    owm_client_mock: AsyncMock,
+@test
+async def form_api_call_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    owm_client_mock: AsyncMock = Depends(owm_client_mock_fx),
 ) -> None:
     """Test setting up with api call error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
-    # simulate api call error
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
     owm_client_mock.validate_key.side_effect = RequestError("oops")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
-    # simulate successful api call
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
     owm_client_mock.validate_key.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)

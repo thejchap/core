@@ -1022,6 +1022,8 @@ dev = [
     "pynzbgetapi>=0.4.0",
     "pyobihai>=1.4.2",
     "pyoctoprintapi>=0.1.14",
+    "pyopenuv==2023.2.0",
+    "pyopenweathermap==0.2.2",
     "pyotgw==2.2.3",
     "pyrail==0.4.1",
     "pyserial>=3.5",
