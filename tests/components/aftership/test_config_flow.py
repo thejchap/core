@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 from pyaftership import AfterShipException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.aftership.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -10,8 +11,22 @@ from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.components.aftership._fixtures import mock_setup_entry
+from tests.hass_fixtures import hass, mock_network
 
-async def test_full_user_flow(hass: HomeAssistant, mock_setup_entry) -> None:
+
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def full_user_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -25,18 +40,19 @@ async def test_full_user_flow(hass: HomeAssistant, mock_setup_entry) -> None:
         mock_aftership.return_value.trackings.return_value.list.return_value = {}
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={
-                CONF_API_KEY: "mock-api-key",
-            },
+            user_input={CONF_API_KEY: "mock-api-key"},
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "AfterShip"
-        assert result["data"] == {
-            CONF_API_KEY: "mock-api-key",
-        }
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal("AfterShip")
+        expect(result["data"]).to_equal({CONF_API_KEY: "mock-api-key"})
 
 
-async def test_flow_cannot_connect(hass: HomeAssistant, mock_setup_entry) -> None:
+@test
+async def flow_cannot_connect(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test handling invalid connection."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -50,12 +66,10 @@ async def test_flow_cannot_connect(hass: HomeAssistant, mock_setup_entry) -> Non
         mock_aftership.side_effect = AfterShipException
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={
-                CONF_API_KEY: "mock-api-key",
-            },
+            user_input={CONF_API_KEY: "mock-api-key"},
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
 
     with patch(
         "homeassistant.components.aftership.config_flow.AfterShip",
@@ -64,12 +78,8 @@ async def test_flow_cannot_connect(hass: HomeAssistant, mock_setup_entry) -> Non
         mock_aftership.return_value.trackings.return_value.list.return_value = {}
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={
-                CONF_API_KEY: "mock-api-key",
-            },
+            user_input={CONF_API_KEY: "mock-api-key"},
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "AfterShip"
-        assert result["data"] == {
-            CONF_API_KEY: "mock-api-key",
-        }
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal("AfterShip")
+        expect(result["data"]).to_equal({CONF_API_KEY: "mock-api-key"})

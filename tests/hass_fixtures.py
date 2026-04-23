@@ -23,6 +23,7 @@ from pathlib import Path
 import sys
 import tempfile
 from typing import Any, Self
+from unittest.mock import Mock, patch
 
 from tryke import Depends, fixture
 
@@ -452,3 +453,44 @@ def capfd() -> Generator[CapFd]:
         yield cap
     finally:
         cap.stop()
+
+
+@fixture
+def mock_network() -> Generator[None]:
+    """Patch network adapter discovery so tests that touch aiohttp-session
+
+    construction (which pulls the zeroconf resolver, which queries the
+    network adapter list) don't blow up on a minimal hass fixture that
+    has no ``network`` integration loaded.
+    """
+    with (
+        patch(
+            "homeassistant.components.network.util.ifaddr.get_adapters",
+            return_value=[
+                Mock(
+                    nice_name="eth0",
+                    ips=[Mock(is_IPv6=False, ip="10.10.10.10", network_prefix=24)],
+                    index=0,
+                )
+            ],
+        ),
+        patch(
+            "homeassistant.components.network.async_get_loaded_adapters",
+            return_value=[
+                {
+                    "auto": True,
+                    "default": True,
+                    "enabled": True,
+                    "index": 0,
+                    "ipv4": [{"address": "10.10.10.10", "network_prefix": 24}],
+                    "ipv6": [],
+                    "name": "eth0",
+                }
+            ],
+        ),
+        patch(
+            "homeassistant.components.network.util.async_get_source_ip",
+            return_value="10.10.10.10",
+        ),
+    ):
+        yield
