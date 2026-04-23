@@ -1,9 +1,10 @@
 """Define tests for the Ambient PWS config flow."""
 
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, Mock, patch
 
 from aioambient.errors import AmbientError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.ambient_station.const import CONF_APP_KEY, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -11,50 +12,83 @@ from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-
-@pytest.mark.parametrize(
-    ("devices_response", "errors"),
-    [
-        (AsyncMock(side_effect=AmbientError), {"base": "invalid_key"}),
-        (AsyncMock(return_value=[]), {"base": "no_devices"}),
-    ],
+from tests.common import MockConfigEntry
+from tests.components.ambient_station._fixtures import (
+    api,
+    config,
+    config_entry,
+    data_devices,
+    mock_aioambient,
+    setup_config_entry,
 )
-async def test_create_entry(
-    hass: HomeAssistant, api, config, devices_response, errors, mock_aioambient
+from tests.hass_fixtures import hass, mock_network
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test.cases(
+    test.case(
+        "invalid_key",
+        AsyncMock(side_effect=AmbientError),
+        {"base": "invalid_key"},
+    ),
+    test.case(
+        "no_devices",
+        AsyncMock(return_value=[]),
+        {"base": "no_devices"},
+    ),
+)
+async def create_entry(
+    devices_response: AsyncMock,
+    errors: dict[str, str],
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    api: Mock = Depends(api),
+    config: dict[str, Any] = Depends(config),
+    _mock_aioambient: None = Depends(mock_aioambient),
 ) -> None:
     """Test creating an entry."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
-    # Test errors that can arise:
     with patch.object(api, "get_devices", devices_response):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=config
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == errors
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["errors"]).to_equal(errors)
 
-    # Test that we can recover and finish the flow after errors occur:
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=config
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "67890fghij67"
-    assert result["data"] == {
-        CONF_API_KEY: "12345abcde12345abcde",
-        CONF_APP_KEY: "67890fghij67890fghij",
-    }
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal("67890fghij67")
+    expect(result["data"]).to_equal(
+        {
+            CONF_API_KEY: "12345abcde12345abcde",
+            CONF_APP_KEY: "67890fghij67890fghij",
+        }
+    )
 
 
-async def test_duplicate_error(
-    hass: HomeAssistant, config, config_entry, setup_config_entry
+@test
+async def duplicate_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    config: dict[str, Any] = Depends(config),
+    _config_entry: MockConfigEntry = Depends(config_entry),
+    _setup_config_entry: None = Depends(setup_config_entry),
 ) -> None:
     """Test that errors are shown when duplicates are added."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data=config
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
