@@ -1,8 +1,10 @@
 """Test niko_home_control config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.niko_home_control.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -11,105 +13,113 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.niko_home_control._fixtures import (
+    mock_config_entry,
+    mock_niko_home_control_connection,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_full_flow(
-    hass: HomeAssistant,
-    mock_niko_home_control_connection: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def full_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _conn: AsyncMock = Depends(mock_niko_home_control_connection),
+    mock_setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the full flow."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_HOST: "192.168.0.123"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Niko Home Control"
-    assert result["data"] == {CONF_HOST: "192.168.0.123"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Niko Home Control")
+    expect(result["data"]).to_equal({CONF_HOST: "192.168.0.123"})
+    expect(len(mock_setup.mock_calls)).to_equal(1)
 
-    assert len(mock_setup_entry.mock_calls) == 1
 
-
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (TimeoutError, "timeout_connect"),
-        (OSError, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("timeout", TimeoutError, "timeout_connect"),
+    test.case("os_error", OSError, "cannot_connect"),
+    test.case("unknown", Exception, "unknown"),
 )
-async def test_flow_errors(
-    hass: HomeAssistant,
-    mock_niko_home_control_connection: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def flow_errors(
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    conn: AsyncMock = Depends(mock_niko_home_control_connection),
+    _mse: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the timeout error."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
-    mock_niko_home_control_connection.connect.side_effect = exception
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_HOST: "192.168.0.123"},
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
-
-    mock_niko_home_control_connection.connect.side_effect = None
+    conn.connect.side_effect = exception
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_HOST: "192.168.0.123"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
+
+    conn.connect.side_effect = None
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: "192.168.0.123"},
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_duplicate_entry(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def duplicate_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test uniqueness."""
-
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_HOST: "192.168.0.123"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_duplicate_reconfigure_entry(
-    hass: HomeAssistant,
-    mock_niko_home_control_connection: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def duplicate_reconfigure_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _conn: AsyncMock = Depends(mock_niko_home_control_connection),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reconfigure to other existing entry."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
     another_entry = MockConfigEntry(
         domain=DOMAIN,
         title="Niko Home Control",
@@ -118,78 +128,76 @@ async def test_duplicate_reconfigure_entry(
     )
     another_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    result = await config_entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: "192.168.0.124"}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reconfigure(
-    hass: HomeAssistant,
-    mock_niko_home_control_connection: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+@test
+async def reconfigure(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _conn: AsyncMock = Depends(mock_niko_home_control_connection),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mse: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the reconfigure flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert set(result["data_schema"].schema) == {CONF_HOST}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(set(result["data_schema"].schema)).to_equal({CONF_HOST})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_HOST: "192.168.0.122"},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (TimeoutError, "timeout_connect"),
-        (OSError, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("timeout", TimeoutError, "timeout_connect"),
+    test.case("os_error", OSError, "cannot_connect"),
+    test.case("unknown", Exception, "unknown"),
 )
-async def test_reconfigure_errors(
-    hass: HomeAssistant,
-    mock_niko_home_control_connection: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def reconfigure_errors(
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    conn: AsyncMock = Depends(mock_niko_home_control_connection),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mse: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reconfiguration with connection error."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
-    mock_niko_home_control_connection.connect.side_effect = exception
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_HOST: "192.168.0.122"},
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
-
-    mock_niko_home_control_connection.connect.side_effect = None
+    conn.connect.side_effect = exception
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_HOST: "192.168.0.122"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
+
+    conn.connect.side_effect = None
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_HOST: "192.168.0.122"},
+    )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")

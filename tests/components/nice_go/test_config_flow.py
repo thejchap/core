@@ -1,10 +1,11 @@
 """Test the Nice G.O. config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock
 
-from freezegun.api import FrozenDateTimeFactory
 from nice_go import AuthFailedError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.nice_go.const import (
     CONF_REFRESH_TOKEN,
@@ -16,23 +17,33 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from . import setup_integration
-
 from tests.common import MockConfigEntry
+from tests.components.nice_go import setup_integration
+from tests.components.nice_go._fixtures import (
+    mock_config_entry,
+    mock_nice_go,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(
-    hass: HomeAssistant,
-    mock_nice_go: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    freezer: FrozenDateTimeFactory,
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _nice_go: AsyncMock = Depends(mock_nice_go),
+    mock_setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -42,29 +53,29 @@ async def test_form(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test-email"
-    assert result["data"][CONF_EMAIL] == "test-email"
-    assert result["data"][CONF_PASSWORD] == "test-password"
-    assert result["data"][CONF_REFRESH_TOKEN] == "test-refresh-token"
-    assert CONF_REFRESH_TOKEN_CREATION_TIME in result["data"]
-    assert result["result"].unique_id == "test-email"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("test-email")
+    expect(result["data"][CONF_EMAIL]).to_equal("test-email")
+    expect(result["data"][CONF_PASSWORD]).to_equal("test-password")
+    expect(result["data"][CONF_REFRESH_TOKEN]).to_equal("test-refresh-token")
+    expect(CONF_REFRESH_TOKEN_CREATION_TIME in result["data"]).to_be(True)
+    expect(result["result"].unique_id).to_equal("test-email")
+    expect(len(mock_setup.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [(AuthFailedError, "invalid_auth"), (Exception, "unknown")],
+@test.cases(
+    test.case("auth_failed", AuthFailedError, "invalid_auth"),
+    test.case("unknown", Exception, "unknown"),
 )
-async def test_form_exceptions(
-    hass: HomeAssistant,
-    mock_nice_go: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    side_effect: Exception,
+async def form_exceptions(
+    side_effect: type[Exception],
     expected_error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    nice_go: AsyncMock = Depends(mock_nice_go),
+    _mse: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we handle invalid auth."""
-    mock_nice_go.authenticate.side_effect = side_effect
+    nice_go.authenticate.side_effect = side_effect
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -77,9 +88,9 @@ async def test_form_exceptions(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": expected_error}
-    mock_nice_go.authenticate.side_effect = None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": expected_error})
+    nice_go.authenticate.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -88,16 +99,17 @@ async def test_form_exceptions(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_duplicate_device(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_nice_go: AsyncMock,
+@test
+async def duplicate_device(
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _nice_go: AsyncMock = Depends(mock_nice_go),
 ) -> None:
     """Test that duplicate devices are handled."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -109,23 +121,23 @@ async def test_duplicate_device(
             CONF_PASSWORD: "test-password",
         },
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reauth(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_nice_go: AsyncMock,
+@test
+async def reauth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _nice_go: AsyncMock = Depends(mock_nice_go),
 ) -> None:
     """Test reauth flow."""
+    await setup_integration(hass, config_entry, [])
 
-    await setup_integration(hass, mock_config_entry, [])
+    result = await config_entry.start_reauth_flow(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -135,27 +147,27 @@ async def test_reauth(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [(AuthFailedError, "invalid_auth"), (Exception, "unknown")],
+@test.cases(
+    test.case("auth_failed", AuthFailedError, "invalid_auth"),
+    test.case("unknown", Exception, "unknown"),
 )
-async def test_reauth_exceptions(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_nice_go: AsyncMock,
-    side_effect: Exception,
+async def reauth_exceptions(
+    side_effect: type[Exception],
     expected_error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    nice_go: AsyncMock = Depends(mock_nice_go),
 ) -> None:
     """Test we handle invalid auth."""
-    mock_nice_go.authenticate.side_effect = side_effect
-    await setup_integration(hass, mock_config_entry, [])
+    nice_go.authenticate.side_effect = side_effect
+    await setup_integration(hass, config_entry, [])
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -165,9 +177,9 @@ async def test_reauth_exceptions(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": expected_error}
-    mock_nice_go.authenticate.side_effect = None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": expected_error})
+    nice_go.authenticate.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -176,6 +188,6 @@ async def test_reauth_exceptions(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
