@@ -3,6 +3,8 @@
 from datetime import timedelta
 from unittest.mock import DEFAULT, patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import data_entry_flow
 from homeassistant.components.lg_netcast.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -24,72 +26,89 @@ from . import (
     _patch_lg_netcast,
 )
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-async def test_show_form(hass: HomeAssistant) -> None:
+
+@fixture
+def _trigger_executor(_mn: None = Depends(mock_network)) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def show_form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that the form is served with no input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_user_invalid_host(hass: HomeAssistant) -> None:
+@test
+async def user_invalid_host(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that errors are shown when the host is invalid."""
     with _patch_lg_netcast():
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data={CONF_HOST: "invalid/host"}
         )
 
-        assert result["errors"] == {CONF_HOST: "invalid_host"}
+        expect(result["errors"]).to_equal({CONF_HOST: "invalid_host"})
 
 
-async def test_manual_host(hass: HomeAssistant) -> None:
+@test
+async def manual_host(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test manual host configuration."""
     with _patch_lg_netcast():
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data={CONF_HOST: IP_ADDRESS}
         )
 
-        assert result["type"] == data_entry_flow.FlowResultType.FORM
-        assert result["step_id"] == "authorize"
-        assert not result["errors"]
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("authorize")
+        expect(bool(result["errors"])).to_be(False)
 
         result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result2["type"] == data_entry_flow.FlowResultType.FORM
-        assert result2["step_id"] == "authorize"
-        assert result2["errors"] is not None
-        assert result2["errors"][CONF_ACCESS_TOKEN] == "invalid_access_token"
+        expect(result2["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+        expect(result2["step_id"]).to_equal("authorize")
+        expect(result2["errors"]).not_.to_be(None)
+        expect(result2["errors"][CONF_ACCESS_TOKEN]).to_equal("invalid_access_token")
 
         result3 = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_ACCESS_TOKEN: FAKE_PIN}
         )
 
-        assert result3["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-        assert result3["title"] == FRIENDLY_NAME
-        assert result3["data"] == {
-            CONF_HOST: IP_ADDRESS,
-            CONF_ACCESS_TOKEN: FAKE_PIN,
-            CONF_NAME: FRIENDLY_NAME,
-            CONF_MODEL: MODEL_NAME,
-            CONF_ID: UNIQUE_ID,
-        }
+        expect(result3["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+        expect(result3["title"]).to_equal(FRIENDLY_NAME)
+        expect(result3["data"]).to_equal(
+            {
+                CONF_HOST: IP_ADDRESS,
+                CONF_ACCESS_TOKEN: FAKE_PIN,
+                CONF_NAME: FRIENDLY_NAME,
+                CONF_MODEL: MODEL_NAME,
+                CONF_ID: UNIQUE_ID,
+            }
+        )
 
 
-async def test_manual_host_no_connection_during_authorize(hass: HomeAssistant) -> None:
+@test
+async def manual_host_no_connection_during_authorize(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test manual host configuration."""
     with _patch_lg_netcast(fail_connection=True):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data={CONF_HOST: IP_ADDRESS}
         )
 
-        assert result["type"] == data_entry_flow.FlowResultType.ABORT
-        assert result["reason"] == "cannot_connect"
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_manual_host_invalid_details_during_authorize(
-    hass: HomeAssistant,
+@test
+async def manual_host_invalid_details_during_authorize(
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test manual host configuration."""
     with _patch_lg_netcast(invalid_details=True):
@@ -97,54 +116,64 @@ async def test_manual_host_invalid_details_during_authorize(
             DOMAIN, context={"source": SOURCE_USER}, data={CONF_HOST: IP_ADDRESS}
         )
 
-        assert result["type"] == data_entry_flow.FlowResultType.ABORT
-        assert result["reason"] == "cannot_connect"
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_manual_host_unsuccessful_details_response(hass: HomeAssistant) -> None:
+@test
+async def manual_host_unsuccessful_details_response(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test manual host configuration."""
     with _patch_lg_netcast(always_404=True):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data={CONF_HOST: IP_ADDRESS}
         )
 
-        assert result["type"] == data_entry_flow.FlowResultType.ABORT
-        assert result["reason"] == "cannot_connect"
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_manual_host_no_unique_id_response(hass: HomeAssistant) -> None:
+@test
+async def manual_host_no_unique_id_response(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test manual host configuration."""
     with _patch_lg_netcast(no_unique_id=True):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data={CONF_HOST: IP_ADDRESS}
         )
 
-        assert result["type"] == data_entry_flow.FlowResultType.ABORT
-        assert result["reason"] == "invalid_host"
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("invalid_host")
 
 
-async def test_invalid_session_id(hass: HomeAssistant) -> None:
+@test
+async def invalid_session_id(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test Invalid Session ID."""
     with _patch_lg_netcast(session_error=True):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data={CONF_HOST: IP_ADDRESS}
         )
 
-        assert result["type"] == data_entry_flow.FlowResultType.FORM
-        assert result["step_id"] == "authorize"
-        assert not result["errors"]
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("authorize")
+        expect(bool(result["errors"])).to_be(False)
 
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_ACCESS_TOKEN: FAKE_PIN}
         )
 
-        assert result2["type"] == data_entry_flow.FlowResultType.FORM
-        assert result2["step_id"] == "authorize"
-        assert result2["errors"] is not None
-        assert result2["errors"]["base"] == "cannot_connect"
+        expect(result2["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+        expect(result2["step_id"]).to_equal("authorize")
+        expect(result2["errors"]).not_.to_be(None)
+        expect(result2["errors"]["base"]).to_equal("cannot_connect")
 
 
-async def test_display_access_token_aborted(hass: HomeAssistant) -> None:
+@test
+async def display_access_token_aborted(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test Access token display is cancelled."""
 
     def _async_track_time_interval(
@@ -169,11 +198,11 @@ async def test_display_access_token_aborted(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": SOURCE_USER}, data={CONF_HOST: IP_ADDRESS}
         )
 
-        assert result["type"] == data_entry_flow.FlowResultType.FORM
-        assert result["step_id"] == "authorize"
-        assert not result["errors"]
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("authorize")
+        expect(bool(result["errors"])).to_be(False)
 
-        assert mock_interval.called
+        expect(mock_interval.called).to_be(True)
 
         hass.config_entries.flow.async_abort(result["flow_id"])
-        assert mock_interval.return_value.called
+        expect(mock_interval.return_value.called).to_be(True)

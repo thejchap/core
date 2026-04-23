@@ -7,7 +7,7 @@ from librehardwaremonitor_api import (
     LibreHardwareMonitorNoDevicesError,
     LibreHardwareMonitorUnauthorizedError,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.libre_hardware_monitor.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -15,45 +15,62 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import AUTH_INPUT, REAUTH_INPUT, VALID_CONFIG, VALID_CONFIG_WITH_AUTH
+from ._fixtures import (
+    AUTH_INPUT,
+    REAUTH_INPUT,
+    VALID_CONFIG,
+    VALID_CONFIG_WITH_AUTH,
+    mock_auth_config_entry,
+    mock_config_entry,
+    mock_lhm_client,
+    mock_setup_entry,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_create_entry_without_auth(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_lhm_client: AsyncMock,
+@fixture
+def _trigger_executor(_mn: None = Depends(mock_network)) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def create_entry_without_auth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_lhm_client: AsyncMock = Depends(mock_lhm_client),
 ) -> None:
     """Test that a complete config entry is created."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=VALID_CONFIG
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].unique_id is None
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_be(None)
 
     created_config_entry = result["result"]
-    assert (
-        created_config_entry.title
-        == f"GAMING-PC ({VALID_CONFIG[CONF_HOST]}:{VALID_CONFIG[CONF_PORT]})"
+    expect(created_config_entry.title).to_equal(
+        f"GAMING-PC ({VALID_CONFIG[CONF_HOST]}:{VALID_CONFIG[CONF_PORT]})"
     )
-    assert created_config_entry.data == VALID_CONFIG
+    expect(created_config_entry.data).to_equal(VALID_CONFIG)
 
-    assert mock_setup_entry.call_count == 1
+    expect(mock_setup_entry.call_count).to_equal(1)
 
 
-async def test_create_entry_with_auth(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_lhm_client: AsyncMock,
+@test
+async def create_entry_with_auth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_lhm_client: AsyncMock = Depends(mock_lhm_client),
 ) -> None:
     """Test that a complete config entry is created with authentication credentials."""
     mock_lhm_client.get_data.side_effect = LibreHardwareMonitorUnauthorizedError()
@@ -66,8 +83,8 @@ async def test_create_entry_with_auth(
         result["flow_id"], user_input=VALID_CONFIG
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     mock_lhm_client.get_data.side_effect = None
 
@@ -75,28 +92,25 @@ async def test_create_entry_with_auth(
         result["flow_id"], user_input=AUTH_INPUT
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].unique_id is None
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_be(None)
 
     created_config_entry = result["result"]
-    assert created_config_entry.data == VALID_CONFIG_WITH_AUTH
+    expect(created_config_entry.data).to_equal(VALID_CONFIG_WITH_AUTH)
 
-    assert mock_setup_entry.call_count == 1
+    expect(mock_setup_entry.call_count).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_text"),
-    [
-        (LibreHardwareMonitorConnectionError, "cannot_connect"),
-        (LibreHardwareMonitorNoDevicesError, "no_devices"),
-    ],
+@test.cases(
+    test.case("cannot_connect", LibreHardwareMonitorConnectionError, "cannot_connect"),
+    test.case("no_devices", LibreHardwareMonitorNoDevicesError, "no_devices"),
 )
-async def test_errors_and_flow_recovery(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_lhm_client: AsyncMock,
-    side_effect: Exception,
+async def errors_and_flow_recovery(
+    side_effect: type[Exception],
     error_text: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_lhm_client: AsyncMock = Depends(mock_lhm_client),
 ) -> None:
     """Test that errors are shown as expected."""
     mock_lhm_client.get_data.side_effect = side_effect
@@ -105,16 +119,16 @@ async def test_errors_and_flow_recovery(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=VALID_CONFIG
     )
 
-    assert result["errors"] == {"base": error_text}
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["errors"]).to_equal({"base": error_text})
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     mock_lhm_client.get_data.side_effect = None
 
@@ -122,12 +136,15 @@ async def test_errors_and_flow_recovery(
         result["flow_id"], user_input=VALID_CONFIG
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert mock_setup_entry.call_count == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(mock_setup_entry.call_count).to_equal(1)
 
 
-async def test_lhm_server_already_exists_without_auth(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_config_entry: MockConfigEntry
+@test
+async def lhm_server_already_exists_without_auth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we only allow a single entry per server."""
     mock_config_entry.add_to_hass(hass)
@@ -136,23 +153,24 @@ async def test_lhm_server_already_exists_without_auth(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=VALID_CONFIG
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert mock_setup_entry.call_count == 0
+    expect(mock_setup_entry.call_count).to_equal(0)
 
 
-async def test_lhm_server_already_exists_with_auth(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_auth_config_entry: MockConfigEntry,
+@test
+async def lhm_server_already_exists_with_auth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_auth_config_entry: MockConfigEntry = Depends(mock_auth_config_entry),
 ) -> None:
     """Test auth has no influence on single entry per server."""
     mock_auth_config_entry.add_to_hass(hass)
@@ -161,89 +179,88 @@ async def test_lhm_server_already_exists_with_auth(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=VALID_CONFIG
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert mock_setup_entry.call_count == 0
+    expect(mock_setup_entry.call_count).to_equal(0)
 
 
-async def test_reauth_no_previous_credentials(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_lhm_client: AsyncMock,
+@test
+async def reauth_no_previous_credentials(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_lhm_client: AsyncMock = Depends(mock_lhm_client),
 ) -> None:
     """Test reauth flow when web server did not require auth before."""
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         REAUTH_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data == {**VALID_CONFIG, **REAUTH_INPUT}
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_config_entry.data).to_equal({**VALID_CONFIG, **REAUTH_INPUT})
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-async def test_reauth_with_previous_credentials(
-    hass: HomeAssistant,
-    mock_auth_config_entry: MockConfigEntry,
-    mock_lhm_client: AsyncMock,
+@test
+async def reauth_with_previous_credentials(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_auth_config_entry: MockConfigEntry = Depends(mock_auth_config_entry),
+    _mock_lhm_client: AsyncMock = Depends(mock_lhm_client),
 ) -> None:
     """Test reauth flow when web server credentials changed."""
     mock_auth_config_entry.add_to_hass(hass)
 
     result = await mock_auth_config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         REAUTH_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_auth_config_entry.data == {**VALID_CONFIG, **REAUTH_INPUT}
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_auth_config_entry.data).to_equal({**VALID_CONFIG, **REAUTH_INPUT})
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_text"),
-    [
-        (LibreHardwareMonitorConnectionError, "cannot_connect"),
-        (LibreHardwareMonitorUnauthorizedError, "invalid_auth"),
-        (LibreHardwareMonitorNoDevicesError, "no_devices"),
-    ],
+@test.cases(
+    test.case("cannot_connect", LibreHardwareMonitorConnectionError, "cannot_connect"),
+    test.case("invalid_auth", LibreHardwareMonitorUnauthorizedError, "invalid_auth"),
+    test.case("no_devices", LibreHardwareMonitorNoDevicesError, "no_devices"),
 )
-async def test_reauth_errors(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_lhm_client: AsyncMock,
-    side_effect: Exception,
+async def reauth_errors(
+    side_effect: type[Exception],
     error_text: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_lhm_client: AsyncMock = Depends(mock_lhm_client),
 ) -> None:
     """Test reauth flow errors."""
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     mock_lhm_client.get_data.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
@@ -251,8 +268,8 @@ async def test_reauth_errors(
         REAUTH_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_text}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_text})
 
     mock_lhm_client.get_data.side_effect = None
     result = await hass.config_entries.flow.async_configure(
@@ -262,7 +279,7 @@ async def test_reauth_errors(
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data == {**VALID_CONFIG, **REAUTH_INPUT}
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_config_entry.data).to_equal({**VALID_CONFIG, **REAUTH_INPUT})
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
