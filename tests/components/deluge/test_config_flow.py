@@ -1,8 +1,10 @@
 """Test Deluge config flow."""
 
-from unittest.mock import patch
+from __future__ import annotations
 
-import pytest
+from unittest.mock import MagicMock
+
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.deluge.const import DEFAULT_NAME, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -10,117 +12,117 @@ from homeassistant.const import CONF_SOURCE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from . import CONF_DATA
-
 from tests.common import MockConfigEntry
+from tests.components.deluge import CONF_DATA
+from tests.components.deluge._fixtures import (
+    api,
+    conn_error,
+    deluge_setup,
+    mock_zeroconf,
+    unknown_error,
+)
+from tests.hass_fixtures import hass, mock_network
 
 
-@pytest.fixture(name="api")
-def mock_deluge_api():
-    """Mock an api."""
-    with (
-        patch("deluge_client.client.DelugeRPCClient.connect"),
-        patch("deluge_client.client.DelugeRPCClient._create_socket"),
-    ):
-        yield
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
 
 
-@pytest.fixture(name="conn_error")
-def mock_api_connection_error():
-    """Mock an api."""
-    with (
-        patch(
-            "deluge_client.client.DelugeRPCClient.connect",
-            side_effect=ConnectionRefusedError("111: Connection refused"),
-        ),
-        patch("deluge_client.client.DelugeRPCClient._create_socket"),
-    ):
-        yield
-
-
-@pytest.fixture(name="unknown_error")
-def mock_api_unknown_error():
-    """Mock an api."""
-    with (
-        patch("deluge_client.client.DelugeRPCClient.connect", side_effect=Exception),
-        patch("deluge_client.client.DelugeRPCClient._create_socket"),
-    ):
-        yield
-
-
-@pytest.fixture(name="deluge_setup", autouse=True)
-def deluge_setup_fixture():
-    """Mock deluge entry setup."""
-    with patch("homeassistant.components.deluge.async_setup_entry", return_value=True):
-        yield
-
-
-async def test_flow_user(hass: HomeAssistant, api) -> None:
+@test
+async def flow_user(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _deluge_setup: None = Depends(deluge_setup),
+    _api: None = Depends(api),
+) -> None:
     """Test user initialized flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
         data=CONF_DATA,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_NAME
-    assert result["data"] == CONF_DATA
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(DEFAULT_NAME)
+    expect(result["data"]).to_equal(CONF_DATA)
 
 
-async def test_flow_user_already_configured(hass: HomeAssistant, api) -> None:
+@test
+async def flow_user_already_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _deluge_setup: None = Depends(deluge_setup),
+    _api: None = Depends(api),
+) -> None:
     """Test user initialized flow with duplicate server."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data=CONF_DATA,
-    )
-
+    entry = MockConfigEntry(domain=DOMAIN, data=CONF_DATA)
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_USER}, data=CONF_DATA
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_flow_user_cannot_connect(hass: HomeAssistant, conn_error) -> None:
+@test
+async def flow_user_cannot_connect(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _deluge_setup: None = Depends(deluge_setup),
+    _conn_error: None = Depends(conn_error),
+) -> None:
     """Test user initialized flow with unreachable server."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_USER}, data=CONF_DATA
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_flow_user_unknown_error(hass: HomeAssistant, unknown_error) -> None:
+@test
+async def flow_user_unknown_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _deluge_setup: None = Depends(deluge_setup),
+    _unknown_error: None = Depends(unknown_error),
+) -> None:
     """Test user initialized flow with unreachable server."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_USER}, data=CONF_DATA
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "unknown"}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_flow_reauth(hass: HomeAssistant, api) -> None:
+@test
+async def flow_reauth(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _deluge_setup: None = Depends(deluge_setup),
+    _api: None = Depends(api),
+) -> None:
     """Test reauth step."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data=CONF_DATA,
-    )
-
+    entry = MockConfigEntry(domain=DOMAIN, data=CONF_DATA)
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=CONF_DATA,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.data == CONF_DATA
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.data).to_equal(CONF_DATA)
