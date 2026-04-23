@@ -1,9 +1,9 @@
 """Test the ista EcoTrend config flow."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pyecotrend_ista import LoginError, ServerError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.ista_ecotrend.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -12,16 +12,53 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.ista_ecotrend._fixtures import (
+    ista_config_entry,
+    mock_ista,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.usefixtures("mock_ista")
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _mock_zeroconf() -> MagicMock:
+    """Patch zeroconf so tests don't require a real zeroconf instance."""
+    from zeroconf import DNSCache
+
+    with (
+        patch("homeassistant.components.zeroconf.HaZeroconf") as mock_zc,
+        patch("homeassistant.components.zeroconf.discovery.AsyncServiceBrowser"),
+    ):
+        zc = mock_zc.return_value
+        zc.async_add_service_listener = AsyncMock()
+        zc.async_remove_service_listener = AsyncMock()
+        zc.async_register_service = AsyncMock()
+        zc.async_update_service = AsyncMock()
+        zc.cache = DNSCache()
+        yield mock_zc
+
+
+@fixture
+def _trigger_executor(
+    _mn: None = Depends(mock_network),
+    _mz: MagicMock = Depends(_mock_zeroconf),
+) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ista: MagicMock = Depends(mock_ista),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -32,29 +69,28 @@ async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Max Istamann"
-    assert result["data"] == {
-        CONF_EMAIL: "test@example.com",
-        CONF_PASSWORD: "test-password",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Max Istamann")
+    expect(result["data"]).to_equal(
+        {
+            CONF_EMAIL: "test@example.com",
+            CONF_PASSWORD: "test-password",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_text"),
-    [
-        (LoginError(None), "invalid_auth"),
-        (ServerError, "cannot_connect"),
-        (IndexError, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=LoginError(None), error_text="invalid_auth"),
+    test.case("cannot_connect", side_effect=ServerError, error_text="cannot_connect"),
+    test.case("unknown", side_effect=IndexError, error_text="unknown"),
 )
-async def test_form_error_and_recover(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_ista: MagicMock,
-    side_effect: Exception,
+async def form_error_and_recover(
+    side_effect: type[Exception] | Exception,
     error_text: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_ista: MagicMock = Depends(mock_ista),
 ) -> None:
     """Test config flow error and recover."""
     result = await hass.config_entries.flow.async_init(
@@ -69,8 +105,8 @@ async def test_form_error_and_recover(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_text}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_text})
 
     mock_ista.login.side_effect = None
     result = await hass.config_entries.flow.async_configure(
@@ -82,27 +118,29 @@ async def test_form_error_and_recover(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Max Istamann"
-    assert result["data"] == {
-        CONF_EMAIL: "test@example.com",
-        CONF_PASSWORD: "test-password",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Max Istamann")
+    expect(result["data"]).to_equal(
+        {
+            CONF_EMAIL: "test@example.com",
+            CONF_PASSWORD: "test-password",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_ista")
-async def test_reauth(
-    hass: HomeAssistant,
-    ista_config_entry: MockConfigEntry,
+@test
+async def reauth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ista: MagicMock = Depends(mock_ista),
+    ista_config_entry: MockConfigEntry = Depends(ista_config_entry),
 ) -> None:
     """Test reauth flow."""
-
     ista_config_entry.add_to_hass(hass)
 
     result = await ista_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -114,37 +152,35 @@ async def test_reauth(
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert ista_config_entry.data == {
-        CONF_EMAIL: "new@example.com",
-        CONF_PASSWORD: "new-password",
-    }
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(ista_config_entry.data).to_equal(
+        {
+            CONF_EMAIL: "new@example.com",
+            CONF_PASSWORD: "new-password",
+        }
+    )
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_text"),
-    [
-        (LoginError(None), "invalid_auth"),
-        (ServerError, "cannot_connect"),
-        (IndexError, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=LoginError(None), error_text="invalid_auth"),
+    test.case("cannot_connect", side_effect=ServerError, error_text="cannot_connect"),
+    test.case("unknown", side_effect=IndexError, error_text="unknown"),
 )
-async def test_reauth_error_and_recover(
-    hass: HomeAssistant,
-    ista_config_entry: MockConfigEntry,
-    mock_ista: MagicMock,
-    side_effect: Exception,
+async def reauth_error_and_recover(
+    side_effect: type[Exception] | Exception,
     error_text: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    ista_config_entry: MockConfigEntry = Depends(ista_config_entry),
+    mock_ista: MagicMock = Depends(mock_ista),
 ) -> None:
     """Test reauth flow error and recover."""
-
     ista_config_entry.add_to_hass(hass)
 
     result = await ista_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     mock_ista.login.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
@@ -155,8 +191,8 @@ async def test_reauth_error_and_recover(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_text}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_text})
 
     mock_ista.login.side_effect = None
     result = await hass.config_entries.flow.async_configure(
@@ -169,30 +205,32 @@ async def test_reauth_error_and_recover(
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert ista_config_entry.data == {
-        CONF_EMAIL: "new@example.com",
-        CONF_PASSWORD: "new-password",
-    }
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(ista_config_entry.data).to_equal(
+        {
+            CONF_EMAIL: "new@example.com",
+            CONF_PASSWORD: "new-password",
+        }
+    )
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_ista")
-async def test_form_already_configured(
-    hass: HomeAssistant,
-    ista_config_entry: MockConfigEntry,
+@test
+async def form_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ista: MagicMock = Depends(mock_ista),
+    ista_config_entry: MockConfigEntry = Depends(ista_config_entry),
 ) -> None:
     """Test we abort form login when entry is already configured."""
-
     ista_config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -202,14 +240,16 @@ async def test_form_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures("mock_ista")
-async def test_flow_reauth_unique_id_mismatch(hass: HomeAssistant) -> None:
+@test
+async def flow_reauth_unique_id_mismatch(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ista: MagicMock = Depends(mock_ista),
+) -> None:
     """Test reauth flow unique id mismatch."""
-
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -221,8 +261,8 @@ async def test_flow_reauth_unique_id_mismatch(hass: HomeAssistant) -> None:
 
     config_entry.add_to_hass(hass)
     result = await config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -234,24 +274,24 @@ async def test_flow_reauth_unique_id_mismatch(hass: HomeAssistant) -> None:
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unique_id_mismatch"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unique_id_mismatch")
 
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_ista")
-async def test_reconfigure(
-    hass: HomeAssistant,
-    ista_config_entry: MockConfigEntry,
+@test
+async def reconfigure(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ista: MagicMock = Depends(mock_ista),
+    ista_config_entry: MockConfigEntry = Depends(ista_config_entry),
 ) -> None:
     """Test reconfigure flow."""
-
     ista_config_entry.add_to_hass(hass)
 
     result = await ista_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -263,37 +303,35 @@ async def test_reconfigure(
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert ista_config_entry.data == {
-        CONF_EMAIL: "new@example.com",
-        CONF_PASSWORD: "new-password",
-    }
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(ista_config_entry.data).to_equal(
+        {
+            CONF_EMAIL: "new@example.com",
+            CONF_PASSWORD: "new-password",
+        }
+    )
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_text"),
-    [
-        (LoginError(None), "invalid_auth"),
-        (ServerError, "cannot_connect"),
-        (IndexError, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=LoginError(None), error_text="invalid_auth"),
+    test.case("cannot_connect", side_effect=ServerError, error_text="cannot_connect"),
+    test.case("unknown", side_effect=IndexError, error_text="unknown"),
 )
-async def test_reconfigure_error_and_recover(
-    hass: HomeAssistant,
-    ista_config_entry: MockConfigEntry,
-    mock_ista: MagicMock,
-    side_effect: Exception,
+async def reconfigure_error_and_recover(
+    side_effect: type[Exception] | Exception,
     error_text: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    ista_config_entry: MockConfigEntry = Depends(ista_config_entry),
+    mock_ista: MagicMock = Depends(mock_ista),
 ) -> None:
     """Test reconfigure flow error and recover."""
-
     ista_config_entry.add_to_hass(hass)
 
     result = await ista_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     mock_ista.login.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
@@ -304,8 +342,8 @@ async def test_reconfigure_error_and_recover(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_text}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_text})
 
     mock_ista.login.side_effect = None
     result = await hass.config_entries.flow.async_configure(
@@ -318,19 +356,23 @@ async def test_reconfigure_error_and_recover(
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert ista_config_entry.data == {
-        CONF_EMAIL: "new@example.com",
-        CONF_PASSWORD: "new-password",
-    }
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(ista_config_entry.data).to_equal(
+        {
+            CONF_EMAIL: "new@example.com",
+            CONF_PASSWORD: "new-password",
+        }
+    )
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_ista")
-async def test_flow_reconfigure_unique_id_mismatch(hass: HomeAssistant) -> None:
+@test
+async def flow_reconfigure_unique_id_mismatch(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_ista: MagicMock = Depends(mock_ista),
+) -> None:
     """Test reconfigure flow unique id mismatch."""
-
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -342,8 +384,8 @@ async def test_flow_reconfigure_unique_id_mismatch(hass: HomeAssistant) -> None:
 
     config_entry.add_to_hass(hass)
     result = await config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -355,7 +397,7 @@ async def test_flow_reconfigure_unique_id_mismatch(hass: HomeAssistant) -> None:
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unique_id_mismatch"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unique_id_mismatch")
 
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
