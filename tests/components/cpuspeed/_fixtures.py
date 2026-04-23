@@ -1,0 +1,58 @@
+"""Tryke fixtures for CPU Speed."""
+
+from collections.abc import Generator
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from tryke import fixture
+
+from homeassistant.components.cpuspeed.const import DOMAIN
+
+from tests.common import MockConfigEntry
+
+
+@fixture
+def mock_config_entry() -> MockConfigEntry:
+    """Return the default mocked config entry."""
+    return MockConfigEntry(
+        title="CPU Speed",
+        domain=DOMAIN,
+        data={},
+        unique_id=DOMAIN,
+    )
+
+
+@fixture
+def mock_cpuinfo_config_flow() -> Generator[MagicMock]:
+    """Return a mocked get_cpu_info."""
+    with patch(
+        "homeassistant.components.cpuspeed.config_flow.cpuinfo.get_cpu_info",
+        return_value=True,
+    ) as cpuinfo_mock:
+        yield cpuinfo_mock
+
+
+@fixture
+def mock_setup_entry() -> Generator[AsyncMock]:
+    """Mock setting up a config entry."""
+    with patch(
+        "homeassistant.components.cpuspeed.async_setup_entry", return_value=True
+    ) as mock_setup:
+        yield mock_setup
+
+
+@fixture
+def mock_zeroconf() -> Generator[MagicMock]:
+    """Mock zeroconf."""
+    from zeroconf import DNSCache  # noqa: PLC0415
+
+    with (
+        patch("homeassistant.components.zeroconf.HaZeroconf") as mock_zc,
+        patch(
+            "homeassistant.components.zeroconf.discovery.AsyncServiceBrowser",
+        ) as mock_browser,
+    ):
+        asb = mock_browser.return_value
+        asb.async_cancel = AsyncMock()
+        zc = mock_zc.return_value
+        zc.cache = DNSCache()
+        yield mock_zc
