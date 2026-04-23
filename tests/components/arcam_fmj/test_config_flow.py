@@ -1,11 +1,10 @@
 """Tests for the Arcam FMJ config flow module."""
 
-from collections.abc import Generator
 from dataclasses import replace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from arcam.fmj.client import ConnectionFailed
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.arcam_fmj.const import DOMAIN
 from homeassistant.config_entries import SOURCE_SSDP, SOURCE_USER
@@ -33,7 +32,20 @@ from .conftest import (
 )
 
 from tests.common import MockConfigEntry
+from tests.components.arcam_fmj._fixtures import (
+    dummy_client,
+    mock_config_entry,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import aioclient_mock, hass, mock_network
 from tests.test_util.aiohttp import AiohttpClientMocker
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
 
 MOCK_UPNP_DEVICE = f"""
 <root xmlns="urn:schemas-upnp-org:device-1-0">
@@ -61,42 +73,36 @@ MOCK_DISCOVER = SsdpServiceInfo(
 )
 
 
-@pytest.fixture(name="dummy_client", autouse=True)
-def dummy_client_fixture() -> Generator[MagicMock]:
-    """Mock out the real client."""
-    with patch("homeassistant.components.arcam_fmj.config_flow.Client") as client:
-        client.return_value.start.side_effect = AsyncMock(return_value=None)
-        client.return_value.stop.side_effect = AsyncMock(return_value=None)
-        yield client.return_value
-
-
-@pytest.fixture(autouse=True)
-def mock_setup_entry() -> Generator[AsyncMock]:
-    """Override async_setup_entry."""
-    with patch(
-        "homeassistant.components.arcam_fmj.async_setup_entry", return_value=True
-    ) as mock_setup:
-        yield mock_setup
-
-
-async def test_ssdp(hass: HomeAssistant) -> None:
+@test
+async def ssdp(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _dummy_client: MagicMock = Depends(dummy_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test a ssdp import flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: SOURCE_SSDP},
         data=MOCK_DISCOVER,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"Arcam FMJ ({MOCK_HOST})"
-    assert result["data"] == MOCK_CONFIG_ENTRY
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(f"Arcam FMJ ({MOCK_HOST})")
+    expect(result["data"]).to_equal(MOCK_CONFIG_ENTRY)
 
 
-async def test_ssdp_abort(hass: HomeAssistant) -> None:
-    """Test a ssdp import flow."""
+@test
+async def ssdp_abort(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _dummy_client: MagicMock = Depends(dummy_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Test a ssdp import flow aborts when configured."""
     entry = MockConfigEntry(
         domain=DOMAIN, data=MOCK_CONFIG_ENTRY, title=MOCK_NAME, unique_id=MOCK_UUID
     )
@@ -107,14 +113,18 @@ async def test_ssdp_abort(hass: HomeAssistant) -> None:
         context={CONF_SOURCE: SOURCE_SSDP},
         data=MOCK_DISCOVER,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_ssdp_unable_to_connect(
-    hass: HomeAssistant, dummy_client: MagicMock
+@test
+async def ssdp_unable_to_connect(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    dummy_client: MagicMock = Depends(dummy_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
-    """Test a ssdp import flow."""
+    """Test a ssdp import flow that can't connect."""
     dummy_client.start.side_effect = AsyncMock(side_effect=ConnectionFailed)
 
     result = await hass.config_entries.flow.async_init(
@@ -122,16 +132,22 @@ async def test_ssdp_unable_to_connect(
         context={CONF_SOURCE: SOURCE_SSDP},
         data=MOCK_DISCOVER,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_ssdp_invalid_id(hass: HomeAssistant) -> None:
-    """Test a ssdp with invalid  UDN."""
+@test
+async def ssdp_invalid_id(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _dummy_client: MagicMock = Depends(dummy_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Test a ssdp with invalid UDN."""
     discover = replace(
         MOCK_DISCOVER, upnp=MOCK_DISCOVER.upnp | {ATTR_UPNP_UDN: "invalid"}
     )
@@ -141,12 +157,18 @@ async def test_ssdp_invalid_id(hass: HomeAssistant) -> None:
         context={CONF_SOURCE: SOURCE_SSDP},
         data=discover,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_ssdp_update(hass: HomeAssistant) -> None:
-    """Test a ssdp import flow."""
+@test
+async def ssdp_update(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _dummy_client: MagicMock = Depends(dummy_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Test a ssdp update flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: "old_host", CONF_PORT: MOCK_PORT},
@@ -160,23 +182,29 @@ async def test_ssdp_update(hass: HomeAssistant) -> None:
         context={CONF_SOURCE: SOURCE_SSDP},
         data=MOCK_DISCOVER,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert entry.data[CONF_HOST] == MOCK_HOST
+    expect(entry.data[CONF_HOST]).to_equal(MOCK_HOST)
 
 
-async def test_user(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+@test
+async def user(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _dummy_client: MagicMock = Depends(dummy_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock),
+) -> None:
     """Test a manual user configuration flow."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: SOURCE_USER},
         data=None,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     user_input = {
         CONF_HOST: MOCK_HOST,
@@ -187,16 +215,21 @@ async def test_user(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) ->
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"Arcam FMJ ({MOCK_HOST})"
-    assert result["data"] == MOCK_CONFIG_ENTRY
-    assert result["result"].unique_id == MOCK_UUID
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(f"Arcam FMJ ({MOCK_HOST})")
+    expect(result["data"]).to_equal(MOCK_CONFIG_ENTRY)
+    expect(result["result"].unique_id).to_equal(MOCK_UUID)
 
 
-async def test_invalid_ssdp(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def invalid_ssdp(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _dummy_client: MagicMock = Depends(dummy_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock),
 ) -> None:
-    """Test a a config flow where ssdp fails."""
+    """Test a config flow where ssdp fails."""
     user_input = {
         CONF_HOST: MOCK_HOST,
         CONF_PORT: MOCK_PORT,
@@ -208,14 +241,19 @@ async def test_invalid_ssdp(
         context={CONF_SOURCE: SOURCE_USER},
         data=user_input,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"Arcam FMJ ({MOCK_HOST})"
-    assert result["data"] == MOCK_CONFIG_ENTRY
-    assert result["result"].unique_id is None
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(f"Arcam FMJ ({MOCK_HOST})")
+    expect(result["data"]).to_equal(MOCK_CONFIG_ENTRY)
+    expect(result["result"].unique_id is None).to_be(True)
 
 
-async def test_user_wrong(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def user_wrong(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _dummy_client: MagicMock = Depends(dummy_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock),
 ) -> None:
     """Test a manual user configuration flow with no ssdp response."""
     user_input = {
@@ -229,6 +267,6 @@ async def test_user_wrong(
         context={CONF_SOURCE: SOURCE_USER},
         data=user_input,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"Arcam FMJ ({MOCK_HOST})"
-    assert result["result"].unique_id is None
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(f"Arcam FMJ ({MOCK_HOST})")
+    expect(result["result"].unique_id is None).to_be(True)
