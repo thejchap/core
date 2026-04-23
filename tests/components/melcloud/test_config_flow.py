@@ -1,11 +1,10 @@
 """Test the MELCloud config flow."""
 
 from http import HTTPStatus
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from aiohttp import ClientError, ClientResponseError
-import pymelcloud
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.melcloud.const import DOMAIN
@@ -13,47 +12,40 @@ from homeassistant.const import CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import (
+    mock_async_zeroconf,
+    mock_get_devices,
+    mock_login,
+    mock_request_info,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.fixture
-def mock_login():
-    """Mock pymelcloud login."""
-    with patch(
-        "homeassistant.components.melcloud.config_flow.pymelcloud.login"
-    ) as mock:
-        mock.return_value = "test-token"
-        yield mock
+@fixture
+def _trigger_executor(
+    _mn: None = Depends(mock_network),
+    _mz: MagicMock = Depends(mock_async_zeroconf),
+    _ml: MagicMock = Depends(mock_login),
+    _md: MagicMock = Depends(mock_get_devices),
+) -> None:
+    """Trigger the hook executor path."""
+    return None
 
 
-@pytest.fixture
-def mock_get_devices():
-    """Mock pymelcloud get_devices."""
-    with patch(
-        "homeassistant.components.melcloud.config_flow.pymelcloud.get_devices"
-    ) as mock:
-        mock.return_value = {
-            pymelcloud.DEVICE_TYPE_ATA: [],
-            pymelcloud.DEVICE_TYPE_ATW: [],
-        }
-        yield mock
-
-
-@pytest.fixture
-def mock_request_info():
-    """Mock RequestInfo to create ClientResponseErrors."""
-    with patch("aiohttp.RequestInfo") as mock_ri:
-        mock_ri.return_value.real_url.return_value = ""
-        yield mock_ri
-
-
-async def test_form(hass: HomeAssistant, mock_login, mock_get_devices) -> None:
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _login: MagicMock = Depends(mock_login),
+    _devices: MagicMock = Depends(mock_get_devices),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with patch(
         "homeassistant.components.melcloud.async_setup_entry", return_value=True
@@ -64,28 +56,31 @@ async def test_form(hass: HomeAssistant, mock_login, mock_get_devices) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "test-email@test-domain.com"
-    assert result2["data"] == {
-        "username": "test-email@test-domain.com",
-        "token": "test-token",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("test-email@test-domain.com")
+    expect(result2["data"]).to_equal(
+        {
+            "username": "test-email@test-domain.com",
+            "token": "test-token",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("error", "reason"),
-    [
-        (ClientError(), "cannot_connect"),
-        (TimeoutError(), "cannot_connect"),
-        (AttributeError(), "invalid_auth"),
-    ],
+@test.cases(
+    test.case("client_error", ClientError(), "cannot_connect"),
+    test.case("timeout_error", TimeoutError(), "cannot_connect"),
+    test.case("attribute_error", AttributeError(), "invalid_auth"),
 )
-async def test_form_errors(
-    hass: HomeAssistant, mock_login, mock_get_devices, error, reason
+async def form_errors(
+    error: Exception,
+    reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    login: MagicMock = Depends(mock_login),
+    _devices: MagicMock = Depends(mock_get_devices),
 ) -> None:
     """Test we handle cannot connect error."""
-    mock_login.side_effect = error
+    login.side_effect = error
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -93,24 +88,26 @@ async def test_form_errors(
         data={"username": "test-email@test-domain.com", "password": "test-password"},
     )
 
-    assert len(mock_login.mock_calls) == 1
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == reason
+    expect(len(login.mock_calls)).to_equal(1)
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(reason)
 
 
-@pytest.mark.parametrize(
-    ("error", "message"),
-    [
-        (HTTPStatus.UNAUTHORIZED, "invalid_auth"),
-        (HTTPStatus.FORBIDDEN, "invalid_auth"),
-        (HTTPStatus.INTERNAL_SERVER_ERROR, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("unauthorized", HTTPStatus.UNAUTHORIZED, "invalid_auth"),
+    test.case("forbidden", HTTPStatus.FORBIDDEN, "invalid_auth"),
+    test.case("internal_server_error", HTTPStatus.INTERNAL_SERVER_ERROR, "cannot_connect"),
 )
-async def test_form_response_errors(
-    hass: HomeAssistant, mock_login, mock_get_devices, mock_request_info, error, message
+async def form_response_errors(
+    error: HTTPStatus,
+    message: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    login: MagicMock = Depends(mock_login),
+    _devices: MagicMock = Depends(mock_get_devices),
+    request_info: MagicMock = Depends(mock_request_info),
 ) -> None:
     """Test we handle response errors."""
-    mock_login.side_effect = ClientResponseError(mock_request_info(), (), status=error)
+    login.side_effect = ClientResponseError(request_info(), (), status=error)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -118,11 +115,16 @@ async def test_form_response_errors(
         data={"username": "test-email@test-domain.com", "password": "test-password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == message
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(message)
 
 
-async def test_token_refresh(hass: HomeAssistant, mock_login, mock_get_devices) -> None:
+@test
+async def token_refresh(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _login: MagicMock = Depends(mock_login),
+    _devices: MagicMock = Depends(mock_get_devices),
+) -> None:
     """Re-configuration with existing username should refresh token."""
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -143,23 +145,24 @@ async def test_token_refresh(hass: HomeAssistant, mock_login, mock_get_devices) 
             },
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
     await hass.async_block_till_done()
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
     entries = hass.config_entries.async_entries(DOMAIN)
-    assert len(entries) == 1
+    expect(len(entries)).to_equal(1)
 
     entry = entries[0]
-    assert entry.data["username"] == "test-email@test-domain.com"
-    assert entry.data["token"] == "test-token"
+    expect(entry.data["username"]).to_equal("test-email@test-domain.com")
+    expect(entry.data["token"]).to_equal("test-token")
 
 
-async def test_token_reauthentication(
-    hass: HomeAssistant,
-    mock_login,
-    mock_get_devices,
+@test
+async def token_reauthentication(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _login: MagicMock = Depends(mock_login),
+    _devices: MagicMock = Depends(mock_get_devices),
 ) -> None:
     """Re-configuration with existing username should refresh token, if made invalid."""
     mock_entry = MockConfigEntry(
@@ -170,8 +173,8 @@ async def test_token_reauthentication(
     mock_entry.add_to_hass(hass)
 
     result = await mock_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.melcloud.async_setup_entry",
@@ -183,23 +186,23 @@ async def test_token_reauthentication(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("error", "reason"),
-    [
-        (TimeoutError(), "cannot_connect"),
-        (AttributeError(name="get"), "invalid_auth"),
-    ],
+@test.cases(
+    test.case("timeout_error", TimeoutError(), "cannot_connect"),
+    test.case("attribute_error_get", AttributeError(name="get"), "invalid_auth"),
 )
-async def test_form_errors_reauthentication(
-    hass: HomeAssistant, mock_login, error, reason
+async def form_errors_reauthentication(
+    error: Exception,
+    reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    login: MagicMock = Depends(mock_login),
 ) -> None:
     """Test we handle cannot connect error."""
-    mock_login.side_effect = error
+    login.side_effect = error
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
         data={"username": "test-email@test-domain.com", "token": "test-original-token"},
@@ -219,10 +222,10 @@ async def test_form_errors_reauthentication(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == reason
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal(reason)
 
-    mock_login.side_effect = None
+    login.side_effect = None
     with patch(
         "homeassistant.components.melcloud.async_setup_entry",
         return_value=True,
@@ -233,23 +236,24 @@ async def test_form_errors_reauthentication(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-@pytest.mark.parametrize(
-    ("error", "reason"),
-    [
-        (HTTPStatus.UNAUTHORIZED, "invalid_auth"),
-        (HTTPStatus.FORBIDDEN, "invalid_auth"),
-        (HTTPStatus.INTERNAL_SERVER_ERROR, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("unauthorized", HTTPStatus.UNAUTHORIZED, "invalid_auth"),
+    test.case("forbidden", HTTPStatus.FORBIDDEN, "invalid_auth"),
+    test.case("internal_server_error", HTTPStatus.INTERNAL_SERVER_ERROR, "cannot_connect"),
 )
-async def test_client_errors_reauthentication(
-    hass: HomeAssistant, mock_login, mock_request_info, error, reason
+async def client_errors_reauthentication(
+    error: HTTPStatus,
+    reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    login: MagicMock = Depends(mock_login),
+    request_info: MagicMock = Depends(mock_request_info),
 ) -> None:
     """Test we handle cannot connect error."""
-    mock_login.side_effect = ClientResponseError(mock_request_info(), (), status=error)
+    login.side_effect = ClientResponseError(request_info(), (), status=error)
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
         data={"username": "test-email@test-domain.com", "token": "test-original-token"},
@@ -269,10 +273,10 @@ async def test_client_errors_reauthentication(
         )
         await hass.async_block_till_done()
 
-    assert result["errors"]["base"] == reason
-    assert result["type"] is FlowResultType.FORM
+    expect(result["errors"]["base"]).to_equal(reason)
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
-    mock_login.side_effect = None
+    login.side_effect = None
     with patch(
         "homeassistant.components.melcloud.async_setup_entry",
         return_value=True,
@@ -283,23 +287,24 @@ async def test_client_errors_reauthentication(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-@pytest.mark.parametrize(
-    ("error", "reason"),
-    [
-        (HTTPStatus.UNAUTHORIZED, "invalid_auth"),
-        (HTTPStatus.FORBIDDEN, "invalid_auth"),
-        (HTTPStatus.INTERNAL_SERVER_ERROR, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("unauthorized", HTTPStatus.UNAUTHORIZED, "invalid_auth"),
+    test.case("forbidden", HTTPStatus.FORBIDDEN, "invalid_auth"),
+    test.case("internal_server_error", HTTPStatus.INTERNAL_SERVER_ERROR, "cannot_connect"),
 )
-async def test_reconfigure_flow(
-    hass: HomeAssistant, mock_login, mock_request_info, error, reason
+async def reconfigure_flow(
+    error: HTTPStatus,
+    reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    login: MagicMock = Depends(mock_login),
+    request_info: MagicMock = Depends(mock_request_info),
 ) -> None:
     """Test re-configuration flow."""
-    mock_login.side_effect = ClientResponseError(mock_request_info(), (), status=error)
+    login.side_effect = ClientResponseError(request_info(), (), status=error)
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
         data={"username": "test-email@test-domain.com", "token": "test-original-token"},
@@ -309,7 +314,7 @@ async def test_reconfigure_flow(
 
     result = await mock_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with patch(
         "homeassistant.components.melcloud.async_setup_entry",
@@ -321,10 +326,10 @@ async def test_reconfigure_flow(
         )
         await hass.async_block_till_done()
 
-    assert result["errors"]["base"] == reason
-    assert result["type"] is FlowResultType.FORM
+    expect(result["errors"]["base"]).to_equal(reason)
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
-    mock_login.side_effect = None
+    login.side_effect = None
     with patch(
         "homeassistant.components.melcloud.async_setup_entry",
         return_value=True,
@@ -335,30 +340,32 @@ async def test_reconfigure_flow(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
     entry = hass.config_entries.async_get_entry(mock_entry.entry_id)
-    assert entry
-    assert entry.title == "Mock Title"
-    assert entry.data == {
-        "username": "test-email@test-domain.com",
-        "token": "test-token",
-        "password": "test-password",
-    }
+    expect(entry).not_.to_be(None)
+    expect(entry.title).to_equal("Mock Title")
+    expect(entry.data).to_equal(
+        {
+            "username": "test-email@test-domain.com",
+            "token": "test-token",
+            "password": "test-password",
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    ("error", "reason"),
-    [
-        (TimeoutError(), "cannot_connect"),
-        (AttributeError(name="get"), "invalid_auth"),
-    ],
+@test.cases(
+    test.case("timeout_error", TimeoutError(), "cannot_connect"),
+    test.case("attribute_error_get", AttributeError(name="get"), "invalid_auth"),
 )
-async def test_form_errors_reconfigure(
-    hass: HomeAssistant, mock_login, error, reason
+async def form_errors_reconfigure(
+    error: Exception,
+    reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    login: MagicMock = Depends(mock_login),
 ) -> None:
     """Test we handle cannot connect error."""
-    mock_login.side_effect = error
+    login.side_effect = error
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
         data={"username": "test-email@test-domain.com", "token": "test-original-token"},
@@ -378,10 +385,10 @@ async def test_form_errors_reconfigure(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == reason
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal(reason)
 
-    mock_login.side_effect = None
+    login.side_effect = None
     with patch(
         "homeassistant.components.melcloud.async_setup_entry",
         return_value=True,
@@ -392,13 +399,15 @@ async def test_form_errors_reconfigure(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
     entry = hass.config_entries.async_get_entry(mock_entry.entry_id)
-    assert entry
-    assert entry.title == "Mock Title"
-    assert entry.data == {
-        "username": "test-email@test-domain.com",
-        "token": "test-token",
-        "password": "test-password",
-    }
+    expect(entry).not_.to_be(None)
+    expect(entry.title).to_equal("Mock Title")
+    expect(entry.data).to_equal(
+        {
+            "username": "test-email@test-domain.com",
+            "token": "test-token",
+            "password": "test-password",
+        }
+    )

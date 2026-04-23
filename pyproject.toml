@@ -968,5 +968,6 @@ dev = [
     "pymetno==0.13.0",
     "pyserial>=3.5",
     "python-linkplay==0.2.12",
+    "python-melcloud==0.1.3",
     "ultraheat-api>=0.5.7",
 ]
