@@ -1,9 +1,9 @@
 """Tests the Indevolt config flow."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from aiohttp import ClientError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.indevolt.const import (
     CONF_GENERATION,
@@ -15,207 +15,220 @@ from homeassistant.const import CONF_HOST, CONF_MODEL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import TEST_DEVICE_SN_GEN2, TEST_HOST
-
 from tests.common import MockConfigEntry
+from tests.components.indevolt._fixtures import (
+    TEST_DEVICE_SN_GEN2,
+    TEST_HOST,
+    mock_config_entry,
+    mock_indevolt,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-# Used to mock host change
 TEST_HOST_NEW = "192.168.1.200"
 
 
-async def test_user_flow_success(
-    hass: HomeAssistant, mock_indevolt: AsyncMock, mock_setup_entry: AsyncMock
+@fixture
+def _mock_zeroconf() -> MagicMock:
+    """Patch zeroconf so tests don't require a real zeroconf instance."""
+    from zeroconf import DNSCache
+
+    with (
+        patch("homeassistant.components.zeroconf.HaZeroconf") as mock_zc,
+        patch("homeassistant.components.zeroconf.discovery.AsyncServiceBrowser"),
+    ):
+        zc = mock_zc.return_value
+        zc.async_add_service_listener = AsyncMock()
+        zc.async_remove_service_listener = AsyncMock()
+        zc.async_register_service = AsyncMock()
+        zc.async_update_service = AsyncMock()
+        zc.cache = DNSCache()
+        yield mock_zc
+
+
+@fixture
+def _trigger_executor(
+    _mn: None = Depends(mock_network),
+    _mz: MagicMock = Depends(_mock_zeroconf),
+) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def user_flow_success(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_indevolt: AsyncMock = Depends(mock_indevolt),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test successful user-initiated config flow."""
-
-    # Initiate user flow
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    # Verify correct form is returned
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    # Test config entry creation (with success)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"host": TEST_HOST}
     )
 
-    # Verify entry is created with correct data
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "INDEVOLT CMS-SF2000"
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_SERIAL_NUMBER: TEST_DEVICE_SN_GEN2,
-        CONF_MODEL: "CMS-SF2000",
-        CONF_GENERATION: 2,
-    }
-    assert result["result"].unique_id == TEST_DEVICE_SN_GEN2
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("INDEVOLT CMS-SF2000")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_SERIAL_NUMBER: TEST_DEVICE_SN_GEN2,
+            CONF_MODEL: "CMS-SF2000",
+            CONF_GENERATION: 2,
+        }
+    )
+    expect(result["result"].unique_id).to_equal(TEST_DEVICE_SN_GEN2)
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_error"),
-    [
-        (TimeoutError, "timeout"),
-        (ConnectionError, "cannot_connect"),
-        (ClientError, "cannot_connect"),
-        (Exception("Some unknown error"), "unknown"),
-    ],
+@test.cases(
+    test.case("timeout", exception=TimeoutError, expected_error="timeout"),
+    test.case("connection", exception=ConnectionError, expected_error="cannot_connect"),
+    test.case("client", exception=ClientError, expected_error="cannot_connect"),
+    test.case(
+        "unknown", exception=Exception("Some unknown error"), expected_error="unknown"
+    ),
 )
-async def test_user_flow_error(
-    hass: HomeAssistant,
-    mock_indevolt: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def user_flow_error(
+    exception: type[Exception] | Exception,
     expected_error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_indevolt: AsyncMock = Depends(mock_indevolt),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test connection errors in user flow."""
-
-    # Initiate user flow
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    # Configure mock to raise exception
     mock_indevolt.get_config.side_effect = exception
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: TEST_HOST}
     )
 
-    # Verify exception is thrown with correct error message
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == expected_error
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal(expected_error)
 
-    # Test recovery by patching the library to work
     mock_indevolt.get_config.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: TEST_HOST}
     )
 
-    # Verify entry is created with correct data
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "INDEVOLT CMS-SF2000"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("INDEVOLT CMS-SF2000")
 
 
-async def test_user_flow_duplicate_entry(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_indevolt: AsyncMock
+@test
+async def user_flow_duplicate_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_indevolt: AsyncMock = Depends(mock_indevolt),
 ) -> None:
     """Test duplicate entry aborts the flow."""
     mock_config_entry.add_to_hass(hass)
 
-    # Initiate user flow
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    # Test duplicate entry creation
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: TEST_HOST}
     )
 
-    # Verify flow is aborted with correct reason
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reconfigure_flow_success(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_indevolt: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def reconfigure_flow_success(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_indevolt: AsyncMock = Depends(mock_indevolt),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test successful reconfiguration flow."""
     mock_config_entry.add_to_hass(hass)
 
-    # Initiate reconfigure flow
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_RECONFIGURE, "entry_id": mock_config_entry.entry_id},
     )
 
-    # Verify correct form is returned
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
-    # Mock new host input
     new_host = TEST_HOST_NEW
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: new_host}
     )
 
-    # Verify flow is aborted
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
-    # Flush pending tasks
     await hass.async_block_till_done()
 
-    # Verify entry is updated
-    assert mock_config_entry.data[CONF_HOST] == new_host
-    assert mock_config_entry.data[CONF_SERIAL_NUMBER] == TEST_DEVICE_SN_GEN2
+    expect(mock_config_entry.data[CONF_HOST]).to_equal(new_host)
+    expect(mock_config_entry.data[CONF_SERIAL_NUMBER]).to_equal(TEST_DEVICE_SN_GEN2)
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_error"),
-    [
-        (TimeoutError, "timeout"),
-        (ConnectionError, "cannot_connect"),
-        (ClientError, "cannot_connect"),
-        (Exception("Some unknown error"), "unknown"),
-    ],
+@test.cases(
+    test.case("timeout", exception=TimeoutError, expected_error="timeout"),
+    test.case("connection", exception=ConnectionError, expected_error="cannot_connect"),
+    test.case("client", exception=ClientError, expected_error="cannot_connect"),
+    test.case(
+        "unknown", exception=Exception("Some unknown error"), expected_error="unknown"
+    ),
 )
-async def test_reconfigure_flow_error(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_indevolt: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def reconfigure_flow_error(
+    exception: type[Exception] | Exception,
     expected_error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_indevolt: AsyncMock = Depends(mock_indevolt),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test connection errors in reconfigure flow."""
     mock_config_entry.add_to_hass(hass)
 
-    # Initiate reconfigure flow
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_RECONFIGURE, "entry_id": mock_config_entry.entry_id},
     )
 
-    # Configure mock to raise exception
     mock_indevolt.get_config.side_effect = exception
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: TEST_HOST}
     )
 
-    # Verify exception is thrown with correct error message
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == expected_error
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal(expected_error)
 
-    # Test recovery by patching the library to work
     mock_indevolt.get_config.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: TEST_HOST}
     )
 
-    # Verify entry is created with correct data and flow is aborted
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
-    # Flush pending tasks
     await hass.async_block_till_done()
 
 
-async def test_reconfigure_flow_different_device(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_indevolt: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def reconfigure_flow_different_device(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_indevolt: AsyncMock = Depends(mock_indevolt),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reconfigure aborts when connecting to a different device."""
     mock_config_entry.add_to_hass(hass)
 
-    # Setup new device for configuration
     mock_indevolt.get_config.return_value = {
         "device": {
             "sn": "DIFFERENT-SERIAL-99999999",
@@ -225,20 +238,16 @@ async def test_reconfigure_flow_different_device(
         }
     }
 
-    # Initiate reconfigure flow
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_RECONFIGURE, "entry_id": mock_config_entry.entry_id},
     )
 
-    # Configure mock to cause host collision with different device
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: TEST_HOST_NEW}
     )
 
-    # Verify flow is aborted with correct reason
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "different_device"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("different_device")
 
-    # Flush pending tasks
     await hass.async_block_till_done()
