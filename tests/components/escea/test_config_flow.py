@@ -3,7 +3,7 @@
 from collections.abc import Callable, Coroutine
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.escea.const import DOMAIN, ESCEA_FIREPLACE
@@ -12,18 +12,25 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass, mock_network
 
 
-@pytest.fixture(name="mock_discovery_service")
-def mock_discovery_service_fixture() -> AsyncMock:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@fixture
+def mock_discovery_service() -> AsyncMock:
     """Mock discovery service."""
     discovery_service = AsyncMock()
     discovery_service.controllers = {}
     return discovery_service
 
 
-@pytest.fixture(name="mock_controller")
-def mock_controller_fixture() -> MagicMock:
+@fixture
+def mock_controller() -> MagicMock:
     """Mock controller."""
     return MagicMock()
 
@@ -41,11 +48,13 @@ def _mock_start_discovery(
     return do_discovered
 
 
-async def test_not_found(
-    hass: HomeAssistant, mock_discovery_service: MagicMock
+@test
+async def not_found(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_discovery_service: AsyncMock = Depends(mock_discovery_service),
 ) -> None:
     """Test not finding any Escea controllers."""
-
     with (
         patch(
             "homeassistant.components.escea.discovery.pescea_discovery_service"
@@ -58,19 +67,22 @@ async def test_not_found(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
 
-        # Confirmation form
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
-    assert discovery_service.return_value.close.call_count == 1
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("no_devices_found")
+    expect(discovery_service.return_value.close.call_count).to_equal(1)
 
 
-async def test_found(
-    hass: HomeAssistant, mock_controller: MagicMock, mock_discovery_service: AsyncMock
+@test
+async def found(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_controller: MagicMock = Depends(mock_controller),
+    mock_discovery_service: AsyncMock = Depends(mock_discovery_service),
 ) -> None:
     """Test finding an Escea controller."""
     mock_discovery_service.controllers["test-uid"] = mock_controller
@@ -93,17 +105,20 @@ async def test_found(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
 
-        # Confirmation form
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert mock_setup.call_count == 1
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(mock_setup.call_count).to_equal(1)
 
 
-async def test_single_instance_allowed(hass: HomeAssistant) -> None:
+@test
+async def single_instance_allowed(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test single instance allowed."""
     config_entry = MockConfigEntry(domain=DOMAIN, title=ESCEA_FIREPLACE)
     config_entry.add_to_hass(hass)
@@ -116,6 +131,6 @@ async def test_single_instance_allowed(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
-    assert discovery_service.call_count == 0
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("single_instance_allowed")
+    expect(discovery_service.call_count).to_equal(0)
