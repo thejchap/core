@@ -1,8 +1,9 @@
 """Test the Hong Kong Observatory config flow."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from hko import HKOError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.hko.const import DEFAULT_LOCATION, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -10,29 +11,62 @@ from homeassistant.const import CONF_LOCATION
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-async def test_config_flow_default(hass: HomeAssistant) -> None:
+
+@fixture
+def _mock_zeroconf() -> MagicMock:
+    """Patch zeroconf so tests don't require a real zeroconf instance."""
+    from zeroconf import DNSCache
+
+    with (
+        patch("homeassistant.components.zeroconf.HaZeroconf") as mock_zc,
+        patch("homeassistant.components.zeroconf.discovery.AsyncServiceBrowser"),
+    ):
+        zc = mock_zc.return_value
+        zc.async_add_service_listener = AsyncMock()
+        zc.async_remove_service_listener = AsyncMock()
+        zc.async_register_service = AsyncMock()
+        zc.async_update_service = AsyncMock()
+        zc.cache = DNSCache()
+        yield mock_zc
+
+
+@fixture
+def _trigger_executor(
+    _mn: None = Depends(mock_network),
+    _mz: MagicMock = Depends(_mock_zeroconf),
+) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def config_flow_default(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test user config flow with default fields."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == SOURCE_USER
-    assert "flow_id" in result
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(SOURCE_USER)
+    expect("flow_id" in result).to_be(True)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_LOCATION: DEFAULT_LOCATION},
     )
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == DEFAULT_LOCATION
-    assert result2["result"].unique_id == DEFAULT_LOCATION
-    assert result2["data"][CONF_LOCATION] == DEFAULT_LOCATION
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(DEFAULT_LOCATION)
+    expect(result2["result"].unique_id).to_equal(DEFAULT_LOCATION)
+    expect(result2["data"][CONF_LOCATION]).to_equal(DEFAULT_LOCATION)
 
 
-async def test_config_flow_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def config_flow_cannot_connect(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user config flow without connection to the API."""
     with patch("homeassistant.components.hko.config_flow.HKO.weather") as client_mock:
         client_mock.side_effect = HKOError()
@@ -42,8 +76,8 @@ async def test_config_flow_cannot_connect(hass: HomeAssistant) -> None:
             data={CONF_LOCATION: DEFAULT_LOCATION},
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"]["base"] == "cannot_connect"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]["base"]).to_equal("cannot_connect")
 
         client_mock.side_effect = None
 
@@ -53,12 +87,13 @@ async def test_config_flow_cannot_connect(hass: HomeAssistant) -> None:
             data={CONF_LOCATION: DEFAULT_LOCATION},
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["result"].unique_id == DEFAULT_LOCATION
-        assert result["data"][CONF_LOCATION] == DEFAULT_LOCATION
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["result"].unique_id).to_equal(DEFAULT_LOCATION)
+        expect(result["data"][CONF_LOCATION]).to_equal(DEFAULT_LOCATION)
 
 
-async def test_config_flow_timeout(hass: HomeAssistant) -> None:
+@test
+async def config_flow_timeout(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test user config flow with timedout connection to the API."""
     with patch("homeassistant.components.hko.config_flow.HKO.weather") as client_mock:
         client_mock.side_effect = TimeoutError()
@@ -68,8 +103,8 @@ async def test_config_flow_timeout(hass: HomeAssistant) -> None:
             data={CONF_LOCATION: DEFAULT_LOCATION},
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"]["base"] == "unknown"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]["base"]).to_equal("unknown")
 
         client_mock.side_effect = None
 
@@ -79,34 +114,37 @@ async def test_config_flow_timeout(hass: HomeAssistant) -> None:
             data={CONF_LOCATION: DEFAULT_LOCATION},
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["result"].unique_id == DEFAULT_LOCATION
-        assert result["data"][CONF_LOCATION] == DEFAULT_LOCATION
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["result"].unique_id).to_equal(DEFAULT_LOCATION)
+        expect(result["data"][CONF_LOCATION]).to_equal(DEFAULT_LOCATION)
 
 
-async def test_config_flow_already_configured(hass: HomeAssistant) -> None:
+@test
+async def config_flow_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user config flow with two equal entries."""
     r1 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert r1["type"] is FlowResultType.FORM
-    assert r1["step_id"] == SOURCE_USER
-    assert "flow_id" in r1
+    expect(r1["type"]).to_be(FlowResultType.FORM)
+    expect(r1["step_id"]).to_equal(SOURCE_USER)
+    expect("flow_id" in r1).to_be(True)
     result1 = await hass.config_entries.flow.async_configure(
         r1["flow_id"],
         user_input={CONF_LOCATION: DEFAULT_LOCATION},
     )
-    assert result1["type"] is FlowResultType.CREATE_ENTRY
+    expect(result1["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     r2 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert r2["type"] is FlowResultType.FORM
-    assert r2["step_id"] == SOURCE_USER
-    assert "flow_id" in r2
+    expect(r2["type"]).to_be(FlowResultType.FORM)
+    expect(r2["step_id"]).to_equal(SOURCE_USER)
+    expect("flow_id" in r2).to_be(True)
     result2 = await hass.config_entries.flow.async_configure(
         r2["flow_id"],
         user_input={CONF_LOCATION: DEFAULT_LOCATION},
     )
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")
