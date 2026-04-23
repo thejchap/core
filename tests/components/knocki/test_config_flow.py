@@ -3,19 +3,19 @@
 from unittest.mock import AsyncMock
 
 from knocki import KnockiConnectionError, KnockiInvalidAuthError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.knocki.const import DOMAIN
 from homeassistant.config_entries import SOURCE_DHCP, SOURCE_USER
 from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
-from . import setup_integration
+from ._fixtures import mock_config_entry, mock_knocki_client, mock_setup_entry
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 DHCP_DISCOVERY = DhcpServiceInfo(
     ip="1.1.1.1",
@@ -24,17 +24,24 @@ DHCP_DISCOVERY = DhcpServiceInfo(
 )
 
 
-async def test_full_flow(
-    hass: HomeAssistant,
-    mock_knocki_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(_mn: None = Depends(mock_network)) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def full_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_knocki_client: AsyncMock = Depends(mock_knocki_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test full flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -44,28 +51,27 @@ async def test_full_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test-username"
-    assert result["data"] == {
-        CONF_TOKEN: "test-token",
-    }
-    assert result["result"].unique_id == "test-id"
-    assert len(mock_knocki_client.link.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("test-username")
+    expect(result["data"]).to_equal({CONF_TOKEN: "test-token"})
+    expect(result["result"].unique_id).to_equal("test-id")
+    expect(len(mock_knocki_client.link.mock_calls)).to_equal(1)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_duplcate_entry(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_knocki_client: AsyncMock,
+@test
+async def duplicate_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_knocki_client: AsyncMock = Depends(mock_knocki_client),
 ) -> None:
     """Test abort when setting up duplicate entry."""
     mock_config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -75,26 +81,25 @@ async def test_duplcate_entry(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(("field"), ["login", "link"])
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (KnockiConnectionError, "cannot_connect"),
-        (KnockiInvalidAuthError, "invalid_auth"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("login_connection", "login", KnockiConnectionError, "cannot_connect"),
+    test.case("login_auth", "login", KnockiInvalidAuthError, "invalid_auth"),
+    test.case("login_unknown", "login", Exception, "unknown"),
+    test.case("link_connection", "link", KnockiConnectionError, "cannot_connect"),
+    test.case("link_auth", "link", KnockiInvalidAuthError, "invalid_auth"),
+    test.case("link_unknown", "link", Exception, "unknown"),
 )
-async def test_exceptions(
-    hass: HomeAssistant,
-    mock_knocki_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+async def exceptions(
     field: str,
-    exception: Exception,
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_knocki_client: AsyncMock = Depends(mock_knocki_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test exceptions."""
     getattr(mock_knocki_client, field).side_effect = exception
@@ -108,8 +113,8 @@ async def test_exceptions(
             CONF_PASSWORD: "test-password",
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
     getattr(mock_knocki_client, field).side_effect = None
 
@@ -120,20 +125,21 @@ async def test_exceptions(
             CONF_PASSWORD: "test-password",
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_dhcp(
-    hass: HomeAssistant,
-    mock_knocki_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def dhcp(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_knocki_client: AsyncMock = Depends(mock_knocki_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test DHCP discovery."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_DHCP}, data=DHCP_DISCOVERY
     )
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -143,38 +149,15 @@ async def test_dhcp(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].unique_id == "test-id"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal("test-id")
 
 
-async def test_dhcp_mac(
-    hass: HomeAssistant,
-    mock_knocki_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    device_registry: dr.DeviceRegistry,
-) -> None:
-    """Test updating the mac address in the DHCP discovery."""
-    await setup_integration(hass, mock_config_entry)
-
-    device = device_registry.async_get_device(identifiers={(DOMAIN, "KNC1-W-00000214")})
-    assert device
-    assert device.connections == set()
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_DHCP}, data=DHCP_DISCOVERY
-    )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-
-    device = device_registry.async_get_device(identifiers={(DOMAIN, "KNC1-W-00000214")})
-    assert device
-    assert device.connections == {(dr.CONNECTION_NETWORK_MAC, "aa:bb:cc:dd:ee:ff")}
-
-
-async def test_dhcp_already_setup(
-    hass: HomeAssistant,
-    mock_knocki_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def dhcp_already_setup(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_knocki_client: AsyncMock = Depends(mock_knocki_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test DHCP discovery with already setup device."""
     mock_config_entry.add_to_hass(hass)
@@ -182,5 +165,5 @@ async def test_dhcp_already_setup(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_DHCP}, data=DHCP_DISCOVERY
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

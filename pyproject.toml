@@ -939,3 +939,10 @@ max-complexity = 25
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 property-decorators = ["propcache.api.cached_property"]
+
+[dependency-groups]
+dev = [
+    "kiosker-python-api>=1.2.9",
+    "knocki>=0.4.2",
+    "pykmtronic>=0.3.0",
+]
