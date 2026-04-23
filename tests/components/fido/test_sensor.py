@@ -4,15 +4,22 @@ import logging
 from unittest.mock import MagicMock, patch
 
 from pyfido.client import PyFidoError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.fido import sensor as fido
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
 from tests.common import assert_setup_component
+from tests.hass_fixtures import LogCapture, caplog, hass, mock_network
 
 CONTRACT = "123456789"
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
 
 
 class FidoClientMock:
@@ -41,7 +48,11 @@ class FidoClientMockError(FidoClientMock):
         raise PyFidoError("Fake Error")
 
 
-async def test_fido_sensor(hass: HomeAssistant) -> None:
+@test
+async def fido_sensor(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test the Fido number sensor."""
     with patch("homeassistant.components.fido.sensor.FidoClient", new=FidoClientMock):
         config = {
@@ -57,13 +68,18 @@ async def test_fido_sensor(hass: HomeAssistant) -> None:
             await async_setup_component(hass, "sensor", config)
             await hass.async_block_till_done()
         state = hass.states.get("sensor.fido_1112223344_balance")
-        assert state.state == "160.12"
-        assert state.attributes.get("number") == "1112223344"
+        expect(state.state).to_equal("160.12")
+        expect(state.attributes.get("number")).to_equal("1112223344")
         state = hass.states.get("sensor.fido_1112223344_data_remaining")
-        assert state.state == "100.33"
+        expect(state.state).to_equal("100.33")
 
 
-async def test_error(hass: HomeAssistant, caplog: pytest.LogCaptureFixture) -> None:
+@test
+async def error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    caplog: LogCapture = Depends(caplog),
+) -> None:
     """Test the Fido sensor errors."""
     caplog.set_level(logging.ERROR)
 
@@ -77,4 +93,4 @@ async def test_error(hass: HomeAssistant, caplog: pytest.LogCaptureFixture) -> N
     fake_async_add_entities = MagicMock()
     with patch("homeassistant.components.fido.sensor.FidoClient", FidoClientMockError):
         await fido.async_setup_platform(hass, config, fake_async_add_entities)
-    assert fake_async_add_entities.called is False
+    expect(fake_async_add_entities.called).to_be(False)
