@@ -4,92 +4,103 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
-import pytest
 from sensorpush_ha import SensorPushCloudAuthError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.sensorpush_cloud.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_api, mock_config_entry, mock_helper, mock_setup_entry
 from .const import CONF_DATA, CONF_EMAIL
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_user(
-    hass: HomeAssistant,
-    mock_api: AsyncMock,
-    mock_helper: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: AsyncMock = Depends(mock_api),
+    helper: AsyncMock = Depends(mock_helper),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user initialized flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         CONF_DATA,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test@example.com"
-    assert result["data"] == CONF_DATA
-    assert result["result"].unique_id == CONF_DATA[CONF_EMAIL]
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("test@example.com")
+    expect(result["data"]).to_equal(CONF_DATA)
+    expect(result["result"].unique_id).to_equal(CONF_DATA[CONF_EMAIL])
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_already_configured(
-    hass: HomeAssistant,
-    mock_api: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def user_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: AsyncMock = Depends(mock_api),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we fail on a duplicate entry in the user flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data=CONF_DATA
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("error", "expected"),
-    [(SensorPushCloudAuthError, "invalid_auth"), (Exception, "unknown")],
+@test.cases(
+    test.case("invalid_auth", error=SensorPushCloudAuthError, expected="invalid_auth"),
+    test.case("unknown", error=Exception, expected="unknown"),
 )
-async def test_user_error(
-    hass: HomeAssistant,
-    mock_api: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    error: Exception,
+async def user_error(
+    error: type[Exception],
     expected: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: AsyncMock = Depends(mock_api),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we display errors in the user flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
-    mock_api.async_authorize.side_effect = error
+    api.async_authorize.side_effect = error
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], CONF_DATA
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": expected}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": expected})
 
-    # Show we can recover from errors:
-    mock_api.async_authorize.side_effect = None
+    api.async_authorize.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], CONF_DATA
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test@example.com"
-    assert result["data"] == CONF_DATA
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("test@example.com")
+    expect(result["data"]).to_equal(CONF_DATA)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
