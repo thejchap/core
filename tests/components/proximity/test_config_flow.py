@@ -1,8 +1,10 @@
 """Test proximity config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.proximity.const import (
     CONF_IGNORED_ZONES,
@@ -15,49 +17,61 @@ from homeassistant.const import CONF_ZONE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import config_zones as config_zones_fx
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
 
 
-@pytest.mark.parametrize(
-    ("user_input", "expected_result"),
-    [
-        (
-            {
-                CONF_ZONE: "zone.home",
-                CONF_TRACKED_ENTITIES: ["device_tracker.test1"],
-            },
-            {
-                CONF_ZONE: "zone.home",
-                CONF_TRACKED_ENTITIES: ["device_tracker.test1"],
-                CONF_IGNORED_ZONES: [],
-                CONF_TOLERANCE: 1,
-            },
-        ),
-        (
-            {
-                CONF_ZONE: "zone.home",
-                CONF_TRACKED_ENTITIES: ["device_tracker.test1"],
-                CONF_IGNORED_ZONES: ["zone.work"],
-                CONF_TOLERANCE: 10,
-            },
-            {
-                CONF_ZONE: "zone.home",
-                CONF_TRACKED_ENTITIES: ["device_tracker.test1"],
-                CONF_IGNORED_ZONES: ["zone.work"],
-                CONF_TOLERANCE: 10,
-            },
-        ),
-    ],
+@fixture
+def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _zones: None = Depends(config_zones_fx),
+) -> None:
+    """Auto-apply config_zones for every test."""
+
+
+@test.cases(
+    test.case(
+        "minimal",
+        user_input={
+            CONF_ZONE: "zone.home",
+            CONF_TRACKED_ENTITIES: ["device_tracker.test1"],
+        },
+        expected_result={
+            CONF_ZONE: "zone.home",
+            CONF_TRACKED_ENTITIES: ["device_tracker.test1"],
+            CONF_IGNORED_ZONES: [],
+            CONF_TOLERANCE: 1,
+        },
+    ),
+    test.case(
+        "full",
+        user_input={
+            CONF_ZONE: "zone.home",
+            CONF_TRACKED_ENTITIES: ["device_tracker.test1"],
+            CONF_IGNORED_ZONES: ["zone.work"],
+            CONF_TOLERANCE: 10,
+        },
+        expected_result={
+            CONF_ZONE: "zone.home",
+            CONF_TRACKED_ENTITIES: ["device_tracker.test1"],
+            CONF_IGNORED_ZONES: ["zone.work"],
+            CONF_TOLERANCE: 10,
+        },
+    ),
 )
-async def test_user_flow(
-    hass: HomeAssistant, user_input: dict, expected_result: dict
+async def user_flow(
+    user_input: dict,
+    expected_result: dict,
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test starting a flow by user."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with patch(
         "homeassistant.components.proximity.async_setup_entry", return_value=True
@@ -66,20 +80,20 @@ async def test_user_flow(
             result["flow_id"],
             user_input=user_input,
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"] == expected_result
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"]).to_equal(expected_result)
 
         zone = hass.states.get(user_input[CONF_ZONE])
-        assert result["title"] == zone.name
+        expect(result["title"]).to_equal(zone.name)
 
         await hass.async_block_till_done()
 
-    assert mock_setup_entry.called
+    expect(mock_setup_entry.called).to_be(True)
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test options flow."""
-
     mock_config = MockConfigEntry(
         domain=DOMAIN,
         title="home",
@@ -98,11 +112,11 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     ) as mock_setup_entry:
         await hass.config_entries.async_setup(mock_config.entry_id)
         await hass.async_block_till_done()
-        assert mock_setup_entry.called
+        expect(mock_setup_entry.called).to_be(True)
 
         result = await hass.config_entries.options.async_init(mock_config.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={
@@ -111,16 +125,19 @@ async def test_options_flow(hass: HomeAssistant) -> None:
             CONF_TOLERANCE: 1,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert mock_config.data == {
-        CONF_ZONE: "zone.home",
-        CONF_TRACKED_ENTITIES: ["device_tracker.test2"],
-        CONF_IGNORED_ZONES: [],
-        CONF_TOLERANCE: 1,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(mock_config.data).to_equal(
+        {
+            CONF_ZONE: "zone.home",
+            CONF_TRACKED_ENTITIES: ["device_tracker.test2"],
+            CONF_IGNORED_ZONES: [],
+            CONF_TOLERANCE: 1,
+        }
+    )
 
 
-async def test_abort_duplicated_entry(hass: HomeAssistant) -> None:
+@test
+async def abort_duplicated_entry(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test if we abort on duplicate user input data."""
     DATA = {
         CONF_ZONE: "zone.home",
@@ -146,13 +163,14 @@ async def test_abort_duplicated_entry(hass: HomeAssistant) -> None:
             result["flow_id"],
             user_input=DATA,
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
 
         await hass.async_block_till_done()
 
 
-async def test_avoid_duplicated_title(hass: HomeAssistant) -> None:
+@test
+async def avoid_duplicated_title(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test if we avoid duplicate titles."""
     MockConfigEntry(
         domain=DOMAIN,
@@ -193,8 +211,8 @@ async def test_avoid_duplicated_title(hass: HomeAssistant) -> None:
                 CONF_TOLERANCE: 10,
             },
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "home 2"
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal("home 2")
 
         await hass.async_block_till_done()
 
@@ -210,7 +228,7 @@ async def test_avoid_duplicated_title(hass: HomeAssistant) -> None:
                 CONF_TOLERANCE: 10,
             },
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "home 4"
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal("home 4")
 
         await hass.async_block_till_done()
