@@ -1,9 +1,10 @@
 """Test the sia config flow."""
 
-from collections.abc import Generator
+from __future__ import annotations
+
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.sia.config_flow import ACCOUNT_SCHEMA, HUB_SCHEMA
@@ -17,15 +18,17 @@ from homeassistant.components.sia.const import (
     CONF_ZONES,
     DOMAIN,
 )
-from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_PORT, CONF_PROTOCOL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.setup import async_setup_component
 
-from tests.common import MockConfigEntry
+from ._fixtures import mock_sia
 
-BASIS_CONFIG_ENTRY_ID = 1
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+BASIS_CONFIG_ENTRY_ID = "1"
 BASIC_CONFIG = {
     CONF_PORT: 7777,
     CONF_PROTOCOL: "TCP",
@@ -55,7 +58,7 @@ BASE_OUT = {
     },
 }
 
-ADDITIONAL_CONFIG_ENTRY_ID = 2
+ADDITIONAL_CONFIG_ENTRY_ID = "2"
 BASIC_CONFIG_ADDITIONAL = {
     CONF_PORT: 7777,
     CONF_PROTOCOL: "TCP",
@@ -98,103 +101,100 @@ ADDITIONAL_OUT = {
     },
 }
 
-ADDITIONAL_OPTIONS = {
-    CONF_ACCOUNTS: {
-        "ABCDEF": {CONF_IGNORE_TIMESTAMPS: False, CONF_ZONES: 2},
-        "ACC2": {CONF_IGNORE_TIMESTAMPS: False, CONF_ZONES: 2},
-    }
-}
 
-
-@pytest.fixture
-async def flow_at_user_step(hass: HomeAssistant) -> ConfigFlowResult:
-    """Return a initialized flow."""
-    return await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": config_entries.SOURCE_USER},
-    )
-
-
-@pytest.fixture
-async def entry_with_basic_config(
-    hass: HomeAssistant, flow_at_user_step: ConfigFlowResult
-) -> ConfigFlowResult:
-    """Return a entry with a basic config."""
-    with patch("homeassistant.components.sia.async_setup_entry", return_value=True):
-        return await hass.config_entries.flow.async_configure(
-            flow_at_user_step["flow_id"], BASIC_CONFIG
-        )
-
-
-@pytest.fixture
-async def flow_at_add_account_step(
-    hass: HomeAssistant, flow_at_user_step: ConfigFlowResult
-) -> ConfigFlowResult:
-    """Return a initialized flow at the additional account step."""
-    return await hass.config_entries.flow.async_configure(
-        flow_at_user_step["flow_id"], BASIC_CONFIG_ADDITIONAL
-    )
-
-
-@pytest.fixture
-async def entry_with_additional_account_config(
-    hass: HomeAssistant, flow_at_add_account_step: ConfigFlowResult
-) -> ConfigFlowResult:
-    """Return a entry with a two account config."""
-    with patch("homeassistant.components.sia.async_setup_entry", return_value=True):
-        return await hass.config_entries.flow.async_configure(
-            flow_at_add_account_step["flow_id"], ADDITIONAL_ACCOUNT
-        )
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _sia: None = Depends(mock_sia),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
 async def setup_sia(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
     """Add mock config to HASS."""
-    assert await async_setup_component(hass, DOMAIN, {})
+    expect(await async_setup_component(hass, DOMAIN, {})).to_be(True)
     config_entry.add_to_hass(hass)
     await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
 
-async def test_form_start_user(flow_at_user_step: ConfigFlowResult) -> None:
+@test
+async def form_start_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Start the form and check if you get the right id and schema for the user step."""
-    assert flow_at_user_step["step_id"] == "user"
-    assert flow_at_user_step["errors"] is None
-    assert flow_at_user_step["data_schema"] == HUB_SCHEMA
-
-
-async def test_form_start_account(flow_at_add_account_step: ConfigFlowResult) -> None:
-    """Start the form and check if you get the right id and schema for the additional account step."""
-    assert flow_at_add_account_step["step_id"] == "add_account"
-    assert flow_at_add_account_step["errors"] is None
-    assert flow_at_add_account_step["data_schema"] == ACCOUNT_SCHEMA
-
-
-async def test_create(entry_with_basic_config: ConfigFlowResult) -> None:
-    """Test we create a entry through the form."""
-    assert entry_with_basic_config["type"] is FlowResultType.CREATE_ENTRY
-    assert (
-        entry_with_basic_config["title"]
-        == f"SIA Alarm on port {BASIC_CONFIG[CONF_PORT]}"
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert entry_with_basic_config["data"] == BASE_OUT["data"]
-    assert entry_with_basic_config["options"] == BASE_OUT["options"]
+    expect(flow["step_id"]).to_equal("user")
+    expect(flow["errors"]).to_be(None)
+    expect(flow["data_schema"]).to_be(HUB_SCHEMA)
 
 
-async def test_create_additional_account(
-    entry_with_additional_account_config: ConfigFlowResult,
+@test
+async def form_start_account(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Start the form and check if you get the right id and schema for the additional account step."""
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    flow = await hass.config_entries.flow.async_configure(
+        flow["flow_id"], BASIC_CONFIG_ADDITIONAL
+    )
+    expect(flow["step_id"]).to_equal("add_account")
+    expect(flow["errors"]).to_be(None)
+    expect(flow["data_schema"]).to_be(ACCOUNT_SCHEMA)
+
+
+@test
+async def create(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we create a entry through the form."""
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    with patch("homeassistant.components.sia.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            flow["flow_id"], BASIC_CONFIG
+        )
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"SIA Alarm on port {BASIC_CONFIG[CONF_PORT]}")
+    expect(result["data"]).to_equal(BASE_OUT["data"])
+    expect(result["options"]).to_equal(BASE_OUT["options"])
+
+
+@test
+async def create_additional_account(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we create a config with two accounts."""
-    assert entry_with_additional_account_config["type"] is FlowResultType.CREATE_ENTRY
-    assert (
-        entry_with_additional_account_config["title"]
-        == f"SIA Alarm on port {BASIC_CONFIG[CONF_PORT]}"
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
+    flow = await hass.config_entries.flow.async_configure(
+        flow["flow_id"], BASIC_CONFIG_ADDITIONAL
+    )
+    with patch("homeassistant.components.sia.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_configure(
+            flow["flow_id"], ADDITIONAL_ACCOUNT
+        )
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"SIA Alarm on port {BASIC_CONFIG[CONF_PORT]}")
+    expect(result["data"]).to_equal(ADDITIONAL_OUT["data"])
+    expect(result["options"]).to_equal(ADDITIONAL_OUT["options"])
 
-    assert entry_with_additional_account_config["data"] == ADDITIONAL_OUT["data"]
-    assert entry_with_additional_account_config["options"] == ADDITIONAL_OUT["options"]
 
-
-async def test_abort_form(hass: HomeAssistant) -> None:
+@test
+async def abort_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test aborting a config that already exists."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -211,108 +211,121 @@ async def test_abort_form(hass: HomeAssistant) -> None:
     get_abort = await hass.config_entries.flow.async_configure(
         start_another_flow["flow_id"], BASIC_CONFIG
     )
-    assert get_abort["type"] is FlowResultType.ABORT
-    assert get_abort["reason"] == "already_configured"
+    expect(get_abort["type"]).to_be(FlowResultType.ABORT)
+    expect(get_abort["reason"]).to_equal("already_configured")
 
 
-@pytest.fixture(autouse=True)
-def mock_sia() -> Generator[None]:
-    """Mock SIAClient."""
-    with patch("homeassistant.components.sia.hub.SIAClient", autospec=True):
-        yield
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "error"),
-    [
-        ("encryption_key", "AAAAAAAAAAAAAZZZ", "invalid_key_format"),
-        ("encryption_key", "AAAAAAAAAAAAA", "invalid_key_length"),
-        ("account", "ZZZ", "invalid_account_format"),
-        ("account", "A", "invalid_account_length"),
-        ("ping_interval", 1500, "invalid_ping"),
-        ("zones", 0, "invalid_zones"),
-    ],
+@test.cases(
+    test.case("invalid_key_format", field="encryption_key", value="AAAAAAAAAAAAAZZZ", error="invalid_key_format"),
+    test.case("invalid_key_length", field="encryption_key", value="AAAAAAAAAAAAA", error="invalid_key_length"),
+    test.case("invalid_account_format", field="account", value="ZZZ", error="invalid_account_format"),
+    test.case("invalid_account_length", field="account", value="A", error="invalid_account_length"),
+    test.case("invalid_ping", field="ping_interval", value=1500, error="invalid_ping"),
+    test.case("invalid_zones", field="zones", value=0, error="invalid_zones"),
 )
-async def test_validation_errors_user(
-    hass: HomeAssistant,
-    flow_at_user_step,
-    field,
-    value,
-    error,
+async def validation_errors_user(
+    field: str,
+    value: object,
+    error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we handle the different invalid inputs, in the user flow."""
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
     config = BASIC_CONFIG.copy()
-    flow_id = flow_at_user_step["flow_id"]
     config[field] = value
-    result_err = await hass.config_entries.flow.async_configure(flow_id, config)
-    assert result_err["type"] is FlowResultType.FORM
-    assert result_err["errors"] == {"base": error}
+    result_err = await hass.config_entries.flow.async_configure(flow["flow_id"], config)
+    expect(result_err["type"]).to_be(FlowResultType.FORM)
+    expect(result_err["errors"]).to_equal({"base": error})
 
 
-@pytest.mark.parametrize(
-    ("field", "value", "error"),
-    [
-        ("encryption_key", "AAAAAAAAAAAAAZZZ", "invalid_key_format"),
-        ("encryption_key", "AAAAAAAAAAAAA", "invalid_key_length"),
-        ("account", "ZZZ", "invalid_account_format"),
-        ("account", "A", "invalid_account_length"),
-        ("ping_interval", 1500, "invalid_ping"),
-        ("zones", 0, "invalid_zones"),
-    ],
+@test.cases(
+    test.case("invalid_key_format", field="encryption_key", value="AAAAAAAAAAAAAZZZ", error="invalid_key_format"),
+    test.case("invalid_key_length", field="encryption_key", value="AAAAAAAAAAAAA", error="invalid_key_length"),
+    test.case("invalid_account_format", field="account", value="ZZZ", error="invalid_account_format"),
+    test.case("invalid_account_length", field="account", value="A", error="invalid_account_length"),
+    test.case("invalid_ping", field="ping_interval", value=1500, error="invalid_ping"),
+    test.case("invalid_zones", field="zones", value=0, error="invalid_zones"),
 )
-async def test_validation_errors_account(
-    hass: HomeAssistant,
-    flow_at_user_step,
-    field,
-    value,
-    error,
+async def validation_errors_account(
+    field: str,
+    value: object,
+    error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we handle the different invalid inputs, in the add_account flow."""
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
     flow_at_add_account_step = await hass.config_entries.flow.async_configure(
-        flow_at_user_step["flow_id"], BASIC_CONFIG_ADDITIONAL
+        flow["flow_id"], BASIC_CONFIG_ADDITIONAL
     )
     config = ADDITIONAL_ACCOUNT.copy()
-    flow_id = flow_at_add_account_step["flow_id"]
     config[field] = value
-    result_err = await hass.config_entries.flow.async_configure(flow_id, config)
-    assert result_err["type"] is FlowResultType.FORM
-    assert result_err["errors"] == {"base": error}
+    result_err = await hass.config_entries.flow.async_configure(
+        flow_at_add_account_step["flow_id"], config
+    )
+    expect(result_err["type"]).to_be(FlowResultType.FORM)
+    expect(result_err["errors"]).to_equal({"base": error})
 
 
-async def test_unknown_user(hass: HomeAssistant, flow_at_user_step) -> None:
+@test
+async def unknown_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test unknown exceptions."""
-    flow_id = flow_at_user_step["flow_id"]
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
     with patch(
         "pysiaalarm.SIAAccount.validate_account",
         side_effect=Exception,
     ):
         config = BASIC_CONFIG
-        result_err = await hass.config_entries.flow.async_configure(flow_id, config)
-        assert result_err
-        assert result_err["step_id"] == "user"
-        assert result_err["errors"] == {"base": "unknown"}
-        assert result_err["data_schema"] == HUB_SCHEMA
+        result_err = await hass.config_entries.flow.async_configure(
+            flow["flow_id"], config
+        )
+        expect(result_err is not None).to_be(True)
+        expect(result_err["step_id"]).to_equal("user")
+        expect(result_err["errors"]).to_equal({"base": "unknown"})
+        expect(result_err["data_schema"]).to_be(HUB_SCHEMA)
 
 
-async def test_unknown_account(hass: HomeAssistant, flow_at_user_step) -> None:
+@test
+async def unknown_account(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test unknown exceptions."""
-    flow_at_add_account_step = await hass.config_entries.flow.async_configure(
-        flow_at_user_step["flow_id"], BASIC_CONFIG_ADDITIONAL
+    flow = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    flow_id = flow_at_add_account_step["flow_id"]
+    flow_at_add_account_step = await hass.config_entries.flow.async_configure(
+        flow["flow_id"], BASIC_CONFIG_ADDITIONAL
+    )
     with patch(
         "pysiaalarm.SIAAccount.validate_account",
         side_effect=Exception,
     ):
         config = ADDITIONAL_ACCOUNT
-        result_err = await hass.config_entries.flow.async_configure(flow_id, config)
-        assert result_err
-        assert result_err["step_id"] == "add_account"
-        assert result_err["errors"] == {"base": "unknown"}
-        assert result_err["data_schema"] == ACCOUNT_SCHEMA
+        result_err = await hass.config_entries.flow.async_configure(
+            flow_at_add_account_step["flow_id"], config
+        )
+        expect(result_err is not None).to_be(True)
+        expect(result_err["step_id"]).to_equal("add_account")
+        expect(result_err["errors"]).to_equal({"base": "unknown"})
+        expect(result_err["data_schema"]).to_be(ACCOUNT_SCHEMA)
 
 
-async def test_options_basic(hass: HomeAssistant) -> None:
+@test
+async def options_basic(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test options flow for single account."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -324,21 +337,25 @@ async def test_options_basic(hass: HomeAssistant) -> None:
     )
     await setup_sia(hass, config_entry)
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "options"
-    assert result["last_step"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("options")
+    expect(result["last_step"]).to_be(True)
 
     updated = await hass.config_entries.options.async_configure(
         result["flow_id"], BASIC_OPTIONS
     )
     await hass.async_block_till_done()
-    assert updated["type"] is FlowResultType.CREATE_ENTRY
-    assert updated["data"] == {
-        CONF_ACCOUNTS: {BASIC_CONFIG[CONF_ACCOUNT]: BASIC_OPTIONS}
-    }
+    expect(updated["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(updated["data"]).to_equal(
+        {CONF_ACCOUNTS: {BASIC_CONFIG[CONF_ACCOUNT]: BASIC_OPTIONS}}
+    )
 
 
-async def test_options_additional(hass: HomeAssistant) -> None:
+@test
+async def options_additional(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test options flow for single account."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -350,13 +367,13 @@ async def test_options_additional(hass: HomeAssistant) -> None:
     )
     await setup_sia(hass, config_entry)
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "options"
-    assert not result["last_step"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("options")
+    expect(result["last_step"]).to_be(False)
 
     updated = await hass.config_entries.options.async_configure(
         result["flow_id"], BASIC_OPTIONS
     )
-    assert updated["type"] is FlowResultType.FORM
-    assert updated["step_id"] == "options"
-    assert updated["last_step"]
+    expect(updated["type"]).to_be(FlowResultType.FORM)
+    expect(updated["step_id"]).to_equal("options")
+    expect(updated["last_step"]).to_be(True)
