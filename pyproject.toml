@@ -1103,6 +1103,7 @@ dev = [
     "roonapi==0.1.6",
     "rova==0.4.1",
     "ruuvitag-ble==0.4.0",
+    "sanix==1.0.6",
     "tesla-powerwall==0.5.2",
     "typedmonarchmoney==0.7.0",
     "ultraheat-api>=0.5.7",
