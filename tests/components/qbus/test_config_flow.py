@@ -1,11 +1,13 @@
 """Test config flow."""
 
+from __future__ import annotations
+
 import json
 import time
 from unittest.mock import patch
 
-import pytest
 from qbusmqttapi.discovery import QbusDiscovery
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.qbus.const import CONF_SERIAL_NUMBER, DOMAIN
 from homeassistant.components.qbus.coordinator import QbusConfigCoordinator
@@ -16,13 +18,24 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.mqtt import MqttServiceInfo
 from homeassistant.util.json import JsonObjectType
 
+from ._fixtures import payload_config as payload_config_fx
+
 from .const import TOPIC_CONFIG
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 _PAYLOAD_DEVICE_STATE = '{"id":"UL1","properties":{"connected":true},"type":"event"}'
 
 
-async def test_step_discovery_confirm_create_entry(
-    hass: HomeAssistant, payload_config: JsonObjectType
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def step_discovery_confirm_create_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    payload_config: JsonObjectType = Depends(payload_config_fx),
 ) -> None:
     """Test mqtt confirm step and entry creation."""
     discovery = MqttServiceInfo(
@@ -34,42 +47,41 @@ async def test_step_discovery_confirm_create_entry(
         timestamp=time.time(),
     )
 
-    with (
-        patch.object(
-            QbusConfigCoordinator,
-            "async_get_or_request_config",
-            return_value=QbusDiscovery(payload_config),
-        ),
+    with patch.object(
+        QbusConfigCoordinator,
+        "async_get_or_request_config",
+        return_value=QbusDiscovery(payload_config),
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_MQTT}, data=discovery
         )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "discovery_confirm"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("discovery_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
     await hass.async_block_till_done()
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("data") == {
-        CONF_ID: "UL1",
-        CONF_SERIAL_NUMBER: "000001",
-    }
-    assert result.get("result").unique_id == "000001"
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("data")).to_equal(
+        {
+            CONF_ID: "UL1",
+            CONF_SERIAL_NUMBER: "000001",
+        }
+    )
+    expect(result.get("result").unique_id).to_equal("000001")
 
 
-@pytest.mark.parametrize(
-    ("topic", "payload"),
-    [
-        ("cloudapp/QBUSMQTTGW/state", b""),
-        ("invalid/topic", b"{}"),
-    ],
+@test.cases(
+    test.case("empty_payload", topic="cloudapp/QBUSMQTTGW/state", payload=b""),
+    test.case("invalid_topic", topic="invalid/topic", payload=b"{}"),
 )
-async def test_step_mqtt_invalid(
-    hass: HomeAssistant, topic: str, payload: bytes
+async def step_mqtt_invalid(
+    topic: str,
+    payload: bytes,
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test mqtt discovery with empty payload."""
     discovery = MqttServiceInfo(
@@ -85,19 +97,18 @@ async def test_step_mqtt_invalid(
         DOMAIN, context={"source": SOURCE_MQTT}, data=discovery
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "invalid_discovery_info"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("invalid_discovery_info")
 
 
-@pytest.mark.parametrize(
-    ("payload", "mqtt_publish"),
-    [
-        ('{ "online": true }', True),
-        ('{ "online": false }', False),
-    ],
+@test.cases(
+    test.case("online_true", payload='{ "online": true }', mqtt_publish=True),
+    test.case("online_false", payload='{ "online": false }', mqtt_publish=False),
 )
-async def test_handle_gateway_topic_when_online(
-    hass: HomeAssistant, payload: str, mqtt_publish: bool
+async def handle_gateway_topic_when_online(
+    payload: str,
+    mqtt_publish: bool,
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test handling of gateway topic with payload indicating online."""
     discovery = MqttServiceInfo(
@@ -109,23 +120,22 @@ async def test_handle_gateway_topic_when_online(
         timestamp=time.time(),
     )
 
-    with (
-        patch("homeassistant.components.mqtt.client.async_publish") as mock_publish,
-    ):
+    with patch("homeassistant.components.mqtt.client.async_publish") as mock_publish:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_MQTT}, data=discovery
         )
 
-    assert mock_publish.called is mqtt_publish
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "discovery_in_progress"
+    expect(mock_publish.called).to_be(mqtt_publish)
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("discovery_in_progress")
 
 
-async def test_handle_config_topic(
-    hass: HomeAssistant, payload_config: JsonObjectType
+@test
+async def handle_config_topic(
+    hass: HomeAssistant = Depends(hass_fixture),
+    payload_config: JsonObjectType = Depends(payload_config_fx),
 ) -> None:
     """Test handling of config topic."""
-
     discovery = MqttServiceInfo(
         subscribed_topic=TOPIC_CONFIG,
         topic=TOPIC_CONFIG,
@@ -135,19 +145,20 @@ async def test_handle_config_topic(
         timestamp=time.time(),
     )
 
-    with (
-        patch("homeassistant.components.mqtt.client.async_publish") as mock_publish,
-    ):
+    with patch("homeassistant.components.mqtt.client.async_publish") as mock_publish:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_MQTT}, data=discovery
         )
 
-    assert mock_publish.called
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "discovery_in_progress"
+    expect(bool(mock_publish.called)).to_be(True)
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("discovery_in_progress")
 
 
-async def test_handle_device_topic_missing_config(hass: HomeAssistant) -> None:
+@test
+async def handle_device_topic_missing_config(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test handling of device topic when config is missing."""
     discovery = MqttServiceInfo(
         subscribed_topic="cloudapp/QBUSMQTTGW/+/state",
@@ -162,12 +173,14 @@ async def test_handle_device_topic_missing_config(hass: HomeAssistant) -> None:
         DOMAIN, context={"source": SOURCE_MQTT}, data=discovery
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "invalid_discovery_info"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("invalid_discovery_info")
 
 
-async def test_handle_device_topic_device_not_found(
-    hass: HomeAssistant, payload_config: JsonObjectType
+@test
+async def handle_device_topic_device_not_found(
+    hass: HomeAssistant = Depends(hass_fixture),
+    payload_config: JsonObjectType = Depends(payload_config_fx),
 ) -> None:
     """Test handling of device topic when device is not found."""
     discovery = MqttServiceInfo(
@@ -188,15 +201,18 @@ async def test_handle_device_topic_device_not_found(
             DOMAIN, context={"source": SOURCE_MQTT}, data=discovery
         )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "invalid_discovery_info"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("invalid_discovery_info")
 
 
-async def test_step_user_not_supported(hass: HomeAssistant) -> None:
+@test
+async def step_user_not_supported(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user step, which should abort."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "not_supported"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("not_supported")
