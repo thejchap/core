@@ -1,9 +1,11 @@
 """Test the Happiest Baby Snoo config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock
 
-import pytest
 from python_snoo.exceptions import InvalidSnooAuth, SnooAuthException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.snoo.const import DOMAIN
@@ -13,17 +15,29 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import create_entry
+from ._fixtures import bypass_api, mock_setup_entry
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_config_flow_success(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, bypass_api: AsyncMock
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def config_flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    api: AsyncMock = Depends(bypass_api),
 ) -> None:
     """Test we create the entry successfully."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -33,37 +47,40 @@ async def test_config_flow_success(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test-username"
-    assert result["data"] == {
-        CONF_USERNAME: "test-username",
-        CONF_PASSWORD: "test-password",
-    }
-    assert result["result"].unique_id == "123e4567-e89b-12d3-a456-426614174000"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("test-username")
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: "test-username",
+            CONF_PASSWORD: "test-password",
+        }
+    )
+    expect(result["result"].unique_id).to_equal("123e4567-e89b-12d3-a456-426614174000")
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "error_msg"),
-    [
-        (InvalidSnooAuth, "invalid_auth"),
-        (SnooAuthException, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth", exception=InvalidSnooAuth, error_msg="invalid_auth"
+    ),
+    test.case(
+        "cannot_connect", exception=SnooAuthException, error_msg="cannot_connect"
+    ),
+    test.case("unknown", exception=Exception, error_msg="unknown"),
 )
-async def test_form_auth_issues(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    bypass_api: AsyncMock,
-    exception,
-    error_msg,
+async def form_auth_issues(
+    exception: type[Exception],
+    error_msg: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    api: AsyncMock = Depends(bypass_api),
 ) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    # Set Authorize to fail.
-    bypass_api.authorize.side_effect = exception
+    api.authorize.side_effect = exception
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -71,10 +88,9 @@ async def test_form_auth_issues(
             CONF_PASSWORD: "test-password",
         },
     )
-    # Reset auth back to the original
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_msg}
-    bypass_api.authorize.side_effect = None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_msg})
+    api.authorize.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -83,25 +99,31 @@ async def test_form_auth_issues(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test-username"
-    assert result["data"] == {
-        CONF_USERNAME: "test-username",
-        CONF_PASSWORD: "test-password",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("test-username")
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: "test-username",
+            CONF_PASSWORD: "test-password",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_account_already_configured(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, bypass_api: AsyncMock
+@test
+async def account_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _api: AsyncMock = Depends(bypass_api),
 ) -> None:
     """Ensure we abort if the config flow already exists."""
     create_entry(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -111,5 +133,5 @@ async def test_account_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
