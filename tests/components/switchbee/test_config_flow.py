@@ -3,7 +3,7 @@
 import json
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.switchbee.config_flow import SwitchBeeError
@@ -15,12 +15,25 @@ from homeassistant.data_entry_flow import FlowResultType
 from . import MOCK_FAILED_TO_LOGIN_MSG, MOCK_INVALID_TOKEN_MGS
 
 from tests.common import MockConfigEntry, async_load_fixture
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.parametrize("test_cucode_in_coordinator_data", [False, True])
-async def test_form(hass: HomeAssistant, test_cucode_in_coordinator_data) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test.cases(
+    test.case("without_cucode", test_cucode_in_coordinator_data=False),
+    test.case("with_cucode", test_cucode_in_coordinator_data=True),
+)
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    test_cucode_in_coordinator_data: bool,
+) -> None:
     """Test we get the form."""
-
     coordinator_data = json.loads(
         await async_load_fixture(hass, "switchbee.json", DOMAIN)
     )
@@ -31,8 +44,8 @@ async def test_form(hass: HomeAssistant, test_cucode_in_coordinator_data) -> Non
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -58,16 +71,22 @@ async def test_form(hass: HomeAssistant, test_cucode_in_coordinator_data) -> Non
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "1.1.1.1"
-    assert result2["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_USERNAME: "test-username",
-        CONF_PASSWORD: "test-password",
-    }
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("1.1.1.1")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_USERNAME: "test-username",
+            CONF_PASSWORD: "test-password",
+        }
+    )
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -86,13 +105,16 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -110,11 +132,15 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_unknown_error(hass: HomeAssistant) -> None:
+@test
+async def form_unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle an unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -133,13 +159,16 @@ async def test_form_unknown_error(hass: HomeAssistant) -> None:
             },
         )
 
-    assert form_result["type"] is FlowResultType.FORM
-    assert form_result["errors"] == {"base": "unknown"}
+    expect(form_result["type"]).to_be(FlowResultType.FORM)
+    expect(form_result["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_form_entry_exists(hass: HomeAssistant) -> None:
+@test
+async def form_entry_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle an already existing entry."""
-
     coordinator_data = json.loads(
         await async_load_fixture(hass, "switchbee.json", DOMAIN)
     )
@@ -181,5 +210,5 @@ async def test_form_entry_exists(hass: HomeAssistant) -> None:
             },
         )
 
-    assert form_result["type"] is FlowResultType.ABORT
-    assert form_result["reason"] == "already_configured"
+    expect(form_result["type"]).to_be(FlowResultType.ABORT)
+    expect(form_result["reason"]).to_equal("already_configured")

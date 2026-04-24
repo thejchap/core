@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from aiosyncthing.exceptions import UnauthorizedError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.syncthing.const import DOMAIN
@@ -11,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 NAME = "Syncthing"
 URL = "http://127.0.0.1:8384"
@@ -25,18 +27,30 @@ MOCK_ENTRY = {
 }
 
 
-async def test_show_setup_form(hass: HomeAssistant) -> None:
-    """Test that the setup form is served."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
+
+@test
+async def show_setup_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test that the setup form is served."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_flow_successful(hass: HomeAssistant) -> None:
+@test
+async def flow_successful(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test with required fields only."""
     with (
         patch("aiosyncthing.system.System.status", return_value={"myID": "server-id"}),
@@ -55,18 +69,21 @@ async def test_flow_successful(hass: HomeAssistant) -> None:
                 CONF_VERIFY_SSL: VERIFY_SSL,
             },
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "http://127.0.0.1:8384"
-        assert result["data"][CONF_NAME] == NAME
-        assert result["data"][CONF_URL] == URL
-        assert result["data"][CONF_TOKEN] == TOKEN
-        assert result["data"][CONF_VERIFY_SSL] == VERIFY_SSL
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal("http://127.0.0.1:8384")
+        expect(result["data"][CONF_NAME]).to_equal(NAME)
+        expect(result["data"][CONF_URL]).to_equal(URL)
+        expect(result["data"][CONF_TOKEN]).to_equal(TOKEN)
+        expect(result["data"][CONF_VERIFY_SSL]).to_equal(VERIFY_SSL)
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_flow_already_configured(hass: HomeAssistant) -> None:
+@test
+async def flow_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test name is already configured."""
-
     entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY, unique_id="server-id")
     entry.add_to_hass(hass)
 
@@ -77,13 +94,16 @@ async def test_flow_already_configured(hass: HomeAssistant) -> None:
             data=MOCK_ENTRY,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_flow_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def flow_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test invalid auth."""
-
     with patch("aiosyncthing.system.System.status", side_effect=UnauthorizedError):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
@@ -91,13 +111,16 @@ async def test_flow_invalid_auth(hass: HomeAssistant) -> None:
             data=MOCK_ENTRY,
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"]["token"] == "invalid_auth"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]["token"]).to_equal("invalid_auth")
 
 
-async def test_flow_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def flow_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test cannot connect."""
-
     with patch("aiosyncthing.system.System.status", side_effect=Exception):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
@@ -105,5 +128,5 @@ async def test_flow_cannot_connect(hass: HomeAssistant) -> None:
             data=MOCK_ENTRY,
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"]["base"] == "cannot_connect"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]["base"]).to_equal("cannot_connect")
