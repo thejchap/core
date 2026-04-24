@@ -6,7 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from pysensibo import AuthenticationError, SensiboData, SensiboError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.sensibo.const import DOMAIN
@@ -14,22 +14,32 @@ from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import get_data, mock_client, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-async def test_basic_setup(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_client: MagicMock
+@test
+async def basic_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: MagicMock = Depends(mock_client),
 ) -> None:
     """Test we get and complete the form."""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -38,26 +48,30 @@ async def test_basic_setup(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["version"] == 2
-    assert result["title"] == "firstnamelastname"
-    assert result["result"].unique_id == "firstnamelastname"
-    assert result["data"] == {
-        CONF_API_KEY: "1234567890",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["version"]).to_equal(2)
+    expect(result["title"]).to_equal("firstnamelastname")
+    expect(result["result"].unique_id).to_equal("firstnamelastname")
+    expect(result["data"]).to_equal(
+        {
+            CONF_API_KEY: "1234567890",
+        }
+    )
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("error_message", "p_error"),
-    [
-        (AuthenticationError, "invalid_auth"),
-        (SensiboError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("authentication_error", error_message=AuthenticationError, p_error="invalid_auth"),
+    test.case("sensibo_error", error_message=SensiboError, p_error="cannot_connect"),
 )
-async def test_flow_fails(
-    hass: HomeAssistant, mock_client: MagicMock, error_message: Exception, p_error: str
+async def flow_fails(
+    error_message: type[Exception],
+    p_error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_client),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test config flow errors."""
 
@@ -65,21 +79,10 @@ async def test_flow_fails(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == config_entries.SOURCE_USER
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(config_entries.SOURCE_USER)
 
-    mock_client.async_get_devices.side_effect = error_message
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input={
-            CONF_API_KEY: "1234567890",
-        },
-    )
-
-    assert result["errors"] == {"base": p_error}
-
-    mock_client.async_get_devices.side_effect = None
+    client.async_get_devices.side_effect = error_message
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -88,17 +91,33 @@ async def test_flow_fails(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "firstnamelastname"
-    assert result["data"] == {
-        CONF_API_KEY: "1234567890",
-    }
+    expect(result["errors"]).to_equal({"base": p_error})
+
+    client.async_get_devices.side_effect = None
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_API_KEY: "1234567890",
+        },
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("firstnamelastname")
+    expect(result["data"]).to_equal(
+        {
+            CONF_API_KEY: "1234567890",
+        }
+    )
 
 
-async def test_flow_get_no_devices(
-    hass: HomeAssistant,
-    mock_client: MagicMock,
-    get_data: tuple[SensiboData, dict[str, Any], dict[str, Any]],
+@test
+async def flow_get_no_devices(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_client),
+    data: tuple[SensiboData, dict[str, Any], dict[str, Any]] = Depends(get_data),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test config flow get no devices from api."""
 
@@ -106,21 +125,10 @@ async def test_flow_get_no_devices(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == config_entries.SOURCE_USER
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(config_entries.SOURCE_USER)
 
-    mock_client.async_get_devices.return_value = {"result": []}
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input={
-            CONF_API_KEY: "1234567890",
-        },
-    )
-
-    assert result["errors"] == {"base": "no_devices"}
-
-    mock_client.async_get_devices.return_value = get_data[2]
+    client.async_get_devices.return_value = {"result": []}
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -129,17 +137,33 @@ async def test_flow_get_no_devices(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "firstnamelastname"
-    assert result["data"] == {
-        CONF_API_KEY: "1234567890",
-    }
+    expect(result["errors"]).to_equal({"base": "no_devices"})
+
+    client.async_get_devices.return_value = data[2]
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_API_KEY: "1234567890",
+        },
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("firstnamelastname")
+    expect(result["data"]).to_equal(
+        {
+            CONF_API_KEY: "1234567890",
+        }
+    )
 
 
-async def test_flow_get_no_username(
-    hass: HomeAssistant,
-    mock_client: MagicMock,
-    get_data: tuple[SensiboData, dict[str, Any], dict[str, Any]],
+@test
+async def flow_get_no_username(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_client),
+    data: tuple[SensiboData, dict[str, Any], dict[str, Any]] = Depends(get_data),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test config flow get no username from api."""
 
@@ -147,10 +171,10 @@ async def test_flow_get_no_username(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == config_entries.SOURCE_USER
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(config_entries.SOURCE_USER)
 
-    mock_client.async_get_me.return_value = {"result": {}}
+    client.async_get_me.return_value = {"result": {}}
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -159,9 +183,9 @@ async def test_flow_get_no_username(
         },
     )
 
-    assert result2["errors"] == {"base": "no_username"}
+    expect(result2["errors"]).to_equal({"base": "no_username"})
 
-    mock_client.async_get_me.return_value = get_data[1]
+    client.async_get_me.return_value = data[1]
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -170,14 +194,22 @@ async def test_flow_get_no_username(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "firstnamelastname"
-    assert result["data"] == {
-        CONF_API_KEY: "1234567890",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("firstnamelastname")
+    expect(result["data"]).to_equal(
+        {
+            CONF_API_KEY: "1234567890",
+        }
+    )
 
 
-async def test_reauth_flow(hass: HomeAssistant, mock_client: MagicMock) -> None:
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_client),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test a reauthentication flow."""
     entry = MockConfigEntry(
         version=2,
@@ -188,29 +220,31 @@ async def test_reauth_flow(hass: HomeAssistant, mock_client: MagicMock) -> None:
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_API_KEY: "1234567890"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.data == {CONF_API_KEY: "1234567890"}
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.data).to_equal({CONF_API_KEY: "1234567890"})
 
 
-@pytest.mark.parametrize(
-    ("sideeffect", "p_error"),
-    [
-        (AuthenticationError, "invalid_auth"),
-        (SensiboError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("authentication_error", sideeffect=AuthenticationError, p_error="invalid_auth"),
+    test.case("sensibo_error", sideeffect=SensiboError, p_error="cannot_connect"),
 )
-async def test_reauth_flow_error(
-    hass: HomeAssistant, sideeffect: Exception, p_error: str, mock_client: MagicMock
+async def reauth_flow_error(
+    sideeffect: type[Exception],
+    p_error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_client),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test a reauthentication flow with error."""
     entry = MockConfigEntry(
@@ -223,56 +257,58 @@ async def test_reauth_flow_error(
 
     result = await entry.start_reauth_flow(hass)
 
-    mock_client.async_get_devices.side_effect = sideeffect
+    client.async_get_devices.side_effect = sideeffect
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_API_KEY: "1234567890"},
     )
 
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": p_error}
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": p_error})
 
-    mock_client.async_get_devices.side_effect = None
+    client.async_get_devices.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_API_KEY: "1234567890"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.data == {CONF_API_KEY: "1234567890"}
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.data).to_equal({CONF_API_KEY: "1234567890"})
 
 
-@pytest.mark.parametrize(
-    ("get_devices", "get_me", "p_error"),
-    [
-        (
-            {"result": [{"id": "xyzxyz"}, {"id": "abcabc"}]},
-            {"result": {}},
-            "no_username",
-        ),
-        (
-            {"result": []},
-            {"result": {"username": "firstnamelastname"}},
-            "no_devices",
-        ),
-        (
-            {"result": [{"id": "xyzxyz"}, {"id": "abcabc"}]},
-            {"result": {"username": "firstnamelastname2"}},
-            "incorrect_api_key",
-        ),
-    ],
+@test.cases(
+    test.case(
+        "no_username",
+        get_devices={"result": [{"id": "xyzxyz"}, {"id": "abcabc"}]},
+        get_me={"result": {}},
+        p_error="no_username",
+    ),
+    test.case(
+        "no_devices",
+        get_devices={"result": []},
+        get_me={"result": {"username": "firstnamelastname"}},
+        p_error="no_devices",
+    ),
+    test.case(
+        "incorrect_api_key",
+        get_devices={"result": [{"id": "xyzxyz"}, {"id": "abcabc"}]},
+        get_me={"result": {"username": "firstnamelastname2"}},
+        p_error="incorrect_api_key",
+    ),
 )
-async def test_flow_reauth_no_username_or_device(
-    hass: HomeAssistant,
+async def flow_reauth_no_username_or_device(
     get_devices: dict[str, Any],
     get_me: dict[str, Any],
     p_error: str,
-    mock_client: MagicMock,
-    get_data: tuple[SensiboData, dict[str, Any], dict[str, Any]],
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_client),
+    data: tuple[SensiboData, dict[str, Any], dict[str, Any]] = Depends(get_data),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reauth flow with errors from api."""
     entry = MockConfigEntry(
@@ -285,11 +321,11 @@ async def test_flow_reauth_no_username_or_device(
 
     result = await entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_client.async_get_devices.return_value = get_devices
-    mock_client.async_get_me.return_value = get_me
+    client.async_get_devices.return_value = get_devices
+    client.async_get_me.return_value = get_me
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -298,24 +334,30 @@ async def test_flow_reauth_no_username_or_device(
         },
     )
 
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": p_error}
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": p_error})
 
-    mock_client.async_get_devices.return_value = get_data[2]
-    mock_client.async_get_me.return_value = get_data[1]
+    client.async_get_devices.return_value = data[2]
+    client.async_get_me.return_value = data[1]
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_API_KEY: "1234567890"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.data == {CONF_API_KEY: "1234567890"}
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.data).to_equal({CONF_API_KEY: "1234567890"})
 
 
-async def test_reconfigure_flow(hass: HomeAssistant, mock_client: MagicMock) -> None:
+@test
+async def reconfigure_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_client),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test a reconfigure flow."""
     entry = MockConfigEntry(
         version=2,
@@ -326,32 +368,31 @@ async def test_reconfigure_flow(hass: HomeAssistant, mock_client: MagicMock) -> 
     entry.add_to_hass(hass)
 
     result = await entry.start_reconfigure_flow(hass)
-    assert result["step_id"] == "reconfigure"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_API_KEY: "1234567890"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert entry.data == {CONF_API_KEY: "1234567890"}
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(entry.data).to_equal({CONF_API_KEY: "1234567890"})
 
 
-@pytest.mark.parametrize(
-    ("sideeffect", "p_error"),
-    [
-        (AuthenticationError, "invalid_auth"),
-        (SensiboError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("authentication_error", sideeffect=AuthenticationError, p_error="invalid_auth"),
+    test.case("sensibo_error", sideeffect=SensiboError, p_error="cannot_connect"),
 )
-async def test_reconfigure_flow_error(
-    hass: HomeAssistant,
-    sideeffect: Exception,
+async def reconfigure_flow_error(
+    sideeffect: type[Exception],
     p_error: str,
-    mock_client: MagicMock,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_client),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test a reconfigure flow with error."""
     entry = MockConfigEntry(
@@ -364,56 +405,58 @@ async def test_reconfigure_flow_error(
 
     result = await entry.start_reconfigure_flow(hass)
 
-    mock_client.async_get_devices.side_effect = sideeffect
+    client.async_get_devices.side_effect = sideeffect
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_API_KEY: "1234567890"},
     )
 
-    assert result["step_id"] == "reconfigure"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": p_error}
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": p_error})
 
-    mock_client.async_get_devices.side_effect = None
+    client.async_get_devices.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_API_KEY: "1234567890"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert entry.data == {CONF_API_KEY: "1234567890"}
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(entry.data).to_equal({CONF_API_KEY: "1234567890"})
 
 
-@pytest.mark.parametrize(
-    ("get_devices", "get_me", "p_error"),
-    [
-        (
-            {"result": [{"id": "xyzxyz"}, {"id": "abcabc"}]},
-            {"result": {}},
-            "no_username",
-        ),
-        (
-            {"result": []},
-            {"result": {"username": "firstnamelastname"}},
-            "no_devices",
-        ),
-        (
-            {"result": [{"id": "xyzxyz"}, {"id": "abcabc"}]},
-            {"result": {"username": "firstnamelastname2"}},
-            "incorrect_api_key",
-        ),
-    ],
+@test.cases(
+    test.case(
+        "no_username",
+        get_devices={"result": [{"id": "xyzxyz"}, {"id": "abcabc"}]},
+        get_me={"result": {}},
+        p_error="no_username",
+    ),
+    test.case(
+        "no_devices",
+        get_devices={"result": []},
+        get_me={"result": {"username": "firstnamelastname"}},
+        p_error="no_devices",
+    ),
+    test.case(
+        "incorrect_api_key",
+        get_devices={"result": [{"id": "xyzxyz"}, {"id": "abcabc"}]},
+        get_me={"result": {"username": "firstnamelastname2"}},
+        p_error="incorrect_api_key",
+    ),
 )
-async def test_flow_reconfigure_no_username_or_device(
-    hass: HomeAssistant,
+async def flow_reconfigure_no_username_or_device(
     get_devices: dict[str, Any],
     get_me: dict[str, Any],
     p_error: str,
-    mock_client: MagicMock,
-    get_data: tuple[SensiboData, dict[str, Any], dict[str, Any]],
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_client),
+    data: tuple[SensiboData, dict[str, Any], dict[str, Any]] = Depends(get_data),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reconfigure flow with errors from api."""
     entry = MockConfigEntry(
@@ -426,11 +469,11 @@ async def test_flow_reconfigure_no_username_or_device(
 
     result = await entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
-    mock_client.async_get_devices.return_value = get_devices
-    mock_client.async_get_me.return_value = get_me
+    client.async_get_devices.return_value = get_devices
+    client.async_get_me.return_value = get_me
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -439,18 +482,18 @@ async def test_flow_reconfigure_no_username_or_device(
         },
     )
 
-    assert result["step_id"] == "reconfigure"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": p_error}
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": p_error})
 
-    mock_client.async_get_devices.return_value = get_data[2]
-    mock_client.async_get_me.return_value = get_data[1]
+    client.async_get_devices.return_value = data[2]
+    client.async_get_me.return_value = data[1]
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_API_KEY: "1234567890"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert entry.data == {CONF_API_KEY: "1234567890"}
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(entry.data).to_equal({CONF_API_KEY: "1234567890"})
