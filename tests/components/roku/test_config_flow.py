@@ -1,10 +1,12 @@
 """Test the Roku config flow."""
 
+from __future__ import annotations
+
 import dataclasses
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from rokuecp import Device as RokuDevice, RokuConnectionError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.roku.const import CONF_PLAY_MEDIA_APP_ID, DOMAIN
 from homeassistant.config_entries import (
@@ -25,16 +27,30 @@ from . import (
     NAME_ROKUTV,
     UPNP_FRIENDLY_NAME,
 )
+from ._fixtures import (
+    mock_config_entry as mock_config_entry_fx,
+    mock_device as mock_device_fx,
+    mock_roku_config_flow as mock_roku_config_flow_fx,
+    mock_roku_config_flow_rokutv as mock_roku_config_flow_rokutv_fx,
+    mock_setup_entry as mock_setup_entry_fx,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 RECONFIGURE_HOST = "192.168.1.190"
 
 
-async def test_duplicate_error(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_roku_config_flow: MagicMock,
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def duplicate_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
+    _flow: MagicMock = Depends(mock_roku_config_flow_fx),
 ) -> None:
     """Test that errors are shown when duplicates are added."""
     mock_config_entry.add_to_hass(hass)
@@ -43,38 +59,36 @@ async def test_duplicate_error(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_USER}, data=user_input
     )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
     user_input = {CONF_HOST: mock_config_entry.data[CONF_HOST]}
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_USER}, data=user_input
     )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
     discovery_info = dataclasses.replace(MOCK_SSDP_DISCOVERY_INFO)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_SSDP}, data=discovery_info
     )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
 
-
-async def test_form(
-    hass: HomeAssistant,
-    mock_roku_config_flow: MagicMock,
-    mock_setup_entry: None,
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _flow: MagicMock = Depends(mock_roku_config_flow_fx),
+    _setup: None = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test the user step."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     user_input = {CONF_HOST: HOST}
     result = await hass.config_entries.flow.async_configure(
@@ -82,18 +96,18 @@ async def test_form(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "My Roku 3"
-
-    assert "data" in result
-    assert result["data"][CONF_HOST] == HOST
-
-    assert "result" in result
-    assert result["result"].unique_id == "1GU48T017973"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("My Roku 3")
+    expect("data" in result).to_be(True)
+    expect(result["data"][CONF_HOST]).to_equal(HOST)
+    expect("result" in result).to_be(True)
+    expect(result["result"].unique_id).to_equal("1GU48T017973")
 
 
-async def test_form_cannot_connect(
-    hass: HomeAssistant, mock_roku_config_flow: MagicMock
+@test
+async def form_cannot_connect(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_roku_config_flow: MagicMock = Depends(mock_roku_config_flow_fx),
 ) -> None:
     """Test we handle cannot connect roku error."""
     mock_roku_config_flow.update.side_effect = RokuConnectionError
@@ -101,17 +115,17 @@ async def test_form_cannot_connect(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_USER}
     )
-
     result = await hass.config_entries.flow.async_configure(
         flow_id=result["flow_id"], user_input={CONF_HOST: HOST}
     )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
 
-
-async def test_form_unknown_error(
-    hass: HomeAssistant, mock_roku_config_flow: MagicMock
+@test
+async def form_unknown_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_roku_config_flow: MagicMock = Depends(mock_roku_config_flow_fx),
 ) -> None:
     """Test we handle unknown error."""
     mock_roku_config_flow.update.side_effect = Exception
@@ -119,18 +133,18 @@ async def test_form_unknown_error(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_USER}
     )
-
     user_input = {CONF_HOST: HOST}
     result = await hass.config_entries.flow.async_configure(
         flow_id=result["flow_id"], user_input=user_input
     )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
 
-
-async def test_homekit_cannot_connect(
-    hass: HomeAssistant, mock_roku_config_flow: MagicMock
+@test
+async def homekit_cannot_connect(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_roku_config_flow: MagicMock = Depends(mock_roku_config_flow_fx),
 ) -> None:
     """Test we abort homekit flow on connection error."""
     mock_roku_config_flow.update.side_effect = RokuConnectionError
@@ -141,13 +155,14 @@ async def test_homekit_cannot_connect(
         context={CONF_SOURCE: SOURCE_HOMEKIT},
         data=discovery_info,
     )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
 
-
-async def test_homekit_unknown_error(
-    hass: HomeAssistant, mock_roku_config_flow: MagicMock
+@test
+async def homekit_unknown_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_roku_config_flow: MagicMock = Depends(mock_roku_config_flow_fx),
 ) -> None:
     """Test we abort homekit flow on unknown error."""
     mock_roku_config_flow.update.side_effect = Exception
@@ -158,16 +173,15 @@ async def test_homekit_unknown_error(
         context={CONF_SOURCE: SOURCE_HOMEKIT},
         data=discovery_info,
     )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
 
-
-@pytest.mark.parametrize("mock_device", ["roku/rokutv-7820x.json"], indirect=True)
-async def test_homekit_discovery(
-    hass: HomeAssistant,
-    mock_roku_config_flow: MagicMock,
-    mock_setup_entry: None,
+@test
+async def homekit_discovery(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _flow: MagicMock = Depends(mock_roku_config_flow_rokutv_fx),
+    _setup: None = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test the homekit discovery flow."""
     discovery_info = dataclasses.replace(MOCK_HOMEKIT_DISCOVERY_INFO)
@@ -175,34 +189,33 @@ async def test_homekit_discovery(
         DOMAIN, context={CONF_SOURCE: SOURCE_HOMEKIT}, data=discovery_info
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
-    assert result["description_placeholders"] == {CONF_NAME: NAME_ROKUTV}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
+    expect(result["description_placeholders"]).to_equal({CONF_NAME: NAME_ROKUTV})
 
     result = await hass.config_entries.flow.async_configure(
         flow_id=result["flow_id"], user_input={}
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == NAME_ROKUTV
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(NAME_ROKUTV)
+    expect("data" in result).to_be(True)
+    expect(result["data"][CONF_HOST]).to_equal(HOMEKIT_HOST)
+    expect(result["data"][CONF_NAME]).to_equal(NAME_ROKUTV)
 
-    assert "data" in result
-    assert result["data"][CONF_HOST] == HOMEKIT_HOST
-    assert result["data"][CONF_NAME] == NAME_ROKUTV
-
-    # test abort on existing host
     discovery_info = dataclasses.replace(MOCK_HOMEKIT_DISCOVERY_INFO)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_HOMEKIT}, data=discovery_info
     )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
 
-
-async def test_ssdp_cannot_connect(
-    hass: HomeAssistant, mock_roku_config_flow: MagicMock
+@test
+async def ssdp_cannot_connect(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_roku_config_flow: MagicMock = Depends(mock_roku_config_flow_fx),
 ) -> None:
     """Test we abort SSDP flow on connection error."""
     mock_roku_config_flow.update.side_effect = RokuConnectionError
@@ -213,13 +226,14 @@ async def test_ssdp_cannot_connect(
         context={CONF_SOURCE: SOURCE_SSDP},
         data=discovery_info,
     )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
 
-
-async def test_ssdp_unknown_error(
-    hass: HomeAssistant, mock_roku_config_flow: MagicMock
+@test
+async def ssdp_unknown_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_roku_config_flow: MagicMock = Depends(mock_roku_config_flow_fx),
 ) -> None:
     """Test we abort SSDP flow on unknown error."""
     mock_roku_config_flow.update.side_effect = Exception
@@ -230,15 +244,15 @@ async def test_ssdp_unknown_error(
         context={CONF_SOURCE: SOURCE_SSDP},
         data=discovery_info,
     )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
 
-
-async def test_ssdp_discovery(
-    hass: HomeAssistant,
-    mock_roku_config_flow: MagicMock,
-    mock_setup_entry: None,
+@test
+async def ssdp_discovery(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _flow: MagicMock = Depends(mock_roku_config_flow_fx),
+    _setup: None = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test the SSDP discovery flow."""
     discovery_info = dataclasses.replace(MOCK_SSDP_DISCOVERY_INFO)
@@ -246,45 +260,43 @@ async def test_ssdp_discovery(
         DOMAIN, context={CONF_SOURCE: SOURCE_SSDP}, data=discovery_info
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
-    assert result["description_placeholders"] == {CONF_NAME: UPNP_FRIENDLY_NAME}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
+    expect(result["description_placeholders"]).to_equal(
+        {CONF_NAME: UPNP_FRIENDLY_NAME}
+    )
 
     result = await hass.config_entries.flow.async_configure(
         flow_id=result["flow_id"], user_input={}
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == UPNP_FRIENDLY_NAME
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(UPNP_FRIENDLY_NAME)
+    expect(bool(result["data"])).to_be(True)
+    expect(result["data"][CONF_HOST]).to_equal(HOST)
+    expect(result["data"][CONF_NAME]).to_equal(UPNP_FRIENDLY_NAME)
 
-    assert result["data"]
-    assert result["data"][CONF_HOST] == HOST
-    assert result["data"][CONF_NAME] == UPNP_FRIENDLY_NAME
 
-
-async def test_options_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: None,
-    mock_config_entry: MockConfigEntry,
+@test
+async def options_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: None = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test options config flow."""
     mock_config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
-
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "init"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("init")
 
     result2 = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_PLAY_MEDIA_APP_ID: "782875"},
     )
-
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2.get("data") == {
-        CONF_PLAY_MEDIA_APP_ID: "782875",
-    }
+    expect(result2.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2.get("data")).to_equal({CONF_PLAY_MEDIA_APP_ID: "782875"})
 
 
 async def _start_reconfigure_flow(
@@ -295,9 +307,8 @@ async def _start_reconfigure_flow(
     mock_config_entry.add_to_hass(hass)
 
     reconfigure_result = await mock_config_entry.start_reconfigure_flow(hass)
-
-    assert reconfigure_result["type"] is FlowResultType.FORM
-    assert reconfigure_result["step_id"] == "user"
+    expect(reconfigure_result["type"]).to_be(FlowResultType.FORM)
+    expect(reconfigure_result["step_id"]).to_equal("user")
 
     return await hass.config_entries.flow.async_configure(
         reconfigure_result["flow_id"],
@@ -305,36 +316,36 @@ async def _start_reconfigure_flow(
     )
 
 
-async def test_reconfigure_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    mock_roku_config_flow: MagicMock,
+@test
+async def reconfigure_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
+    _flow: MagicMock = Depends(mock_roku_config_flow_fx),
 ) -> None:
     """Test reconfigure flow."""
     result = await _start_reconfigure_flow(hass, mock_config_entry)
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
     entry = hass.config_entries.async_get_entry(mock_config_entry.entry_id)
-    assert entry
-    assert entry.data == {
-        CONF_HOST: RECONFIGURE_HOST,
-    }
+    expect(bool(entry)).to_be(True)
+    expect(entry.data).to_equal({CONF_HOST: RECONFIGURE_HOST})
 
 
-async def test_reconfigure_unique_id_mismatch(
-    hass: HomeAssistant,
-    mock_device: RokuDevice,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    mock_roku_config_flow: MagicMock,
+@test
+async def reconfigure_unique_id_mismatch(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_device: RokuDevice = Depends(mock_device_fx),
+    _setup: AsyncMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
+    _flow: MagicMock = Depends(mock_roku_config_flow_fx),
 ) -> None:
     """Ensure reconfigure flow aborts when the device changes."""
     mock_device.info.serial_number = "RECONFIG"
 
     result = await _start_reconfigure_flow(hass, mock_config_entry)
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "wrong_device"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("wrong_device")

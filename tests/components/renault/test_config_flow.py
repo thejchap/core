@@ -1,12 +1,14 @@
 """Test the Renault config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, PropertyMock, patch
 
 import aiohttp
-import pytest
 from renault_api.gigya.exceptions import InvalidCredentialsException
 from renault_api.kamereon import schemas
 from renault_api.renault_account import RenaultAccount
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.renault.const import (
@@ -19,37 +21,51 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import aiohttp_client
 
-from tests.common import MockConfigEntry, async_load_fixture, get_schema_suggested_value
-
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
-
-
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (Exception, "unknown"),
-        (aiohttp.ClientConnectionError, "cannot_connect"),
-        (
-            InvalidCredentialsException(403042, "invalid loginID or password"),
-            "invalid_credentials",
-        ),
-    ],
+from ._fixtures import (
+    config_entry as config_entry_fx,
+    mock_setup_entry as mock_setup_entry_fx,
 )
-async def test_config_flow_single_account(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+
+from tests.common import MockConfigEntry, async_load_fixture, get_schema_suggested_value
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _mse: AsyncMock = Depends(mock_setup_entry_fx),
+) -> None:
+    """Wire mock_network and mock_setup_entry for every test."""
+
+
+@test.cases(
+    test.case("unknown", exception=Exception, error="unknown"),
+    test.case(
+        "cannot_connect",
+        exception=aiohttp.ClientConnectionError,
+        error="cannot_connect",
+    ),
+    test.case(
+        "invalid_credentials",
+        exception=InvalidCredentialsException(403042, "invalid loginID or password"),
+        error="invalid_credentials",
+    ),
+)
+async def config_flow_single_account(
+    *,
     exception: Exception | type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
-    # Raise error
     with patch(
         "renault_api.renault_session.RenaultSession.login",
         side_effect=exception,
@@ -63,14 +79,16 @@ async def test_config_flow_single_account(
             },
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": error})
 
     data_schema = result["data_schema"].schema
-    assert get_schema_suggested_value(data_schema, CONF_LOCALE) == "fr_FR"
-    assert get_schema_suggested_value(data_schema, CONF_USERNAME) == "email@test.com"
-    assert get_schema_suggested_value(data_schema, CONF_PASSWORD) == "test"
+    expect(get_schema_suggested_value(data_schema, CONF_LOCALE)).to_equal("fr_FR")
+    expect(get_schema_suggested_value(data_schema, CONF_USERNAME)).to_equal(
+        "email@test.com"
+    )
+    expect(get_schema_suggested_value(data_schema, CONF_PASSWORD)).to_equal("test")
 
     renault_account = AsyncMock()
     type(renault_account).account_id = PropertyMock(return_value="account_id_1")
@@ -80,7 +98,6 @@ async def test_config_flow_single_account(
         )
     )
 
-    # Account list single
     with (
         patch("renault_api.renault_session.RenaultSession.login"),
         patch(
@@ -100,28 +117,28 @@ async def test_config_flow_single_account(
             },
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "account_id_1"
-    assert result["data"][CONF_USERNAME] == "email@test.com"
-    assert result["data"][CONF_PASSWORD] == "test"
-    assert result["data"][CONF_KAMEREON_ACCOUNT_ID] == "account_id_1"
-    assert result["data"][CONF_LOCALE] == "fr_FR"
-    assert result["context"]["unique_id"] == "account_id_1"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("account_id_1")
+    expect(result["data"][CONF_USERNAME]).to_equal("email@test.com")
+    expect(result["data"][CONF_PASSWORD]).to_equal("test")
+    expect(result["data"][CONF_KAMEREON_ACCOUNT_ID]).to_equal("account_id_1")
+    expect(result["data"][CONF_LOCALE]).to_equal("fr_FR")
+    expect(result["context"]["unique_id"]).to_equal("account_id_1")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
-    assert len(mock_setup_entry.mock_calls) == 1
 
-
-async def test_config_flow_no_account(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def config_flow_no_account(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
-    # Account list empty
     with (
         patch("renault_api.renault_session.RenaultSession.login"),
         patch(
@@ -138,21 +155,22 @@ async def test_config_flow_no_account(
             },
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "kamereon_no_account"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("kamereon_no_account")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
-    assert len(mock_setup_entry.mock_calls) == 0
 
-
-async def test_config_flow_multiple_accounts(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def config_flow_multiple_accounts(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test what happens if multiple Kamereon accounts are available."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     renault_account_1 = RenaultAccount(
         "account_id_1",
@@ -166,7 +184,6 @@ async def test_config_flow_multiple_accounts(
         await async_load_fixture(hass, "renault/vehicle_zoe_40.json")
     )
 
-    # Multiple accounts
     with (
         patch("renault_api.renault_session.RenaultSession.login"),
         patch(
@@ -187,37 +204,37 @@ async def test_config_flow_multiple_accounts(
             },
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "kamereon"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("kamereon")
 
-    # Account selected
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_KAMEREON_ACCOUNT_ID: "account_id_2"},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "account_id_2"
-    assert result["data"][CONF_USERNAME] == "email@test.com"
-    assert result["data"][CONF_PASSWORD] == "test"
-    assert result["data"][CONF_KAMEREON_ACCOUNT_ID] == "account_id_2"
-    assert result["data"][CONF_LOCALE] == "fr_FR"
-    assert result["context"]["unique_id"] == "account_id_2"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("account_id_2")
+    expect(result["data"][CONF_USERNAME]).to_equal("email@test.com")
+    expect(result["data"][CONF_PASSWORD]).to_equal("test")
+    expect(result["data"][CONF_KAMEREON_ACCOUNT_ID]).to_equal("account_id_2")
+    expect(result["data"][CONF_LOCALE]).to_equal("fr_FR")
+    expect(result["context"]["unique_id"]).to_equal("account_id_2")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
-    assert len(mock_setup_entry.mock_calls) == 1
 
-
-@pytest.mark.usefixtures("config_entry")
-async def test_config_flow_duplicate(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def config_flow_duplicate(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test abort if unique_id configured."""
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     renault_account = RenaultAccount(
         "account_id_1",
@@ -246,27 +263,28 @@ async def test_config_flow_duplicate(
             },
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
     await hass.async_block_till_done()
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
-    assert len(mock_setup_entry.mock_calls) == 0
 
-
-async def test_reauth(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+@test
+async def reauth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry_fx),
+) -> None:
     """Test the start of the config flow."""
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
-    result = await config_entry.start_reauth_flow(hass)
+    result = await entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["description_placeholders"] == {
-        CONF_NAME: "Mock Title",
-        CONF_USERNAME: "email@test.com",
-    }
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["description_placeholders"]).to_equal(
+        {CONF_NAME: "Mock Title", CONF_USERNAME: "email@test.com"}
+    )
+    expect(result["errors"]).to_equal({})
 
-    # Failed credentials
     with patch(
         "renault_api.renault_session.RenaultSession.login",
         side_effect=InvalidCredentialsException(403042, "invalid loginID or password"),
@@ -276,42 +294,42 @@ async def test_reauth(hass: HomeAssistant, config_entry: MockConfigEntry) -> Non
             user_input={CONF_PASSWORD: "any"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["description_placeholders"] == {
-        CONF_NAME: "Mock Title",
-        CONF_USERNAME: "email@test.com",
-    }
-    assert result2["errors"] == {"base": "invalid_credentials"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["description_placeholders"]).to_equal(
+        {CONF_NAME: "Mock Title", CONF_USERNAME: "email@test.com"}
+    )
+    expect(result2["errors"]).to_equal({"base": "invalid_credentials"})
 
-    # Valid credentials
     with patch("renault_api.renault_session.RenaultSession.login"):
         result3 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={CONF_PASSWORD: "any"},
         )
 
-    assert result3["type"] is FlowResultType.ABORT
-    assert result3["reason"] == "reauth_successful"
+    expect(result3["type"]).to_be(FlowResultType.ABORT)
+    expect(result3["reason"]).to_equal("reauth_successful")
+    expect(entry.data[CONF_USERNAME]).to_equal("email@test.com")
+    expect(entry.data[CONF_PASSWORD]).to_equal("any")
 
-    assert config_entry.data[CONF_USERNAME] == "email@test.com"
-    assert config_entry.data[CONF_PASSWORD] == "any"
 
-
-async def test_reconfigure(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    config_entry: MockConfigEntry,
+@test
+async def reconfigure(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test reconfigure works."""
-    result = await config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    result = await entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     data_schema = result["data_schema"].schema
-    assert get_schema_suggested_value(data_schema, CONF_LOCALE) == "fr_FR"
-    assert get_schema_suggested_value(data_schema, CONF_USERNAME) == "email@test.com"
-    assert get_schema_suggested_value(data_schema, CONF_PASSWORD) == "test"
+    expect(get_schema_suggested_value(data_schema, CONF_LOCALE)).to_equal("fr_FR")
+    expect(get_schema_suggested_value(data_schema, CONF_USERNAME)).to_equal(
+        "email@test.com"
+    )
+    expect(get_schema_suggested_value(data_schema, CONF_PASSWORD)).to_equal("test")
 
     renault_account = AsyncMock()
     type(renault_account).account_id = PropertyMock(return_value="account_id_1")
@@ -321,7 +339,6 @@ async def test_reconfigure(
         )
     )
 
-    # Account list single
     with (
         patch("renault_api.renault_session.RenaultSession.login"),
         patch(
@@ -341,32 +358,33 @@ async def test_reconfigure(
             },
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-
-    assert config_entry.data[CONF_USERNAME] == "email2@test.com"
-    assert config_entry.data[CONF_PASSWORD] == "test2"
-    assert config_entry.data[CONF_KAMEREON_ACCOUNT_ID] == "account_id_1"
-    assert config_entry.data[CONF_LOCALE] == "fr_FR"
-
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(entry.data[CONF_USERNAME]).to_equal("email2@test.com")
+    expect(entry.data[CONF_PASSWORD]).to_equal("test2")
+    expect(entry.data[CONF_KAMEREON_ACCOUNT_ID]).to_equal("account_id_1")
+    expect(entry.data[CONF_LOCALE]).to_equal("fr_FR")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_reconfigure_mismatch(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    config_entry: MockConfigEntry,
+@test
+async def reconfigure_mismatch(
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test reconfigure fails on account ID mismatch."""
-    result = await config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    result = await entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     data_schema = result["data_schema"].schema
-    assert get_schema_suggested_value(data_schema, CONF_LOCALE) == "fr_FR"
-    assert get_schema_suggested_value(data_schema, CONF_USERNAME) == "email@test.com"
-    assert get_schema_suggested_value(data_schema, CONF_PASSWORD) == "test"
+    expect(get_schema_suggested_value(data_schema, CONF_LOCALE)).to_equal("fr_FR")
+    expect(get_schema_suggested_value(data_schema, CONF_USERNAME)).to_equal(
+        "email@test.com"
+    )
+    expect(get_schema_suggested_value(data_schema, CONF_PASSWORD)).to_equal("test")
 
     renault_account = AsyncMock()
     type(renault_account).account_id = PropertyMock(return_value="account_id_other")
@@ -376,7 +394,6 @@ async def test_reconfigure_mismatch(
         )
     )
 
-    # Account list single
     with (
         patch("renault_api.renault_session.RenaultSession.login"),
         patch(
@@ -396,13 +413,10 @@ async def test_reconfigure_mismatch(
             },
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unique_id_mismatch"
-
-    # Unchanged values
-    assert config_entry.data[CONF_USERNAME] == "email@test.com"
-    assert config_entry.data[CONF_PASSWORD] == "test"
-    assert config_entry.data[CONF_KAMEREON_ACCOUNT_ID] == "account_id_1"
-    assert config_entry.data[CONF_LOCALE] == "fr_FR"
-
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unique_id_mismatch")
+    expect(entry.data[CONF_USERNAME]).to_equal("email@test.com")
+    expect(entry.data[CONF_PASSWORD]).to_equal("test")
+    expect(entry.data[CONF_KAMEREON_ACCOUNT_ID]).to_equal("account_id_1")
+    expect(entry.data[CONF_LOCALE]).to_equal("fr_FR")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
