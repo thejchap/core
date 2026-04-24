@@ -1,9 +1,12 @@
 """Test the Powerfox config flow."""
 
-from unittest.mock import AsyncMock, patch
+from __future__ import annotations
+
+from ipaddress import ip_address
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from powerfox import PowerfoxAuthenticationError, PowerfoxConnectionError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.powerfox.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF
@@ -15,10 +18,18 @@ from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 from . import MOCK_DIRECT_HOST
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+from ._fixtures import (
+    mock_async_zeroconf as mock_async_zeroconf_fx,
+    mock_config_entry as mock_config_entry_fx,
+    mock_powerfox_client as mock_powerfox_client_fx,
+    mock_setup_entry as mock_setup_entry_fx,
+)
 
 MOCK_ZEROCONF_DISCOVERY_INFO = ZeroconfServiceInfo(
-    ip_address=MOCK_DIRECT_HOST,
-    ip_addresses=[MOCK_DIRECT_HOST],
+    ip_address=ip_address(MOCK_DIRECT_HOST),
+    ip_addresses=[ip_address(MOCK_DIRECT_HOST)],
     hostname="powerfox.local",
     name="Powerfox",
     port=443,
@@ -27,39 +38,49 @@ MOCK_ZEROCONF_DISCOVERY_INFO = ZeroconfServiceInfo(
 )
 
 
-async def test_full_user_flow(
-    hass: HomeAssistant,
-    mock_powerfox_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _zc: MagicMock = Depends(mock_async_zeroconf_fx),
+    _setup: AsyncMock = Depends(mock_setup_entry_fx),
+) -> None:
+    """Wire network + zeroconf + setup for every test."""
+
+
+@test
+async def full_user_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_powerfox_client: AsyncMock = Depends(mock_powerfox_client_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
-    assert not result.get("errors")
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
+    expect(bool(result.get("errors"))).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_EMAIL: "test@powerfox.test", CONF_PASSWORD: "test-password"},
     )
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == "test@powerfox.test"
-    assert result.get("data") == {
-        CONF_EMAIL: "test@powerfox.test",
-        CONF_PASSWORD: "test-password",
-    }
-    assert len(mock_powerfox_client.all_devices.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal("test@powerfox.test")
+    expect(result.get("data")).to_equal(
+        {CONF_EMAIL: "test@powerfox.test", CONF_PASSWORD: "test-password"}
+    )
+    expect(len(mock_powerfox_client.all_devices.mock_calls)).to_equal(1)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_zeroconf_discovery(
-    hass: HomeAssistant,
-    mock_powerfox_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def zeroconf_discovery(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_powerfox_client: AsyncMock = Depends(mock_powerfox_client_fx),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test zeroconf discovery."""
     result = await hass.config_entries.flow.async_init(
@@ -68,29 +89,29 @@ async def test_zeroconf_discovery(
         data=MOCK_ZEROCONF_DISCOVERY_INFO,
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
-    assert not result.get("errors")
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
+    expect(bool(result.get("errors"))).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_EMAIL: "test@powerfox.test", CONF_PASSWORD: "test-password"},
     )
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == "test@powerfox.test"
-    assert result.get("data") == {
-        CONF_EMAIL: "test@powerfox.test",
-        CONF_PASSWORD: "test-password",
-    }
-    assert len(mock_powerfox_client.all_devices.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal("test@powerfox.test")
+    expect(result.get("data")).to_equal(
+        {CONF_EMAIL: "test@powerfox.test", CONF_PASSWORD: "test-password"}
+    )
+    expect(len(mock_powerfox_client.all_devices.mock_calls)).to_equal(1)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_duplicate_entry(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_powerfox_client: AsyncMock,
+@test
+async def duplicate_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
+    mock_powerfox_client: AsyncMock = Depends(mock_powerfox_client_fx),
 ) -> None:
     """Test abort when setting up duplicate entry."""
     mock_config_entry.add_to_hass(hass)
@@ -98,57 +119,52 @@ async def test_duplicate_entry(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert not result.get("errors")
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(bool(result.get("errors"))).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_EMAIL: "test@powerfox.test", CONF_PASSWORD: "test-password"},
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "already_configured"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("already_configured")
 
 
-async def test_duplicate_entry_reconfiguration(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_powerfox_client: AsyncMock,
+@test
+async def duplicate_entry_reconfiguration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
+    mock_powerfox_client: AsyncMock = Depends(mock_powerfox_client_fx),
 ) -> None:
     """Test abort when setting up duplicate entry on reconfiguration."""
-    # Add two config entries
     mock_config_entry.add_to_hass(hass)
     mock_config_entry_2 = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_EMAIL: "new@powerfox.test", CONF_PASSWORD: "new-password"},
     )
     mock_config_entry_2.add_to_hass(hass)
-    assert len(hass.config_entries.async_entries()) == 2
+    expect(len(hass.config_entries.async_entries())).to_equal(2)
 
-    # Reconfigure the second entry
     result = await mock_config_entry_2.start_reconfigure_flow(hass)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_EMAIL: "test@powerfox.test", CONF_PASSWORD: "test-password"},
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "already_configured"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (PowerfoxConnectionError, "cannot_connect"),
-        (PowerfoxAuthenticationError, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("connection", PowerfoxConnectionError, "cannot_connect"),
+    test.case("auth", PowerfoxAuthenticationError, "invalid_auth"),
 )
-async def test_exceptions(
-    hass: HomeAssistant,
-    mock_powerfox_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+async def exceptions(
     exception: Exception,
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_powerfox_client: AsyncMock = Depends(mock_powerfox_client_fx),
 ) -> None:
     """Test exceptions during config flow."""
     mock_powerfox_client.all_devices.side_effect = exception
@@ -159,30 +175,29 @@ async def test_exceptions(
         result["flow_id"],
         user_input={CONF_EMAIL: "test@powerfox.test", CONF_PASSWORD: "test-password"},
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {"base": error}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({"base": error})
 
-    # Recover from error
     mock_powerfox_client.all_devices.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_EMAIL: "test@powerfox.test", CONF_PASSWORD: "test-password"},
     )
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_step_reauth(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+@test
+async def step_reauth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test re-authentication flow."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reauth_flow(hass)
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "reauth_confirm"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.powerfox.config_flow.Powerfox",
@@ -193,68 +208,62 @@ async def test_step_reauth(
             user_input={CONF_PASSWORD: "new-password"},
         )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reauth_successful"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("reauth_successful")
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+    expect(mock_config_entry.data[CONF_PASSWORD]).to_equal("new-password")
 
-    assert len(hass.config_entries.async_entries()) == 1
-    assert mock_config_entry.data[CONF_PASSWORD] == "new-password"
 
-
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (PowerfoxConnectionError, "cannot_connect"),
-        (PowerfoxAuthenticationError, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("connection", PowerfoxConnectionError, "cannot_connect"),
+    test.case("auth", PowerfoxAuthenticationError, "invalid_auth"),
 )
-async def test_step_reauth_exceptions(
-    hass: HomeAssistant,
-    mock_powerfox_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+async def step_reauth_exceptions(
     exception: Exception,
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_powerfox_client: AsyncMock = Depends(mock_powerfox_client_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test exceptions during re-authentication flow."""
     mock_powerfox_client.all_devices.side_effect = exception
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reauth_flow(hass)
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "reauth_confirm"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_PASSWORD: "new-password"},
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {"base": error}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({"base": error})
 
-    # Recover from error
     mock_powerfox_client.all_devices.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_PASSWORD: "new-password"},
     )
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reauth_successful"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("reauth_successful")
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+    expect(mock_config_entry.data[CONF_PASSWORD]).to_equal("new-password")
 
-    assert len(hass.config_entries.async_entries()) == 1
-    assert mock_config_entry.data[CONF_PASSWORD] == "new-password"
 
-
-async def test_reconfigure(
-    hass: HomeAssistant,
-    mock_powerfox_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
+    mock_powerfox_client: AsyncMock = Depends(mock_powerfox_client_fx),
 ) -> None:
     """Test reconfiguration of existing entry."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reconfigure_flow(hass)
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -264,35 +273,31 @@ async def test_reconfigure(
         },
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reconfigure_successful"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("reconfigure_successful")
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+    expect(mock_config_entry.data[CONF_EMAIL]).to_equal("new-email@powerfox.test")
+    expect(mock_config_entry.data[CONF_PASSWORD]).to_equal("new-password")
 
-    assert len(hass.config_entries.async_entries()) == 1
-    assert mock_config_entry.data[CONF_EMAIL] == "new-email@powerfox.test"
-    assert mock_config_entry.data[CONF_PASSWORD] == "new-password"
 
-
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (PowerfoxConnectionError, "cannot_connect"),
-        (PowerfoxAuthenticationError, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("connection", PowerfoxConnectionError, "cannot_connect"),
+    test.case("auth", PowerfoxAuthenticationError, "invalid_auth"),
 )
-async def test_reconfigure_exceptions(
-    hass: HomeAssistant,
-    mock_powerfox_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+async def reconfigure_exceptions(
     exception: Exception,
     error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_powerfox_client: AsyncMock = Depends(mock_powerfox_client_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test exceptions during reconfiguration flow."""
     mock_powerfox_client.all_devices.side_effect = exception
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reconfigure_flow(hass)
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -301,10 +306,9 @@ async def test_reconfigure_exceptions(
             CONF_PASSWORD: "new-password",
         },
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {"base": error}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({"base": error})
 
-    # Recover from error
     mock_powerfox_client.all_devices.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
@@ -315,9 +319,8 @@ async def test_reconfigure_exceptions(
         },
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reconfigure_successful"
-
-    assert len(hass.config_entries.async_entries()) == 1
-    assert mock_config_entry.data[CONF_EMAIL] == "new-email@powerfox.test"
-    assert mock_config_entry.data[CONF_PASSWORD] == "new-password"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("reconfigure_successful")
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+    expect(mock_config_entry.data[CONF_EMAIL]).to_equal("new-email@powerfox.test")
+    expect(mock_config_entry.data[CONF_PASSWORD]).to_equal("new-password")

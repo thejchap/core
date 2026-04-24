@@ -1009,6 +1009,7 @@ dev = [
     "peco==0.1.2",
     "plugwise==1.11.3",
     "poolsense==0.0.8",
+    "powerfox==2.1.1",
     "py-madvr2==1.6.40",
     "py-nextbusnext==2.3.0",
     "py-nightscout==1.2.2",
