@@ -1,11 +1,16 @@
 """Tests for StarLine config flow."""
 
+from __future__ import annotations
+
 import requests_mock
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.starline import config_flow
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 TEST_APP_ID = "666"
 TEST_APP_SECRET = "appsecret"
@@ -18,7 +23,16 @@ TEST_APP_USERNAME = "sluser"
 TEST_APP_PASSWORD = "slpassword"
 
 
-async def test_flow_works(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def flow_works(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that config flow works."""
     with requests_mock.Mocker() as mock:
         mock.get(
@@ -46,8 +60,8 @@ async def test_flow_works(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             config_flow.DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "auth_app"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("auth_app")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -56,8 +70,8 @@ async def test_flow_works(hass: HomeAssistant) -> None:
                 config_flow.CONF_APP_SECRET: TEST_APP_SECRET,
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "auth_user"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("auth_user")
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -66,15 +80,20 @@ async def test_flow_works(hass: HomeAssistant) -> None:
                 config_flow.CONF_PASSWORD: TEST_APP_PASSWORD,
             },
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == f"Application {TEST_APP_ID}"
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(f"Application {TEST_APP_ID}")
 
 
-async def test_step_auth_app_code_falls(hass: HomeAssistant) -> None:
+@test
+async def step_auth_app_code_falls(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow works when app auth code fails."""
     with requests_mock.Mocker() as mock:
         mock.get(
-            "https://id.starline.ru/apiV3/application/getCode/", text='{"state": 0}}'
+            "https://id.starline.ru/apiV3/application/getCode/",
+            text='{"state": 0}}',
         )
         result = await hass.config_entries.flow.async_init(
             config_flow.DOMAIN,
@@ -84,12 +103,16 @@ async def test_step_auth_app_code_falls(hass: HomeAssistant) -> None:
                 config_flow.CONF_APP_SECRET: TEST_APP_SECRET,
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "auth_app"
-        assert result["errors"] == {"base": "error_auth_app"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("auth_app")
+        expect(result["errors"]).to_equal({"base": "error_auth_app"})
 
 
-async def test_step_auth_app_token_falls(hass: HomeAssistant) -> None:
+@test
+async def step_auth_app_token_falls(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow works when app auth token fails."""
     with requests_mock.Mocker() as mock:
         mock.get(
@@ -97,7 +120,8 @@ async def test_step_auth_app_token_falls(hass: HomeAssistant) -> None:
             text='{"state": 1, "desc": {"code": "' + TEST_APP_CODE + '"}}',
         )
         mock.get(
-            "https://id.starline.ru/apiV3/application/getToken/", text='{"state": 0}'
+            "https://id.starline.ru/apiV3/application/getToken/",
+            text='{"state": 0}',
         )
         result = await hass.config_entries.flow.async_init(
             config_flow.DOMAIN,
@@ -107,12 +131,16 @@ async def test_step_auth_app_token_falls(hass: HomeAssistant) -> None:
                 config_flow.CONF_APP_SECRET: TEST_APP_SECRET,
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "auth_app"
-        assert result["errors"] == {"base": "error_auth_app"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("auth_app")
+        expect(result["errors"]).to_equal({"base": "error_auth_app"})
 
 
-async def test_step_auth_user_falls(hass: HomeAssistant) -> None:
+@test
+async def step_auth_user_falls(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow works when user fails."""
     with requests_mock.Mocker() as mock:
         mock.post("https://id.starline.ru/apiV3/user/login/", text='{"state": 0}')
@@ -124,6 +152,6 @@ async def test_step_auth_user_falls(hass: HomeAssistant) -> None:
                 config_flow.CONF_PASSWORD: TEST_APP_PASSWORD,
             }
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "auth_user"
-        assert result["errors"] == {"base": "error_auth_user"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("auth_user")
+        expect(result["errors"]).to_equal({"base": "error_auth_user"})

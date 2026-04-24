@@ -1,6 +1,10 @@
 """Tests for SpeedTest config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import MagicMock
+
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.speedtestdotnet.const import (
@@ -11,24 +15,42 @@ from homeassistant.components.speedtestdotnet.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_api, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_flow_works(hass: HomeAssistant, mock_setup_entry: MagicMock) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def flow_works(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: MagicMock = Depends(mock_setup_entry),
+) -> None:
     """Test user config."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_options(hass: HomeAssistant, mock_api: MagicMock) -> None:
+@test
+async def options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(mock_api),
+) -> None:
     """Test updating options."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -40,8 +62,8 @@ async def test_options(hass: HomeAssistant, mock_api: MagicMock) -> None:
     await hass.async_block_till_done()
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -50,17 +72,18 @@ async def test_options(hass: HomeAssistant, mock_api: MagicMock) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_SERVER_NAME: "Country1 - Sponsor1 - Server1",
-        CONF_SERVER_ID: "1",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_SERVER_NAME: "Country1 - Sponsor1 - Server1",
+            CONF_SERVER_ID: "1",
+        }
+    )
     await hass.async_block_till_done()
 
-    # test setting server name to "*Auto Detect"
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -69,14 +92,20 @@ async def test_options(hass: HomeAssistant, mock_api: MagicMock) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_SERVER_NAME: "*Auto Detect",
-        CONF_SERVER_ID: None,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_SERVER_NAME: "*Auto Detect",
+            CONF_SERVER_ID: None,
+        }
+    )
 
 
-async def test_integration_already_configured(hass: HomeAssistant) -> None:
+@test
+async def integration_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test integration is already configured."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -85,5 +114,5 @@ async def test_integration_already_configured(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
