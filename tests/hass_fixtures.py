@@ -461,8 +461,17 @@ def mock_network() -> Generator[None]:
 
     construction (which pulls the zeroconf resolver, which queries the
     network adapter list) don't blow up on a minimal hass fixture that
-    has no ``network`` integration loaded.
+    has no ``network`` integration loaded. Also patches the aiohttp
+    resolver factory so integrations that call
+    ``async_get_clientsession(hass)`` during a config flow don't attempt
+    to spin up a real zeroconf instance whose background threads outlive
+    the test event loop.
     """
+    from aiohttp.resolver import AsyncResolver  # noqa: PLC0415
+
+    def _make_resolver(*_args: Any, **_kwargs: Any) -> AsyncResolver:
+        return AsyncResolver()
+
     with (
         patch(
             "homeassistant.components.network.util.ifaddr.get_adapters",
@@ -491,6 +500,10 @@ def mock_network() -> Generator[None]:
         patch(
             "homeassistant.components.network.util.async_get_source_ip",
             return_value="10.10.10.10",
+        ),
+        patch(
+            "homeassistant.helpers.aiohttp_client._async_make_resolver",
+            side_effect=_make_resolver,
         ),
     ):
         yield
