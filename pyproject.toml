@@ -962,6 +962,7 @@ dev = [
     "aiopvpc==4.3.1",
     "aiopyarr==23.4.0",
     "aioqsw==0.4.2",
+    "aiorecollect==2023.9.0",
     "eternalegypt==0.0.18",
     "freezegun>=1.5.5",
     "getmac==0.9.5",
@@ -1082,6 +1083,7 @@ dev = [
     "tesla-powerwall==0.5.2",
     "typedmonarchmoney==0.7.0",
     "ultraheat-api>=0.5.7",
+    "vehicle==2.2.2",
     "webio-api==0.1.12",
     "wsdiscovery==2.1.2",
 ]

@@ -1,7 +1,10 @@
 """Tests for the RDW config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import MagicMock
 
+from tryke import Depends, expect, fixture, test
 from vehicle.exceptions import RDWConnectionError, RDWUnknownLicensePlateError
 
 from homeassistant.components.rdw.const import CONF_LICENSE_PLATE, DOMAIN
@@ -9,72 +12,83 @@ from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import (
+    mock_rdw_config_flow as mock_rdw_config_flow_fx,
+    mock_setup_entry as mock_setup_entry_fx,
+)
 
-async def test_full_user_flow(
-    hass: HomeAssistant, mock_rdw_config_flow: MagicMock, mock_setup_entry: MagicMock
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _setup: None = Depends(mock_setup_entry_fx),
+) -> None:
+    """Wire mock_network + mock_setup_entry for every test."""
+
+
+@test
+async def full_user_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_rdw_config_flow: MagicMock = Depends(mock_rdw_config_flow_fx),
 ) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_LICENSE_PLATE: "11-ZKZ-3",
-        },
+        user_input={CONF_LICENSE_PLATE: "11-ZKZ-3"},
     )
 
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2.get("title") == "11-ZKZ-3"
-    assert result2.get("data") == {CONF_LICENSE_PLATE: "11ZKZ3"}
+    expect(result2.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2.get("title")).to_equal("11-ZKZ-3")
+    expect(result2.get("data")).to_equal({CONF_LICENSE_PLATE: "11ZKZ3"})
 
 
-async def test_full_flow_with_authentication_error(
-    hass: HomeAssistant, mock_rdw_config_flow: MagicMock, mock_setup_entry: MagicMock
+@test
+async def full_flow_with_authentication_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_rdw_config_flow: MagicMock = Depends(mock_rdw_config_flow_fx),
 ) -> None:
-    """Test the full user configuration flow with incorrect license plate.
-
-    This tests tests a full config flow, with a case the user enters an invalid
-    license plate, but recover by entering the correct one.
-    """
+    """Test full flow where the user enters an invalid plate then recovers."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     mock_rdw_config_flow.vehicle.side_effect = RDWUnknownLicensePlateError
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_LICENSE_PLATE: "0001TJ",
-        },
+        user_input={CONF_LICENSE_PLATE: "0001TJ"},
     )
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "user"
-    assert result2.get("errors") == {"base": "unknown_license_plate"}
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("step_id")).to_equal("user")
+    expect(result2.get("errors")).to_equal({"base": "unknown_license_plate"})
 
     mock_rdw_config_flow.vehicle.side_effect = None
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"],
-        user_input={
-            CONF_LICENSE_PLATE: "11-ZKZ-3",
-        },
+        user_input={CONF_LICENSE_PLATE: "11-ZKZ-3"},
     )
 
-    assert result3.get("type") is FlowResultType.CREATE_ENTRY
-    assert result3.get("title") == "11-ZKZ-3"
-    assert result3.get("data") == {CONF_LICENSE_PLATE: "11ZKZ3"}
+    expect(result3.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3.get("title")).to_equal("11-ZKZ-3")
+    expect(result3.get("data")).to_equal({CONF_LICENSE_PLATE: "11ZKZ3"})
 
 
-async def test_connection_error(
-    hass: HomeAssistant, mock_rdw_config_flow: MagicMock
+@test
+async def connection_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_rdw_config_flow: MagicMock = Depends(mock_rdw_config_flow_fx),
 ) -> None:
     """Test API connection error."""
     mock_rdw_config_flow.vehicle.side_effect = RDWConnectionError
@@ -85,5 +99,5 @@ async def test_connection_error(
         data={CONF_LICENSE_PLATE: "0001TJ"},
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {"base": "cannot_connect"}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({"base": "cannot_connect"})
