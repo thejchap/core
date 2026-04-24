@@ -1,9 +1,11 @@
 """Test the Schlage config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, Mock
 
 from pyschlage.exceptions import Error as PyschlageError, NotAuthorizedError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.schlage.const import DOMAIN
@@ -11,31 +13,37 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import MockSchlageConfigEntry
-
-from tests.common import MockConfigEntry
-
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
-
-
-@pytest.mark.parametrize(
-    "username",
-    [
-        "test-username",
-        "TEST-USERNAME",
-    ],
+from ._fixtures import (
+    mock_added_config_entry,
+    mock_pyschlage_auth,
+    mock_setup_entry,
 )
-async def test_form(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_pyschlage_auth: Mock,
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test.cases(
+    test.case("lowercase", username="test-username"),
+    test.case("uppercase", username="TEST-USERNAME"),
+)
+async def form(
     username: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    pyschlage_auth: Mock = Depends(mock_pyschlage_auth),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -46,27 +54,32 @@ async def test_form(
     )
     await hass.async_block_till_done()
 
-    mock_pyschlage_auth.authenticate.assert_called_once_with()
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "test-username"
-    assert result2["data"] == {
-        "username": "test-username",
-        "password": "test-password",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    pyschlage_auth.authenticate.assert_called_once_with()
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("test-username")
+    expect(result2["data"]).to_equal(
+        {
+            "username": "test-username",
+            "password": "test-password",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_requires_unique_id(
-    hass: HomeAssistant,
-    mock_added_config_entry: MockConfigEntry,
-    mock_pyschlage_auth: Mock,
+@test
+async def form_requires_unique_id(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    added_entry: MockSchlageConfigEntry = Depends(mock_added_config_entry),
+    pyschlage_auth: Mock = Depends(mock_pyschlage_auth),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test entries have unique ids."""
     init_result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert init_result["type"] is FlowResultType.FORM
-    assert init_result["errors"] == {}
+    expect(init_result["type"]).to_be(FlowResultType.FORM)
+    expect(init_result["errors"]).to_equal({})
 
     create_result = await hass.config_entries.flow.async_configure(
         init_result["flow_id"],
@@ -77,20 +90,24 @@ async def test_form_requires_unique_id(
     )
     await hass.async_block_till_done()
 
-    mock_pyschlage_auth.authenticate.assert_called_once_with()
-    assert create_result["type"] is FlowResultType.ABORT
-    assert create_result["reason"] == "already_configured"
+    pyschlage_auth.authenticate.assert_called_once_with()
+    expect(create_result["type"]).to_be(FlowResultType.ABORT)
+    expect(create_result["reason"]).to_equal("already_configured")
 
 
-async def test_form_invalid_auth(
-    hass: HomeAssistant, mock_pyschlage_auth: Mock
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    pyschlage_auth: Mock = Depends(mock_pyschlage_auth),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    mock_pyschlage_auth.authenticate.side_effect = NotAuthorizedError
+    pyschlage_auth.authenticate.side_effect = NotAuthorizedError
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -98,17 +115,23 @@ async def test_form_invalid_auth(
             "password": "test-password",
         },
     )
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_unknown(hass: HomeAssistant, mock_pyschlage_auth: Mock) -> None:
+@test
+async def form_unknown(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    pyschlage_auth: Mock = Depends(mock_pyschlage_auth),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we handle unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    mock_pyschlage_auth.authenticate.side_effect = PyschlageError
+    pyschlage_auth.authenticate.side_effect = PyschlageError
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -117,22 +140,25 @@ async def test_form_unknown(hass: HomeAssistant, mock_pyschlage_auth: Mock) -> N
         },
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_reauth(
-    hass: HomeAssistant,
-    mock_added_config_entry: MockSchlageConfigEntry,
-    mock_pyschlage_auth: Mock,
+@test
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    added_entry: MockSchlageConfigEntry = Depends(mock_added_config_entry),
+    pyschlage_auth: Mock = Depends(mock_pyschlage_auth),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reauth flow."""
-    mock_added_config_entry.async_start_reauth(hass)
+    added_entry.async_start_reauth(hass)
     await hass.async_block_till_done()
 
     flows = hass.config_entries.flow.async_progress()
     result = flows[-1]
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -140,58 +166,64 @@ async def test_reauth(
     )
     await hass.async_block_till_done()
 
-    mock_pyschlage_auth.authenticate.assert_called_once_with()
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
-    assert mock_added_config_entry.data == {
-        "username": "asdf@asdf.com",
-        "password": "new-password",
-    }
+    pyschlage_auth.authenticate.assert_called_once_with()
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
+    expect(added_entry.data).to_equal(
+        {
+            "username": "asdf@asdf.com",
+            "password": "new-password",
+        }
+    )
 
 
-async def test_reauth_invalid_auth(
-    hass: HomeAssistant,
-    mock_added_config_entry: MockSchlageConfigEntry,
-    mock_setup_entry: AsyncMock,
-    mock_pyschlage_auth: Mock,
+@test
+async def reauth_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    added_entry: MockSchlageConfigEntry = Depends(mock_added_config_entry),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    pyschlage_auth: Mock = Depends(mock_pyschlage_auth),
 ) -> None:
     """Test reauth flow."""
-    mock_added_config_entry.async_start_reauth(hass)
+    added_entry.async_start_reauth(hass)
     await hass.async_block_till_done()
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
     [result] = flows
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_pyschlage_auth.authenticate.reset_mock()
-    mock_pyschlage_auth.authenticate.side_effect = NotAuthorizedError
+    pyschlage_auth.authenticate.reset_mock()
+    pyschlage_auth.authenticate.side_effect = NotAuthorizedError
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {"password": "new-password"},
     )
     await hass.async_block_till_done()
 
-    mock_pyschlage_auth.authenticate.assert_called_once_with()
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    pyschlage_auth.authenticate.assert_called_once_with()
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_reauth_wrong_account(
-    hass: HomeAssistant,
-    mock_added_config_entry: MockSchlageConfigEntry,
-    mock_setup_entry: AsyncMock,
-    mock_pyschlage_auth: Mock,
+@test
+async def reauth_wrong_account(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    added_entry: MockSchlageConfigEntry = Depends(mock_added_config_entry),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    pyschlage_auth: Mock = Depends(mock_pyschlage_auth),
 ) -> None:
     """Test reauth flow."""
-    mock_pyschlage_auth.user_id = "bad-user-id"
-    mock_added_config_entry.async_start_reauth(hass)
+    pyschlage_auth.user_id = "bad-user-id"
+    added_entry.async_start_reauth(hass)
     await hass.async_block_till_done()
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
     [result] = flows
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -199,11 +231,13 @@ async def test_reauth_wrong_account(
     )
     await hass.async_block_till_done()
 
-    mock_pyschlage_auth.authenticate.assert_called_once_with()
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "wrong_account"
-    assert mock_added_config_entry.data == {
-        "username": "asdf@asdf.com",
-        "password": "hunter2",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    pyschlage_auth.authenticate.assert_called_once_with()
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("wrong_account")
+    expect(added_entry.data).to_equal(
+        {
+            "username": "asdf@asdf.com",
+            "password": "hunter2",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)

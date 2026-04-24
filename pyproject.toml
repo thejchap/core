@@ -1076,6 +1076,8 @@ dev = [
     "pyrisco==0.6.8",
     "pyrituals==0.0.7",
     "pysabnzbd==1.1.1",
+    "pysaunum==0.6.0",
+    "pyschlage==2025.9.0",
     "pyserial>=3.5",
     "pyspeex-noise>=2.0.0",
     "python-linkplay==0.2.12",
