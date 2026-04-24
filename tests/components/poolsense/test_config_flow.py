@@ -1,6 +1,10 @@
 """Test the PoolSense config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock
+
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.poolsense.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -9,37 +13,55 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+from ._fixtures import (
+    mock_config_entry as mock_config_entry_fx,
+    mock_poolsense_client as mock_poolsense_client_fx,
+    mock_setup_entry as mock_setup_entry_fx,
+)
 
 
-async def test_full_form(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_poolsense_client: AsyncMock
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _client: AsyncMock = Depends(mock_poolsense_client_fx),
+) -> None:
+    """Wire mock_network and mock_poolsense_client for every test."""
+
+
+@test
+async def full_form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test full flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_EMAIL: "test@test.com", CONF_PASSWORD: "test"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test@test.com"
-    assert result["data"] == {
-        CONF_EMAIL: "test@test.com",
-        CONF_PASSWORD: "test",
-    }
-    assert result["result"].unique_id == "test@test.com"
-
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("test@test.com")
+    expect(result["data"]).to_equal(
+        {CONF_EMAIL: "test@test.com", CONF_PASSWORD: "test"}
+    )
+    expect(result["result"].unique_id).to_equal("test@test.com")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_invalid_credentials(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_poolsense_client: AsyncMock
+@test
+async def invalid_credentials(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+    mock_poolsense_client: AsyncMock = Depends(mock_poolsense_client_fx),
 ) -> None:
     """Test we handle invalid credentials."""
     mock_poolsense_client.test_poolsense_credentials.return_value = False
@@ -49,8 +71,8 @@ async def test_invalid_credentials(
         data={CONF_EMAIL: "test@test.com", CONF_PASSWORD: "test"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
     mock_poolsense_client.test_poolsense_credentials.return_value = True
 
@@ -59,13 +81,13 @@ async def test_invalid_credentials(
         user_input={CONF_EMAIL: "test@test.com", CONF_PASSWORD: "test"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_duplicate_entry(
-    hass: HomeAssistant,
-    mock_poolsense_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def duplicate_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test we can't add the same entry twice."""
     mock_config_entry.add_to_hass(hass)
@@ -76,5 +98,5 @@ async def test_duplicate_entry(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

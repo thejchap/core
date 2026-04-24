@@ -1,5 +1,7 @@
 """Test the Portainer config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, MagicMock
 
 from pyportainer.exceptions import (
@@ -8,7 +10,7 @@ from pyportainer.exceptions import (
     PortainerTimeoutError,
 )
 from pyportainer.models.portainer import PortainerSystemStatus
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.portainer.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -16,9 +18,16 @@ from homeassistant.const import CONF_API_TOKEN, CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import MOCK_TEST_CONFIG
-
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+from ._fixtures import (
+    MOCK_TEST_CONFIG,
+    mock_async_zeroconf as mock_async_zeroconf_fx,
+    mock_config_entry as mock_config_entry_fx,
+    mock_portainer_client as mock_portainer_client_fx,
+    mock_setup_entry as mock_setup_entry_fx,
+)
 
 MOCK_USER_SETUP = {
     CONF_URL: "https://127.0.0.1:9000/",
@@ -33,53 +42,49 @@ USER_INPUT_RECONFIGURE = {
 }
 
 
-async def test_form(
-    hass: HomeAssistant,
-    mock_portainer_client: MagicMock,
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _zc: MagicMock = Depends(mock_async_zeroconf_fx),
+    _client: AsyncMock = Depends(mock_portainer_client_fx),
+    _setup: AsyncMock = Depends(mock_setup_entry_fx),
+) -> None:
+    """Wire mock_network, zeroconf, portainer_client, setup_entry for every test."""
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_portainer_client: MagicMock = Depends(mock_portainer_client_fx),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=MOCK_USER_SETUP,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "https://127.0.0.1:9000/"
-    assert result["data"] == MOCK_TEST_CONFIG
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("https://127.0.0.1:9000/")
+    expect(result["data"]).to_equal(MOCK_TEST_CONFIG)
 
 
-@pytest.mark.parametrize(
-    ("exception", "reason"),
-    [
-        (
-            PortainerAuthenticationError,
-            "invalid_auth",
-        ),
-        (
-            PortainerConnectionError,
-            "cannot_connect",
-        ),
-        (
-            PortainerTimeoutError,
-            "timeout_connect",
-        ),
-        (
-            Exception("Some other error"),
-            "unknown",
-        ),
-    ],
+@test.cases(
+    test.case("auth", PortainerAuthenticationError, "invalid_auth"),
+    test.case("connection", PortainerConnectionError, "cannot_connect"),
+    test.case("timeout", PortainerTimeoutError, "timeout_connect"),
+    test.case("unknown", Exception("Some other error"), "unknown"),
 )
-async def test_form_exceptions(
-    hass: HomeAssistant,
-    mock_portainer_client: AsyncMock,
+async def form_exceptions(
     exception: Exception,
     reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_portainer_client: AsyncMock = Depends(mock_portainer_client_fx),
 ) -> None:
     """Test we handle all exceptions."""
     mock_portainer_client.portainer_system_status.side_effect = exception
@@ -87,17 +92,15 @@ async def test_form_exceptions(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=MOCK_USER_SETUP,
     )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": reason}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": reason})
 
     mock_portainer_client.portainer_system_status.side_effect = None
 
@@ -105,17 +108,15 @@ async def test_form_exceptions(
         result["flow_id"],
         user_input=MOCK_USER_SETUP,
     )
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("https://127.0.0.1:9000/")
+    expect(result["data"]).to_equal(MOCK_TEST_CONFIG)
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "https://127.0.0.1:9000/"
-    assert result["data"] == MOCK_TEST_CONFIG
 
-
-async def test_duplicate_entry(
-    hass: HomeAssistant,
-    mock_portainer_client: AsyncMock,
-    mock_setup_entry: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def duplicate_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test we handle duplicate entries."""
     mock_config_entry.add_to_hass(hass)
@@ -123,38 +124,36 @@ async def test_duplicate_entry(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=MOCK_USER_SETUP,
     )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
 
-
-async def test_full_flow_reauth(
-    hass: HomeAssistant,
-    mock_portainer_client: AsyncMock,
-    mock_setup_entry: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def full_flow_reauth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: MagicMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test the full flow of the config flow."""
     mock_config_entry.add_to_hass(hass)
-    result = await hass.config_entries.flow.async_init(
+    await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    # There is no user input
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -162,61 +161,45 @@ async def test_full_flow_reauth(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data[CONF_API_TOKEN] == "new_api_key"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_config_entry.data[CONF_API_TOKEN]).to_equal("new_api_key")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "reason"),
-    [
-        (
-            PortainerAuthenticationError,
-            "invalid_auth",
-        ),
-        (
-            PortainerConnectionError,
-            "cannot_connect",
-        ),
-        (
-            PortainerTimeoutError,
-            "timeout_connect",
-        ),
-        (
-            Exception("Some other error"),
-            "unknown",
-        ),
-    ],
+@test.cases(
+    test.case("auth", PortainerAuthenticationError, "invalid_auth"),
+    test.case("connection", PortainerConnectionError, "cannot_connect"),
+    test.case("timeout", PortainerTimeoutError, "timeout_connect"),
+    test.case("unknown", Exception("Some other error"), "unknown"),
 )
-async def test_reauth_flow_exceptions(
-    hass: HomeAssistant,
-    mock_portainer_client: AsyncMock,
-    mock_setup_entry: MagicMock,
-    mock_config_entry: MockConfigEntry,
+async def reauth_flow_exceptions(
     exception: Exception,
     reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_portainer_client: AsyncMock = Depends(mock_portainer_client_fx),
+    mock_setup_entry: MagicMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test we handle all exceptions in the reauth flow."""
     mock_config_entry.add_to_hass(hass)
 
     mock_portainer_client.portainer_system_status.side_effect = exception
 
-    result = await hass.config_entries.flow.async_init(
+    await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_API_TOKEN: "new_api_key"},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": reason}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": reason})
 
-    # Now test that we can recover from the error
     mock_portainer_client.portainer_system_status.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
@@ -225,98 +208,84 @@ async def test_reauth_flow_exceptions(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data[CONF_API_TOKEN] == "new_api_key"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_config_entry.data[CONF_API_TOKEN]).to_equal("new_api_key")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_full_flow_reconfigure(
-    hass: HomeAssistant,
-    mock_portainer_client: AsyncMock,
-    mock_setup_entry: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def full_flow_reconfigure(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: MagicMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
     """Test the full flow of the config flow."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=USER_INPUT_RECONFIGURE,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.data[CONF_API_TOKEN] == "new_api_key"
-    assert mock_config_entry.data[CONF_URL] == "https://new_domain:9000/"
-    assert mock_config_entry.data[CONF_VERIFY_SSL] is True
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(mock_config_entry.data[CONF_API_TOKEN]).to_equal("new_api_key")
+    expect(mock_config_entry.data[CONF_URL]).to_equal("https://new_domain:9000/")
+    expect(mock_config_entry.data[CONF_VERIFY_SSL]).to_be(True)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_full_flow_reconfigure_unique_id_mismatch(
-    hass: HomeAssistant,
-    mock_portainer_client: AsyncMock,
-    mock_setup_entry: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def full_flow_reconfigure_unique_id_mismatch(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_portainer_client: AsyncMock = Depends(mock_portainer_client_fx),
+    mock_setup_entry: MagicMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
-    """Test reconfigure aborts when credentials point to a different Portainer instance."""
+    """Test reconfigure aborts on different Portainer instance."""
     mock_config_entry.add_to_hass(hass)
     mock_portainer_client.portainer_system_status.return_value = PortainerSystemStatus(
         instance_id="different-instance-id", version="2.0.0"
     )
     result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=USER_INPUT_RECONFIGURE,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unique_id_mismatch"
-    assert mock_config_entry.data[CONF_API_TOKEN] == "test_api_token"
-    assert mock_config_entry.data[CONF_URL] == "https://127.0.0.1:9000/"
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unique_id_mismatch")
+    expect(mock_config_entry.data[CONF_API_TOKEN]).to_equal("test_api_token")
+    expect(mock_config_entry.data[CONF_URL]).to_equal("https://127.0.0.1:9000/")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-@pytest.mark.parametrize(
-    ("exception", "reason"),
-    [
-        (
-            PortainerAuthenticationError,
-            "invalid_auth",
-        ),
-        (
-            PortainerConnectionError,
-            "cannot_connect",
-        ),
-        (
-            PortainerTimeoutError,
-            "timeout_connect",
-        ),
-        (
-            Exception("Some other error"),
-            "unknown",
-        ),
-    ],
+@test.cases(
+    test.case("auth", PortainerAuthenticationError, "invalid_auth"),
+    test.case("connection", PortainerConnectionError, "cannot_connect"),
+    test.case("timeout", PortainerTimeoutError, "timeout_connect"),
+    test.case("unknown", Exception("Some other error"), "unknown"),
 )
-async def test_full_flow_reconfigure_exceptions(
-    hass: HomeAssistant,
-    mock_portainer_client: AsyncMock,
-    mock_setup_entry: MagicMock,
-    mock_config_entry: MockConfigEntry,
+async def full_flow_reconfigure_exceptions(
     exception: Exception,
     reason: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_portainer_client: AsyncMock = Depends(mock_portainer_client_fx),
+    mock_setup_entry: MagicMock = Depends(mock_setup_entry_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_fx),
 ) -> None:
-    """Test the full flow of the config flow, this time with exceptions."""
+    """Test the reconfigure flow with exceptions."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     mock_portainer_client.portainer_system_status.side_effect = exception
     result = await hass.config_entries.flow.async_configure(
@@ -324,8 +293,8 @@ async def test_full_flow_reconfigure_exceptions(
         user_input=USER_INPUT_RECONFIGURE,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": reason}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": reason})
 
     mock_portainer_client.portainer_system_status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
@@ -333,9 +302,9 @@ async def test_full_flow_reconfigure_exceptions(
         user_input=USER_INPUT_RECONFIGURE,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.data[CONF_API_TOKEN] == "new_api_key"
-    assert mock_config_entry.data[CONF_URL] == "https://new_domain:9000/"
-    assert mock_config_entry.data[CONF_VERIFY_SSL] is True
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(mock_config_entry.data[CONF_API_TOKEN]).to_equal("new_api_key")
+    expect(mock_config_entry.data[CONF_URL]).to_equal("https://new_domain:9000/")
+    expect(mock_config_entry.data[CONF_VERIFY_SSL]).to_be(True)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
