@@ -1,11 +1,13 @@
 """Test config flow."""
 
+from __future__ import annotations
+
 from ipaddress import ip_address
 from unittest.mock import patch
 
 from requests import RequestException
-import requests_mock
 from requests_mock import ANY, Mocker
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.soundtouch.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF
@@ -14,11 +16,27 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from .conftest import DEVICE_1_ID, DEVICE_1_IP, DEVICE_1_NAME
+from ._fixtures import (
+    DEVICE_1_ID,
+    DEVICE_1_IP,
+    DEVICE_1_NAME,
+    device1_requests_mock_standby,
+    requests_mocker,
+)
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_user_flow_create_entry(
-    hass: HomeAssistant, device1_requests_mock_standby: Mocker
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def user_flow_create_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock: Mocker = Depends(device1_requests_mock_standby),
 ) -> None:
     """Test the full manual user flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
@@ -26,51 +44,51 @@ async def test_user_flow_create_entry(
         context={CONF_SOURCE: SOURCE_USER},
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     with patch(
         "homeassistant.components.soundtouch.async_setup_entry", return_value=True
     ) as mock_setup_entry:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            user_input={
-                CONF_HOST: DEVICE_1_IP,
-            },
+            user_input={CONF_HOST: DEVICE_1_IP},
         )
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == DEVICE_1_NAME
-    assert result.get("data") == {
-        CONF_HOST: DEVICE_1_IP,
-    }
-    assert "result" in result
-    assert result["result"].unique_id == DEVICE_1_ID
-    assert result["result"].title == DEVICE_1_NAME
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal(DEVICE_1_NAME)
+    expect(result.get("data")).to_equal({CONF_HOST: DEVICE_1_IP})
+    expect("result" in result).to_be(True)
+    expect(result["result"].unique_id).to_equal(DEVICE_1_ID)
+    expect(result["result"].title).to_equal(DEVICE_1_NAME)
 
 
-async def test_user_flow_cannot_connect(
-    hass: HomeAssistant, requests_mock: requests_mock.Mocker
+@test
+async def user_flow_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock: Mocker = Depends(requests_mocker),
 ) -> None:
     """Test a manual user flow with an invalid host."""
-    requests_mock.get(ANY, exc=RequestException())
+    mock.get(ANY, exc=RequestException())
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: SOURCE_USER},
-        data={
-            CONF_HOST: "invalid-hostname",
-        },
+        data={CONF_HOST: "invalid-hostname"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_zeroconf_flow_create_entry(
-    hass: HomeAssistant, device1_requests_mock_standby: Mocker
+@test
+async def zeroconf_flow_create_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock: Mocker = Depends(device1_requests_mock_standby),
 ) -> None:
     """Test the zeroconf flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
@@ -92,9 +110,9 @@ async def test_zeroconf_flow_create_entry(
         ),
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "zeroconf_confirm"
-    assert result.get("description_placeholders") == {"name": DEVICE_1_NAME}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("zeroconf_confirm")
+    expect(result.get("description_placeholders")).to_equal({"name": DEVICE_1_NAME})
 
     with patch(
         "homeassistant.components.soundtouch.async_setup_entry", return_value=True
@@ -103,13 +121,11 @@ async def test_zeroconf_flow_create_entry(
             result["flow_id"], user_input={}
         )
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == DEVICE_1_NAME
-    assert result.get("data") == {
-        CONF_HOST: DEVICE_1_IP,
-    }
-    assert "result" in result
-    assert result["result"].unique_id == DEVICE_1_ID
-    assert result["result"].title == DEVICE_1_NAME
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal(DEVICE_1_NAME)
+    expect(result.get("data")).to_equal({CONF_HOST: DEVICE_1_IP})
+    expect("result" in result).to_be(True)
+    expect(result["result"].unique_id).to_equal(DEVICE_1_ID)
+    expect(result["result"].title).to_equal(DEVICE_1_NAME)
