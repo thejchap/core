@@ -1,9 +1,11 @@
 """Test the Risco config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import PropertyMock, patch
 
-import pytest
 import voluptuous as vol
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.risco.config_flow import (
@@ -15,7 +17,10 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import cloud_config_entry as cloud_config_entry_fx
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 TEST_SITE_NAME = "test-site-name"
 TEST_CLOUD_DATA = {
@@ -56,19 +61,24 @@ TEST_ADVANCED_OPTIONS = {
 }
 
 
-async def test_cloud_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def cloud_form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we get the cloud form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.MENU
+    expect(result["type"]).to_be(FlowResultType.MENU)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "cloud"}
     )
-
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({})
 
     with (
         patch(
@@ -92,22 +102,24 @@ async def test_cloud_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == TEST_SITE_NAME
-    assert result3["data"] == TEST_CLOUD_DATA
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal(TEST_SITE_NAME)
+    expect(result3["data"]).to_equal(TEST_CLOUD_DATA)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
     mock_close.assert_awaited_once()
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (UnauthorizedError, "invalid_auth"),
-        (CannotConnectError, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", exception=UnauthorizedError, error="invalid_auth"),
+    test.case("cannot_connect", exception=CannotConnectError, error="cannot_connect"),
+    test.case("unknown", exception=Exception, error="unknown"),
 )
-async def test_cloud_error(hass: HomeAssistant, login_with_error, error) -> None:
+async def cloud_error(
+    *,
+    exception: type[Exception],
+    error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle config flow errors."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -116,52 +128,55 @@ async def test_cloud_error(hass: HomeAssistant, login_with_error, error) -> None
         result["flow_id"], {"next_step_id": "cloud"}
     )
 
-    with patch(
-        "homeassistant.components.risco.config_flow.RiscoCloud.close"
-    ) as mock_close:
+    with (
+        patch(
+            "homeassistant.components.risco.RiscoCloud.login", side_effect=exception
+        ),
+        patch(
+            "homeassistant.components.risco.config_flow.RiscoCloud.close"
+        ) as mock_close,
+    ):
         result3 = await hass.config_entries.flow.async_configure(
             result2["flow_id"], TEST_CLOUD_DATA
         )
 
     mock_close.assert_awaited_once()
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": error}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": error})
 
 
-async def test_form_cloud_already_exists(hass: HomeAssistant) -> None:
+@test
+async def form_cloud_already_exists(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that a flow with an existing username aborts."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=TEST_CLOUD_DATA["username"],
         data=TEST_CLOUD_DATA,
     )
-
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "cloud"}
     )
-
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"], TEST_CLOUD_DATA
     )
+    expect(result3["type"]).to_be(FlowResultType.ABORT)
+    expect(result3["reason"]).to_equal("already_configured")
 
-    assert result3["type"] is FlowResultType.ABORT
-    assert result3["reason"] == "already_configured"
 
-
-async def test_form_reauth(
-    hass: HomeAssistant, cloud_config_entry: MockConfigEntry
+@test
+async def form_reauth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    cloud_entry: MockConfigEntry = Depends(cloud_config_entry_fx),
 ) -> None:
     """Test reauthenticate."""
-
-    result = await cloud_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    result = await cloud_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -185,20 +200,21 @@ async def test_form_reauth(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
-    assert cloud_config_entry.data[CONF_PASSWORD] == "new_password"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
+    expect(cloud_entry.data[CONF_PASSWORD]).to_equal("new_password")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_reauth_with_new_username(
-    hass: HomeAssistant, cloud_config_entry: MockConfigEntry
+@test
+async def form_reauth_with_new_username(
+    hass: HomeAssistant = Depends(hass_fixture),
+    cloud_entry: MockConfigEntry = Depends(cloud_config_entry_fx),
 ) -> None:
     """Test reauthenticate with new username."""
-
-    result = await cloud_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    result = await cloud_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -222,26 +238,26 @@ async def test_form_reauth_with_new_username(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
-    assert cloud_config_entry.data[CONF_USERNAME] == "new_user"
-    assert cloud_config_entry.unique_id == "new_user"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
+    expect(cloud_entry.data[CONF_USERNAME]).to_equal("new_user")
+    expect(cloud_entry.unique_id).to_equal("new_user")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_local_form(hass: HomeAssistant) -> None:
+@test
+async def local_form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we get the local form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.MENU
+    expect(result["type"]).to_be(FlowResultType.MENU)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "local"}
     )
-
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({})
 
     with (
         patch(
@@ -270,22 +286,24 @@ async def test_local_form(hass: HomeAssistant) -> None:
         "type": "local",
         CONF_COMMUNICATION_DELAY: 0,
     }
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == TEST_SITE_NAME
-    assert result3["data"] == expected_data
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal(TEST_SITE_NAME)
+    expect(result3["data"]).to_equal(expected_data)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
     mock_close.assert_awaited_once()
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (UnauthorizedError, "invalid_auth"),
-        (CannotConnectError, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", exception=UnauthorizedError, error="invalid_auth"),
+    test.case("cannot_connect", exception=CannotConnectError, error="cannot_connect"),
+    test.case("unknown", exception=Exception, error="unknown"),
 )
-async def test_local_error(hass: HomeAssistant, connect_with_error, error) -> None:
+async def local_error(
+    *,
+    exception: type[Exception],
+    error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle config flow errors."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -294,28 +312,33 @@ async def test_local_error(hass: HomeAssistant, connect_with_error, error) -> No
         result["flow_id"], {"next_step_id": "local"}
     )
 
-    result3 = await hass.config_entries.flow.async_configure(
-        result2["flow_id"], TEST_LOCAL_DATA
-    )
+    with patch(
+        "homeassistant.components.risco.RiscoLocal.connect",
+        side_effect=exception,
+    ):
+        result3 = await hass.config_entries.flow.async_configure(
+            result2["flow_id"], TEST_LOCAL_DATA
+        )
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": error}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": error})
 
 
-async def test_form_local_already_exists(hass: HomeAssistant) -> None:
+@test
+async def form_local_already_exists(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that a flow with an existing host aborts."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=TEST_SITE_NAME,
         data=TEST_LOCAL_DATA,
     )
-
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "local"}
     )
@@ -337,132 +360,131 @@ async def test_form_local_already_exists(hass: HomeAssistant) -> None:
             result2["flow_id"], TEST_LOCAL_DATA
         )
 
-    assert result3["type"] is FlowResultType.ABORT
-    assert result3["reason"] == "already_configured"
+    expect(result3["type"]).to_be(FlowResultType.ABORT)
+    expect(result3["reason"]).to_equal("already_configured")
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test options flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=TEST_CLOUD_DATA["username"],
         data=TEST_CLOUD_DATA,
     )
-
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input=TEST_OPTIONS,
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "risco_to_ha"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input=TEST_RISCO_TO_HA,
+        result["flow_id"], user_input=TEST_OPTIONS
     )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("risco_to_ha")
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "ha_to_risco"
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], user_input=TEST_RISCO_TO_HA
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("ha_to_risco")
 
     with patch("homeassistant.components.risco.async_setup_entry", return_value=True):
         result = await hass.config_entries.options.async_configure(
-            result["flow_id"],
-            user_input=TEST_HA_TO_RISCO,
+            result["flow_id"], user_input=TEST_HA_TO_RISCO
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {
-        **TEST_OPTIONS,
-        "risco_states_to_ha": TEST_RISCO_TO_HA,
-        "ha_states_to_risco": TEST_HA_TO_RISCO,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options).to_equal(
+        {
+            **TEST_OPTIONS,
+            "risco_states_to_ha": TEST_RISCO_TO_HA,
+            "ha_states_to_risco": TEST_HA_TO_RISCO,
+        }
+    )
 
 
-async def test_advanced_options_flow(hass: HomeAssistant) -> None:
+@test
+async def advanced_options_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test options flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=TEST_CLOUD_DATA["username"],
         data=TEST_CLOUD_DATA,
     )
-
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(
         entry.entry_id, context={"show_advanced_options": True}
     )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert "concurrency" in result["data_schema"].schema
-    assert "scan_interval" in result["data_schema"].schema
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+    expect("concurrency" in result["data_schema"].schema).to_be(True)
+    expect("scan_interval" in result["data_schema"].schema).to_be(True)
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input={**TEST_OPTIONS, **TEST_ADVANCED_OPTIONS}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "risco_to_ha"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("risco_to_ha")
 
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input=TEST_RISCO_TO_HA,
+        result["flow_id"], user_input=TEST_RISCO_TO_HA
     )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "ha_to_risco"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("ha_to_risco")
 
     with patch("homeassistant.components.risco.async_setup_entry", return_value=True):
         result = await hass.config_entries.options.async_configure(
-            result["flow_id"],
-            user_input=TEST_HA_TO_RISCO,
+            result["flow_id"], user_input=TEST_HA_TO_RISCO
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {
-        **TEST_OPTIONS,
-        **TEST_ADVANCED_OPTIONS,
-        "risco_states_to_ha": TEST_RISCO_TO_HA,
-        "ha_states_to_risco": TEST_HA_TO_RISCO,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options).to_equal(
+        {
+            **TEST_OPTIONS,
+            **TEST_ADVANCED_OPTIONS,
+            "risco_states_to_ha": TEST_RISCO_TO_HA,
+            "ha_states_to_risco": TEST_HA_TO_RISCO,
+        }
+    )
 
 
-async def test_ha_to_risco_schema(hass: HomeAssistant) -> None:
+@test
+async def ha_to_risco_schema(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that the schema for the ha-to-risco mapping step is generated properly."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=TEST_CLOUD_DATA["username"],
         data=TEST_CLOUD_DATA,
     )
-
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input=TEST_OPTIONS,
+        result["flow_id"], user_input=TEST_OPTIONS
     )
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input=TEST_RISCO_TO_HA,
+        result["flow_id"], user_input=TEST_RISCO_TO_HA
     )
 
-    # Test an HA state that isn't used
-    with pytest.raises(vol.error.Invalid):
+    raised_custom_bypass = False
+    try:
         await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={**TEST_HA_TO_RISCO, "armed_custom_bypass": "D"},
         )
+    except vol.error.Invalid:
+        raised_custom_bypass = True
+    expect(raised_custom_bypass).to_be(True)
 
-    # Test a combo that can't be selected
-    with pytest.raises(vol.error.Invalid):
+    raised_armed_night = False
+    try:
         await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={**TEST_HA_TO_RISCO, "armed_night": "A"},
         )
+    except vol.error.Invalid:
+        raised_armed_night = True
+    expect(raised_armed_night).to_be(True)
