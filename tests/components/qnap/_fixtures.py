@@ -1,0 +1,36 @@
+"""Tryke fixtures for qnap tests."""
+
+from __future__ import annotations
+
+from collections.abc import Generator
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from tryke import fixture
+
+TEST_HOST = "1.2.3.4"
+TEST_USERNAME = "admin"
+TEST_PASSWORD = "password"
+TEST_NAS_NAME = "Test NAS name"
+TEST_SERIAL = "123456789"
+
+TEST_SYSTEM_STATS = {"system": {"serial_number": TEST_SERIAL, "name": TEST_NAS_NAME}}
+
+
+@fixture
+def mock_setup_entry() -> Generator[AsyncMock]:
+    """Override async_setup_entry."""
+    with patch(
+        "homeassistant.components.qnap.async_setup_entry", return_value=True
+    ) as mock:
+        yield mock
+
+
+@fixture
+def qnap_connect() -> Generator[MagicMock]:
+    """Mock qnap connection."""
+    with patch(
+        "homeassistant.components.qnap.config_flow.QNAPStats", autospec=True
+    ) as host_mock_class:
+        host_mock = host_mock_class.return_value
+        host_mock.get_system_stats.return_value = TEST_SYSTEM_STATS
+        yield host_mock
