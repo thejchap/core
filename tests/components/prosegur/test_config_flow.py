@@ -1,8 +1,10 @@
 """Test the Prosegur Alarm config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.prosegur.config_flow import CannotConnect, InvalidAuth
@@ -10,17 +12,28 @@ from homeassistant.components.prosegur.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_list_contracts as mock_list_contracts_fx
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(hass: HomeAssistant, mock_list_contracts) -> None:
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_list_contracts: list[dict[str, str]] = Depends(mock_list_contracts_fx),
+) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -48,20 +61,22 @@ async def test_form(hass: HomeAssistant, mock_list_contracts) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == "Contract 123"
-    assert result3["data"] == {
-        "contract": "123",
-        "username": "test-username",
-        "password": "test-password",
-        "country": "PT",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Contract 123")
+    expect(result3["data"]).to_equal(
+        {
+            "contract": "123",
+            "username": "test-username",
+            "password": "test-password",
+            "country": "PT",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+    expect(len(mock_retrieve.mock_calls)).to_equal(1)
 
-    assert len(mock_retrieve.mock_calls) == 1
 
-
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -80,11 +95,12 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -103,18 +119,19 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_unknown_exception(hass: HomeAssistant) -> None:
+@test
+async def form_unknown_exception(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle unknown exceptions."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
     with patch(
-        "pyprosegur.installation.Installation",
+        "homeassistant.components.prosegur.config_flow.Installation.list",
         side_effect=ValueError,
     ):
         result2 = await hass.config_entries.flow.async_configure(
@@ -126,11 +143,15 @@ async def test_form_unknown_exception(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_reauth_flow(hass: HomeAssistant, mock_list_contracts) -> None:
+@test
+async def reauth_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_list_contracts: list[dict[str, str]] = Depends(mock_list_contracts_fx),
+) -> None:
     """Test a reauthentication flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -144,9 +165,9 @@ async def test_reauth_flow(hass: HomeAssistant, mock_list_contracts) -> None:
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -167,27 +188,29 @@ async def test_reauth_flow(hass: HomeAssistant, mock_list_contracts) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
-    assert entry.data == {
-        "country": "PT",
-        "username": "test-username",
-        "password": "new_password",
-    }
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
+    expect(entry.data).to_equal(
+        {
+            "country": "PT",
+            "username": "test-username",
+            "password": "new_password",
+        }
+    )
+    expect(len(mock_installation.mock_calls)).to_equal(1)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
-    assert len(mock_installation.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
 
-
-@pytest.mark.parametrize(
-    ("exception", "base_error"),
-    [
-        (CannotConnect, "cannot_connect"),
-        (InvalidAuth, "invalid_auth"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("cannot_connect", exception=CannotConnect, base_error="cannot_connect"),
+    test.case("invalid_auth", exception=InvalidAuth, base_error="invalid_auth"),
+    test.case("unknown", exception=Exception, base_error="unknown"),
 )
-async def test_reauth_flow_error(hass: HomeAssistant, exception, base_error) -> None:
+async def reauth_flow_error(
+    exception: type[Exception],
+    base_error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a reauthentication flow with errors."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -215,5 +238,5 @@ async def test_reauth_flow_error(hass: HomeAssistant, exception, base_error) -> 
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"]["base"] == base_error
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]["base"]).to_equal(base_error)
