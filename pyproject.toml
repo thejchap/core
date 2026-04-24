@@ -1148,6 +1148,7 @@ dev = [
     "starline==0.1.5",
     "starlink-grpc-core==1.2.5",
     "steamodd==4.21",
+    "subarulink==0.7.19",
     "tesla-powerwall==0.5.2",
     "typedmonarchmoney==0.7.0",
     "ultraheat-api>=0.5.7",
