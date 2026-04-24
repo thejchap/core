@@ -968,6 +968,7 @@ dev = [
     "aiorecollect==2023.9.0",
     "aioridwell==2025.9.0",
     "aioruckus==0.42",
+    "aiorussound==5.0.1",
     "aioruuvigateway==0.1.0",
     "eagle100==0.1.1",
     "eternalegypt==0.0.18",
