@@ -1,8 +1,10 @@
 """Test the Google Assistant SDK config flow."""
 
+from collections.abc import Coroutine
+from typing import Any
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.google_assistant_sdk.const import DOMAIN
@@ -10,23 +12,44 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_entry_oauth2_flow
 
-from .conftest import CLIENT_ID, ComponentSetup
+from ._fixtures import (
+    CLIENT_ID,
+    config_entry as config_entry_fixture,
+    setup_credentials,
+    setup_integration,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    aioclient_mock as aioclient_mock_fx,
+    current_request_with_host,
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
-from tests.typing import ClientSessionGenerator
 
 GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 TITLE = "Google Assistant SDK"
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_full_flow(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    setup_credentials: None,
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _request: None = Depends(current_request_with_host),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    _credentials: None = Depends(setup_credentials),
 ) -> None:
     """Check full flow."""
     result = await hass.config_entries.flow.async_init(
@@ -40,17 +63,17 @@ async def test_full_flow(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/assistant-sdk-prototype"
         "&access_type=offline&prompt=consent"
     )
 
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await client()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
@@ -68,35 +91,38 @@ async def test_full_flow(
     ) as mock_setup:
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup.mock_calls) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(mock_setup.mock_calls)).to_equal(1)
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == TITLE
-    assert "result" in result
-    assert result.get("result").unique_id is None
-    assert "token" in result.get("result").data
-    assert result.get("result").data["token"].get("access_token") == "mock-access-token"
-    assert (
-        result.get("result").data["token"].get("refresh_token") == "mock-refresh-token"
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal(TITLE)
+    expect("result" in result).to_be(True)
+    expect(result.get("result").unique_id).to_be(None)
+    expect("token" in result.get("result").data).to_be(True)
+    expect(result.get("result").data["token"].get("access_token")).to_equal(
+        "mock-access-token"
+    )
+    expect(result.get("result").data["token"].get("refresh_token")).to_equal(
+        "mock-refresh-token"
     )
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_reauth(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    setup_credentials: None,
-    config_entry: MockConfigEntry,
+@test
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    _credentials: None = Depends(setup_credentials),
+    config_entry: MockConfigEntry = Depends(config_entry_fixture),
 ) -> None:
     """Test the reauthentication case updates the existing config entry."""
     config_entry.add_to_hass(hass)
 
     result = await config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     state = config_entry_oauth2_flow._encode_jwt(
@@ -106,16 +132,16 @@ async def test_reauth(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/assistant-sdk-prototype"
         "&access_type=offline&prompt=consent"
     )
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await client()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
@@ -133,33 +159,37 @@ async def test_reauth(
     ) as mock_setup:
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup.mock_calls) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(mock_setup.mock_calls)).to_equal(1)
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reauth_successful"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("reauth_successful")
 
-    assert config_entry.unique_id is None
-    assert "token" in config_entry.data
-    # Verify access token is refreshed
-    assert config_entry.data["token"].get("access_token") == "updated-access-token"
-    assert config_entry.data["token"].get("refresh_token") == "mock-refresh-token"
+    expect(config_entry.unique_id).to_be(None)
+    expect("token" in config_entry.data).to_be(True)
+    expect(config_entry.data["token"].get("access_token")).to_equal(
+        "updated-access-token"
+    )
+    expect(config_entry.data["token"].get("refresh_token")).to_equal(
+        "mock-refresh-token"
+    )
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_reconfigure(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    setup_credentials: None,
-    config_entry: MockConfigEntry,
+@test
+async def reconfigure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    _credentials: None = Depends(setup_credentials),
+    config_entry: MockConfigEntry = Depends(config_entry_fixture),
 ) -> None:
     """Test the reconfiguration flow updates the existing config entry."""
     config_entry.add_to_hass(hass)
 
     result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.EXTERNAL_STEP
+    expect(result["type"]).to_be(FlowResultType.EXTERNAL_STEP)
 
     state = config_entry_oauth2_flow._encode_jwt(
         hass,
@@ -168,16 +198,16 @@ async def test_reconfigure(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/assistant-sdk-prototype"
         "&access_type=offline&prompt=consent"
     )
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await client()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
@@ -191,24 +221,26 @@ async def test_reconfigure(
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reconfigure_successful"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("reconfigure_successful")
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert config_entry.unique_id is None
-    assert "token" in config_entry.data
-    # Verify access token is refreshed
-    assert config_entry.data["token"].get("access_token") == "updated-access-token"
-    assert config_entry.data["token"].get("refresh_token") == "mock-refresh-token"
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(config_entry.unique_id).to_be(None)
+    expect("token" in config_entry.data).to_be(True)
+    expect(config_entry.data["token"].get("access_token")).to_equal(
+        "updated-access-token"
+    )
+    expect(config_entry.data["token"].get("refresh_token")).to_equal(
+        "mock-refresh-token"
+    )
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_single_instance_allowed(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    setup_credentials: None,
-    config_entry: MockConfigEntry,
+@test
+async def single_instance_allowed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _credentials: None = Depends(setup_credentials),
+    config_entry: MockConfigEntry = Depends(config_entry_fixture),
 ) -> None:
     """Test case where config flow allows a single test."""
     config_entry.add_to_hass(hass)
@@ -217,57 +249,56 @@ async def test_single_instance_allowed(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "single_instance_allowed"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("single_instance_allowed")
 
 
-async def test_options_flow(
-    hass: HomeAssistant,
-    setup_integration: ComponentSetup,
-    config_entry: MockConfigEntry,
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_int: Coroutine[Any, Any, None] = Depends(setup_integration),
+    config_entry: MockConfigEntry = Depends(config_entry_fixture),
 ) -> None:
     """Test options flow."""
-    await setup_integration()
-    assert not config_entry.options
+    await setup_int()
+    expect(bool(config_entry.options)).to_be(False)
 
-    # Trigger options flow, first time
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
     data_schema = result["data_schema"].schema
-    assert set(data_schema) == {"language_code"}
+    expect(set(data_schema)).to_equal({"language_code"})
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={"language_code": "es-ES"},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {"language_code": "es-ES"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal({"language_code": "es-ES"})
 
-    # Retrigger options flow, not change language
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
     data_schema = result["data_schema"].schema
-    assert set(data_schema) == {"language_code"}
+    expect(set(data_schema)).to_equal({"language_code"})
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={"language_code": "es-ES"},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {"language_code": "es-ES"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal({"language_code": "es-ES"})
 
-    # Retrigger options flow, change language
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
     data_schema = result["data_schema"].schema
-    assert set(data_schema) == {"language_code"}
+    expect(set(data_schema)).to_equal({"language_code"})
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={"language_code": "en-US"},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {"language_code": "en-US"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal({"language_code": "en-US"})
