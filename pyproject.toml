@@ -949,6 +949,7 @@ dev = [
     "aio-ownet>=0.0.5",
     "aioeagle==1.1.0",
     "aiofiles==24.1.0",
+    "aioflo==2021.11.0",
     "aiohttp-sse==2.2.0",
     "aiokem==1.0.1",
     "aiolichess>=1.2.0",

@@ -5,7 +5,7 @@ import json
 import time
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.flo.const import DOMAIN
@@ -13,20 +13,34 @@ from homeassistant.const import CONTENT_TYPE_JSON
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import aioclient_mock_setup
 from .common import TEST_EMAIL_ADDRESS, TEST_PASSWORD, TEST_TOKEN, TEST_USER_ID
 
+from tests.hass_fixtures import (
+    aioclient_mock as aioclient_mock_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
 
 
-@pytest.mark.usefixtures("aioclient_mock_fixture")
-async def test_form(hass: HomeAssistant) -> None:
-    """Test we get the form."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_setup),
+) -> None:
+    """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.flo.async_setup_entry", return_value=True
@@ -35,15 +49,20 @@ async def test_form(hass: HomeAssistant) -> None:
             result["flow_id"], {"username": TEST_USER_ID, "password": TEST_PASSWORD}
         )
 
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
-        assert result2["title"] == TEST_USER_ID
-        assert result2["data"] == {"username": TEST_USER_ID, "password": TEST_PASSWORD}
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result2["title"]).to_equal(TEST_USER_ID)
+        expect(result2["data"]).to_equal(
+            {"username": TEST_USER_ID, "password": TEST_PASSWORD}
+        )
         await hass.async_block_till_done()
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_cannot_connect(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fixture),
 ) -> None:
     """Test we handle cannot connect error."""
     now = round(time.time())
@@ -72,5 +91,5 @@ async def test_form_cannot_connect(
         result["flow_id"], {"username": "test-username", "password": "test-password"}
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
