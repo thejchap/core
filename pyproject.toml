@@ -1049,6 +1049,7 @@ dev = [
     "govee-ble==1.2.0",
     "govee-local-api==2.4.0",
     "greeclimate==2.1.1",
+    "gspread==5.5.0",
     "greenplanet-energy-api==0.1.10",
     "gridnet==5.0.1",
     "ha-ffmpeg==3.2.2",
@@ -1420,8 +1421,6 @@ dev = [
     "pyvlx==0.2.33",
     "airthings-ble==1.2.0",
     "motionblinds==0.6.30",
-    "aioasuswrt==1.5.4",
-    "asusrouter==1.21.3",
     "motioneye-client==0.3.14",
     "aiowithings==3.1.6",
     "python-sn2==0.4.0",
@@ -1436,4 +1435,5 @@ dev = [
     "pyicloud==2.4.1",
     "fressnapftracker==0.2.2",
     "aiopvapi==3.3.0",
+    "adext==0.4.4",
 ]
