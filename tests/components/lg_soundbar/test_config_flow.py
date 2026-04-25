@@ -7,6 +7,8 @@ import socket
 from typing import Any
 from unittest.mock import DEFAULT, MagicMock, patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.lg_soundbar.const import DEFAULT_PORT, DOMAIN
 from homeassistant.const import CONF_HOST, CONF_PORT
@@ -14,6 +16,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
 def setup_mock_temescal(
@@ -57,101 +65,99 @@ def setup_mock_temescal(
     tmock.side_effect = temescal_side_effect
 
 
-async def test_form(hass: HomeAssistant) -> None:
-    """Test we get the form."""
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
-
-    with (
-        patch(
-            "homeassistant.components.lg_soundbar.config_flow.temescal"
-        ) as mock_temescal,
-        patch(
-            "homeassistant.components.lg_soundbar.async_setup_entry", return_value=True
-        ) as mock_setup_entry,
-    ):
-        setup_mock_temescal(
-            hass=hass,
-            mock_temescal=mock_temescal,
-            mac_info_dev={"s_uuid": "uuid"},
-            info={"s_user_name": "name"},
-        )
-        result2 = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                CONF_HOST: "1.1.1.1",
-            },
-        )
-        await hass.async_block_till_done()
-
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "name"
-    assert result2["result"].unique_id == "uuid"
-    assert result2["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: DEFAULT_PORT,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
-
-
-async def test_form_mac_info_response_empty(hass: HomeAssistant) -> None:
-    """Test we get the form, but response from the initial get_mac_info function call is empty."""
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
-
-    with (
-        patch(
-            "homeassistant.components.lg_soundbar.config_flow.temescal"
-        ) as mock_temescal,
-        patch(
-            "homeassistant.components.lg_soundbar.async_setup_entry", return_value=True
-        ) as mock_setup_entry,
-    ):
-        setup_mock_temescal(
-            hass=hass,
-            mock_temescal=mock_temescal,
-            mac_info_dev={"s_uuid": "uuid"},
-            info={"s_user_name": "name"},
-        )
-        result2 = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                CONF_HOST: "1.1.1.1",
-            },
-        )
-        await hass.async_block_till_done()
-
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "name"
-    assert result2["result"].unique_id == "uuid"
-    assert result2["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: DEFAULT_PORT,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
-
-
-async def test_form_uuid_present_in_both_functions_uuid_q_empty(
-    hass: HomeAssistant,
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Get the form, uuid present in both get_mac_info and get_product_info calls.
-
-    Value from get_mac_info is not added to uuid_q before get_product_info is run.
-    """
-
+    """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+
+    with (
+        patch(
+            "homeassistant.components.lg_soundbar.config_flow.temescal"
+        ) as mock_temescal,
+        patch(
+            "homeassistant.components.lg_soundbar.async_setup_entry", return_value=True
+        ) as mock_setup_entry,
+    ):
+        setup_mock_temescal(
+            hass=hass,
+            mock_temescal=mock_temescal,
+            mac_info_dev={"s_uuid": "uuid"},
+            info={"s_user_name": "name"},
+        )
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_HOST: "1.1.1.1",
+            },
+        )
+        await hass.async_block_till_done()
+
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("name")
+    expect(result2["result"].unique_id).to_equal("uuid")
+    expect(result2["data"]).to_equal({CONF_HOST: "1.1.1.1", CONF_PORT: DEFAULT_PORT})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
+@test
+async def form_mac_info_response_empty(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the form, but response from the initial get_mac_info function call is empty."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+
+    with (
+        patch(
+            "homeassistant.components.lg_soundbar.config_flow.temescal"
+        ) as mock_temescal,
+        patch(
+            "homeassistant.components.lg_soundbar.async_setup_entry", return_value=True
+        ) as mock_setup_entry,
+    ):
+        setup_mock_temescal(
+            hass=hass,
+            mock_temescal=mock_temescal,
+            mac_info_dev={"s_uuid": "uuid"},
+            info={"s_user_name": "name"},
+        )
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                CONF_HOST: "1.1.1.1",
+            },
+        )
+        await hass.async_block_till_done()
+
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("name")
+    expect(result2["result"].unique_id).to_equal("uuid")
+    expect(result2["data"]).to_equal({CONF_HOST: "1.1.1.1", CONF_PORT: DEFAULT_PORT})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
+@test
+async def form_uuid_present_in_both_functions_uuid_q_empty(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Get the form, uuid present in both get_mac_info and get_product_info calls."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -177,29 +183,24 @@ async def test_form_uuid_present_in_both_functions_uuid_q_empty(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "name"
-    assert result2["result"].unique_id == "uuid"
-    assert result2["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: DEFAULT_PORT,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("name")
+    expect(result2["result"].unique_id).to_equal("uuid")
+    expect(result2["data"]).to_equal({CONF_HOST: "1.1.1.1", CONF_PORT: DEFAULT_PORT})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_uuid_present_in_both_functions_uuid_q_not_empty(
-    hass: HomeAssistant,
+@test
+async def form_uuid_present_in_both_functions_uuid_q_not_empty(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Get the form, uuid present in both get_mac_info and get_product_info calls.
-
-    Value from get_mac_info is added to uuid_q before get_product_info is run.
-    """
-
+    """Get the form, uuid present in both get_mac_info and get_product_info calls."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -229,24 +230,24 @@ async def test_form_uuid_present_in_both_functions_uuid_q_not_empty(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "name"
-    assert result2["result"].unique_id == "uuid"
-    assert result2["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: DEFAULT_PORT,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("name")
+    expect(result2["result"].unique_id).to_equal("uuid")
+    expect(result2["data"]).to_equal({CONF_HOST: "1.1.1.1", CONF_PORT: DEFAULT_PORT})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_uuid_missing_from_mac_info(hass: HomeAssistant) -> None:
+@test
+async def form_uuid_missing_from_mac_info(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form, but uuid is missing from the initial get_mac_info function call."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -271,24 +272,24 @@ async def test_form_uuid_missing_from_mac_info(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "name"
-    assert result2["result"].unique_id == "uuid"
-    assert result2["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: DEFAULT_PORT,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("name")
+    expect(result2["result"].unique_id).to_equal("uuid")
+    expect(result2["data"]).to_equal({CONF_HOST: "1.1.1.1", CONF_PORT: DEFAULT_PORT})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_uuid_not_provided_by_api(hass: HomeAssistant) -> None:
+@test
+async def form_uuid_not_provided_by_api(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form, but uuid is missing from the all API messages."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -316,24 +317,24 @@ async def test_form_uuid_not_provided_by_api(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "name"
-    assert result2["result"].unique_id is None
-    assert result2["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: DEFAULT_PORT,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("name")
+    expect(result2["result"].unique_id).to_be(None)
+    expect(result2["data"]).to_equal({CONF_HOST: "1.1.1.1", CONF_PORT: DEFAULT_PORT})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_both_queues_empty(hass: HomeAssistant) -> None:
+@test
+async def form_both_queues_empty(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form, but none of the data we want is provided by the API."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -357,14 +358,17 @@ async def test_form_both_queues_empty(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "no_data"}
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "no_data"})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_no_uuid_host_already_configured(hass: HomeAssistant) -> None:
+@test
+async def no_uuid_host_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle if the device has no UUID and the host has already been configured."""
-
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -378,8 +382,8 @@ async def test_no_uuid_host_already_configured(hass: HomeAssistant) -> None:
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -400,11 +404,15 @@ async def test_no_uuid_host_already_configured(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")
 
 
-async def test_form_socket_timeout(hass: HomeAssistant) -> None:
+@test
+async def form_socket_timeout(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle socket.timeout error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -421,11 +429,15 @@ async def test_form_socket_timeout(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_os_error(hass: HomeAssistant) -> None:
+@test
+async def form_os_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle OSError."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -442,17 +454,21 @@ async def test_form_os_error(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_already_configured(hass: HomeAssistant) -> None:
+@test
+async def form_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle already configured error."""
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
             CONF_HOST: "1.1.1.1",
-            CONF_PORT: 0000,
+            CONF_PORT: 0,
         },
         unique_id="uuid",
     )
@@ -479,5 +495,5 @@ async def test_form_already_configured(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")
