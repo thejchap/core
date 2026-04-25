@@ -948,6 +948,7 @@ property-decorators = ["propcache.api.cached_property"]
 dev = [
     "advantage-air==0.4.4",
     "aio-geojson-generic-client==0.5",
+    "aio-georss-gdacs==0.10",
     "aio-ownet>=0.0.5",
     "aioeagle==1.1.0",
     "aiofiles==24.1.0",
@@ -1055,6 +1056,7 @@ dev = [
     "py-nextbusnext==2.3.0",
     "py-nightscout==1.2.2",
     "pyaxencoapi==1.0.7",
+    "pydeako==0.6.0",
     "pyhaversion==22.8.0",
     "pykmtronic>=0.3.0",
     "pykrakenapi>=0.3.2",
