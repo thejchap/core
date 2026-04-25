@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import aiosomecomfort
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.honeywell.const import (
     CONF_COOL_AWAY_TEMPERATURE,
@@ -15,7 +15,10 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import client, config_entry as config_entry_fx
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 FAKE_CONFIG = {
     "username": "fake",
@@ -25,37 +28,63 @@ FAKE_CONFIG = {
 }
 
 
-async def test_show_authenticate_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _client: MagicMock = Depends(client),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def show_authenticate_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the config form is shown."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_connection_error(hass: HomeAssistant, client: MagicMock) -> None:
+@test
+async def connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api_client: MagicMock = Depends(client),
+) -> None:
     """Test that an error message is shown on connection fail."""
-    client.login.side_effect = aiosomecomfort.device.ConnectionError
+    api_client.login.side_effect = aiosomecomfort.device.ConnectionError
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data=FAKE_CONFIG
     )
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_auth_error(hass: HomeAssistant, client: MagicMock) -> None:
+@test
+async def auth_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api_client: MagicMock = Depends(client),
+) -> None:
     """Test that an error message is shown on login fail."""
-    client.login.side_effect = aiosomecomfort.device.AuthError
+    api_client.login.side_effect = aiosomecomfort.device.AuthError
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data=FAKE_CONFIG
     )
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_create_entry(hass: HomeAssistant) -> None:
+@test
+async def create_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the config entry is created."""
     with patch(
         "homeassistant.components.honeywell.async_setup_entry",
@@ -66,19 +95,22 @@ async def test_create_entry(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == FAKE_CONFIG
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(FAKE_CONFIG)
 
 
-async def test_show_option_form(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+@test
+async def show_option_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry_fx),
 ) -> None:
     """Test that the option form is shown."""
     config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.LOADED
+    expect(config_entry.state).to_be(ConfigEntryState.LOADED)
 
     with patch(
         "homeassistant.components.honeywell.async_setup_entry",
@@ -86,19 +118,22 @@ async def test_show_option_form(
     ):
         result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
 
-async def test_create_option_entry(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+@test
+async def create_option_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry_fx),
 ) -> None:
     """Test that the config entry is created."""
     config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.LOADED
+    expect(config_entry.state).to_be(ConfigEntryState.LOADED)
 
     with patch(
         "homeassistant.components.honeywell.async_setup_entry",
@@ -113,16 +148,21 @@ async def test_create_option_entry(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {
-        CONF_COOL_AWAY_TEMPERATURE: 1,
-        CONF_HEAT_AWAY_TEMPERATURE: 2,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal(
+        {
+            CONF_COOL_AWAY_TEMPERATURE: 1,
+            CONF_HEAT_AWAY_TEMPERATURE: 2,
+        }
+    )
 
 
-async def test_reauth_flow(hass: HomeAssistant) -> None:
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a successful reauth flow."""
-
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_USERNAME: "test-username", CONF_PASSWORD: "test-password"},
@@ -131,9 +171,9 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
     mock_entry.add_to_hass(hass)
     result = await mock_entry.start_reauth_flow(hass)
 
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.honeywell.async_setup_entry",
@@ -145,17 +185,23 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
-    assert mock_entry.data == {
-        CONF_USERNAME: "new-username",
-        CONF_PASSWORD: "new-password",
-    }
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
+    expect(mock_entry.data).to_equal(
+        {
+            CONF_USERNAME: "new-username",
+            CONF_PASSWORD: "new-password",
+        }
+    )
 
 
-async def test_reauth_flow_auth_error(hass: HomeAssistant, client: MagicMock) -> None:
+@test
+async def reauth_flow_auth_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api_client: MagicMock = Depends(client),
+) -> None:
     """Test an authorization error reauth flow."""
-
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_USERNAME: "test-username", CONF_PASSWORD: "test-password"},
@@ -165,11 +211,11 @@ async def test_reauth_flow_auth_error(hass: HomeAssistant, client: MagicMock) ->
 
     result = await mock_entry.start_reauth_flow(hass)
 
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
-    client.login.side_effect = aiosomecomfort.device.AuthError
+    api_client.login.side_effect = aiosomecomfort.device.AuthError
     with patch(
         "homeassistant.components.honeywell.async_setup_entry",
         return_value=True,
@@ -180,23 +226,23 @@ async def test_reauth_flow_auth_error(hass: HomeAssistant, client: MagicMock) ->
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-@pytest.mark.parametrize(
-    "error",
-    [
-        aiosomecomfort.device.ConnectionError,
-        aiosomecomfort.device.ConnectionTimeout,
-        TimeoutError,
-    ],
+@test.cases(
+    test.case("connection_error", error=aiosomecomfort.device.ConnectionError),
+    test.case("connection_timeout", error=aiosomecomfort.device.ConnectionTimeout),
+    test.case("timeout_error", error=TimeoutError),
 )
-async def test_reauth_flow_connnection_error(
-    hass: HomeAssistant, client: MagicMock, error
+async def reauth_flow_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api_client: MagicMock = Depends(client),
+    *,
+    error: type[Exception],
 ) -> None:
     """Test a connection error reauth flow."""
-
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_USERNAME: "test-username", CONF_PASSWORD: "test-password"},
@@ -204,11 +250,11 @@ async def test_reauth_flow_connnection_error(
     )
     mock_entry.add_to_hass(hass)
     result = await mock_entry.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
-    client.login.side_effect = error
+    api_client.login.side_effect = error
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -216,5 +262,5 @@ async def test_reauth_flow_connnection_error(
     )
     await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
