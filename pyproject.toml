@@ -1092,6 +1092,7 @@ dev = [
     "py-vapid==1.9.4",
     "pyatag==0.3.5.3",
     "pyaxencoapi==1.0.7",
+    "pycfdns==3.0.0",
     "pycoolmasternet-async==0.2.4",
     "pydeako==0.6.0",
     "pyfireservicerota==0.0.46",
