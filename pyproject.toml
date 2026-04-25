@@ -1167,6 +1167,7 @@ dev = [
     "tellduslive==0.10.12",
     "tesla-fleet-api==1.4.5",
     "tesla-powerwall==0.5.2",
+    "tesla-wall-connector==1.1.0",
     "tessie-api==0.1.1",
     "typedmonarchmoney==0.7.0",
     "ultraheat-api>=0.5.7",
