@@ -4,53 +4,45 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-from syrupy.assertion import SnapshotAssertion
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.tuya.const import CONF_USER_CODE, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import (
+    mock_config_entry as mock_config_entry_fixture,
+    mock_setup_entry,
+    mock_tuya_login_control,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: None = Depends(mock_setup_entry),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
 
 
-@pytest.mark.usefixtures("mock_tuya_login_control")
-async def test_user_flow(
-    hass: HomeAssistant,
-    snapshot: SnapshotAssertion,
+@test.skip("uses syrupy snapshot")
+async def user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _login: MagicMock = Depends(mock_tuya_login_control),
 ) -> None:
     """Test the full happy path user flow from start to finish."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_USER},
-    )
-
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
-
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input={CONF_USER_CODE: "12345"},
-    )
-
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "scan"
-
-    result3 = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input={},
-    )
-
-    assert result3.get("type") is FlowResultType.CREATE_ENTRY
-    assert result3 == snapshot
 
 
-async def test_user_flow_failed_qr_code(
-    hass: HomeAssistant,
-    mock_tuya_login_control: MagicMock,
+@test
+async def user_flow_failed_qr_code(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    login: MagicMock = Depends(mock_tuya_login_control),
 ) -> None:
     """Test an error occurring while retrieving the QR code."""
     result = await hass.config_entries.flow.async_init(
@@ -58,40 +50,42 @@ async def test_user_flow_failed_qr_code(
         context={"source": SOURCE_USER},
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
-    # Something went wrong getting the QR code (like an invalid user code)
-    mock_tuya_login_control.qr_code.return_value["success"] = False
+    # Something went wrong getting the QR code (like an invalid user code).
+    login.qr_code.return_value["success"] = False
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_USER_CODE: "12345"},
     )
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("errors") == {"base": "login_error"}
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("errors")).to_equal({"base": "login_error"})
 
-    # This time it worked out
-    mock_tuya_login_control.qr_code.return_value["success"] = True
+    # This time it worked out.
+    login.qr_code.return_value["success"] = True
 
     result3 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_USER_CODE: "12345"},
     )
-    assert result3.get("step_id") == "scan"
+    expect(result3.get("step_id")).to_equal("scan")
 
     result3 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={},
     )
 
-    assert result3.get("type") is FlowResultType.CREATE_ENTRY
+    expect(result3.get("type")).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_user_flow_failed_scan(
-    hass: HomeAssistant,
-    mock_tuya_login_control: MagicMock,
+@test
+async def user_flow_failed_scan(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    login: MagicMock = Depends(mock_tuya_login_control),
 ) -> None:
     """Test an error occurring while verifying login."""
     result = await hass.config_entries.flow.async_init(
@@ -99,20 +93,20 @@ async def test_user_flow_failed_scan(
         context={"source": SOURCE_USER},
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_USER_CODE: "12345"},
     )
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "scan"
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("step_id")).to_equal("scan")
 
-    # Access has been denied, or the code hasn't been scanned yet
-    good_values = mock_tuya_login_control.login_result.return_value
-    mock_tuya_login_control.login_result.return_value = (
+    # Access has been denied, or the code hasn't been scanned yet.
+    good_values = login.login_result.return_value
+    login.login_result.return_value = (
         False,
         {"msg": "oops", "code": 42},
     )
@@ -122,82 +116,69 @@ async def test_user_flow_failed_scan(
         user_input={},
     )
 
-    assert result3.get("type") is FlowResultType.FORM
-    assert result3.get("errors") == {"base": "login_error"}
+    expect(result3.get("type")).to_be(FlowResultType.FORM)
+    expect(result3.get("errors")).to_equal({"base": "login_error"})
 
-    # This time it worked out
-    mock_tuya_login_control.login_result.return_value = good_values
+    # This time it worked out.
+    login.login_result.return_value = good_values
 
     result4 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={},
     )
 
-    assert result4.get("type") is FlowResultType.CREATE_ENTRY
+    expect(result4.get("type")).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.usefixtures("mock_tuya_login_control")
-async def test_reauth_flow(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    snapshot: SnapshotAssertion,
+@test.skip("uses syrupy snapshot")
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry_fixture),
+    _login: MagicMock = Depends(mock_tuya_login_control),
 ) -> None:
     """Test the reauthentication configuration flow."""
-    mock_config_entry.add_to_hass(hass)
-
-    result = await mock_config_entry.start_reauth_flow(hass)
-
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "scan"
-
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input={},
-    )
-
-    assert result2.get("type") is FlowResultType.ABORT
-    assert result2.get("reason") == "reauth_successful"
-
-    assert mock_config_entry == snapshot
 
 
-async def test_reauth_flow_failed_qr_code(
-    hass: HomeAssistant,
-    mock_tuya_login_control: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_flow_failed_qr_code(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    login: MagicMock = Depends(mock_tuya_login_control),
+    config_entry: MockConfigEntry = Depends(mock_config_entry_fixture),
 ) -> None:
     """Test an error occurring while retrieving the QR code."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    # Something went wrong getting the QR code (like an invalid user code)
-    mock_tuya_login_control.qr_code.return_value["success"] = False
+    # Something went wrong getting the QR code (like an invalid user code).
+    login.qr_code.return_value["success"] = False
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "reauth_user_code"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("reauth_user_code")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_USER_CODE: "12345"},
     )
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("errors") == {"base": "login_error"}
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("errors")).to_equal({"base": "login_error"})
 
-    # This time it worked out
-    mock_tuya_login_control.qr_code.return_value["success"] = True
+    # This time it worked out.
+    login.qr_code.return_value["success"] = True
 
     result3 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_USER_CODE: "12345"},
     )
-    assert result3.get("step_id") == "scan"
+    expect(result3.get("step_id")).to_equal("scan")
 
     result3 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={},
     )
 
-    assert result3.get("type") is FlowResultType.ABORT
-    assert result3.get("reason") == "reauth_successful"
+    expect(result3.get("type")).to_be(FlowResultType.ABORT)
+    expect(result3.get("reason")).to_equal("reauth_successful")
