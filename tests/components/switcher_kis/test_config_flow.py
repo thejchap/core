@@ -1,8 +1,8 @@
 """Test the Switcher config flow."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.switcher_kis.const import DOMAIN
@@ -10,6 +10,7 @@ from homeassistant.const import CONF_TOKEN, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import _bridge_context, mock_bridge_empty, mock_setup_entry
 from .consts import (
     DUMMY_DUAL_SHUTTER_SINGLE_LIGHT_DEVICE,
     DUMMY_PLUG_DEVICE,
@@ -20,71 +21,79 @@ from .consts import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.parametrize(
-    "mock_bridge",
-    [
-        [
-            DUMMY_PLUG_DEVICE,
-            DUMMY_WATER_HEATER_DEVICE,
-            # Make sure we don't detect the same device twice
-            DUMMY_WATER_HEATER_DEVICE,
-        ]
-    ],
-    indirect=True,
-)
-async def test_user_setup(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_bridge: MagicMock
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def user_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we can finish a config flow."""
-    with patch("homeassistant.components.switcher_kis.utils.DISCOVERY_TIME_SEC", 0):
+    devices = [
+        DUMMY_PLUG_DEVICE,
+        DUMMY_WATER_HEATER_DEVICE,
+        # Make sure we don't detect the same device twice
+        DUMMY_WATER_HEATER_DEVICE,
+    ]
+    with (
+        _bridge_context(devices) as bridge,
+        patch("homeassistant.components.switcher_kis.utils.DISCOVERY_TIME_SEC", 0),
+    ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "confirm"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("confirm")
 
         result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-        assert mock_bridge.is_running is False
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
-        assert result2["title"] == "Switcher"
-        assert result2["result"].data == {CONF_USERNAME: None, CONF_TOKEN: None}
+        expect(bridge.is_running).to_be(False)
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result2["title"]).to_equal("Switcher")
+        expect(result2["result"].data).to_equal(
+            {CONF_USERNAME: None, CONF_TOKEN: None}
+        )
 
         await hass.async_block_till_done()
 
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    "mock_bridge",
-    [
-        [
-            DUMMY_SINGLE_SHUTTER_DUAL_LIGHT_DEVICE,
-            DUMMY_DUAL_SHUTTER_SINGLE_LIGHT_DEVICE,
-        ]
-    ],
-    indirect=True,
-)
-async def test_user_setup_found_token_device_valid_token(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_bridge: MagicMock
+@test
+async def user_setup_found_token_device_valid_token(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we can finish a config flow with token device found."""
-    with patch("homeassistant.components.switcher_kis.utils.DISCOVERY_TIME_SEC", 0):
+    devices = [
+        DUMMY_SINGLE_SHUTTER_DUAL_LIGHT_DEVICE,
+        DUMMY_DUAL_SHUTTER_SINGLE_LIGHT_DEVICE,
+    ]
+    with (
+        _bridge_context(devices) as bridge,
+        patch("homeassistant.components.switcher_kis.utils.DISCOVERY_TIME_SEC", 0),
+    ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
 
     result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert mock_bridge.is_running is False
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "credentials"
+    expect(bridge.is_running).to_be(False)
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("credentials")
 
     with patch(
         "homeassistant.components.switcher_kis.config_flow.validate_token",
@@ -95,43 +104,44 @@ async def test_user_setup_found_token_device_valid_token(
             {CONF_USERNAME: DUMMY_USERNAME, CONF_TOKEN: DUMMY_TOKEN},
         )
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == "Switcher"
-    assert result3["result"].data == {
-        CONF_USERNAME: DUMMY_USERNAME,
-        CONF_TOKEN: DUMMY_TOKEN,
-    }
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Switcher")
+    expect(result3["result"].data).to_equal(
+        {
+            CONF_USERNAME: DUMMY_USERNAME,
+            CONF_TOKEN: DUMMY_TOKEN,
+        }
+    )
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    "mock_bridge",
-    [
-        [
-            DUMMY_SINGLE_SHUTTER_DUAL_LIGHT_DEVICE,
-            DUMMY_DUAL_SHUTTER_SINGLE_LIGHT_DEVICE,
-        ]
-    ],
-    indirect=True,
-)
-@pytest.mark.usefixtures("mock_bridge")
-async def test_user_setup_found_token_device_invalid_token(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def user_setup_found_token_device_invalid_token(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
-    """Test we can finish a config flow with token device found."""
-    with patch("homeassistant.components.switcher_kis.utils.DISCOVERY_TIME_SEC", 0):
+    """Test we can finish a config flow with token device found but invalid token."""
+    devices = [
+        DUMMY_SINGLE_SHUTTER_DUAL_LIGHT_DEVICE,
+        DUMMY_DUAL_SHUTTER_SINGLE_LIGHT_DEVICE,
+    ]
+    with (
+        _bridge_context(devices),
+        patch("homeassistant.components.switcher_kis.utils.DISCOVERY_TIME_SEC", 0),
+    ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
 
     result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "credentials"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("credentials")
 
     with patch(
         "homeassistant.components.switcher_kis.config_flow.validate_token",
@@ -142,8 +152,8 @@ async def test_user_setup_found_token_device_invalid_token(
             {CONF_USERNAME: DUMMY_USERNAME, CONF_TOKEN: DUMMY_TOKEN},
         )
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "invalid_auth"}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": "invalid_auth"})
 
     with patch(
         "homeassistant.components.switcher_kis.config_flow.validate_token",
@@ -154,18 +164,24 @@ async def test_user_setup_found_token_device_invalid_token(
             {CONF_USERNAME: DUMMY_USERNAME, CONF_TOKEN: DUMMY_TOKEN},
         )
 
-        assert result4["type"] is FlowResultType.CREATE_ENTRY
-        assert result4["title"] == "Switcher"
-        assert result4["result"].data == {
-            CONF_USERNAME: DUMMY_USERNAME,
-            CONF_TOKEN: DUMMY_TOKEN,
-        }
+        expect(result4["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result4["title"]).to_equal("Switcher")
+        expect(result4["result"].data).to_equal(
+            {
+                CONF_USERNAME: DUMMY_USERNAME,
+                CONF_TOKEN: DUMMY_TOKEN,
+            }
+        )
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_setup_abort_no_devices_found(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_bridge: MagicMock
+@test
+async def user_setup_abort_no_devices_found(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    bridge: AsyncMock = Depends(mock_bridge_empty),
 ) -> None:
     """Test we abort a config flow if no devices found."""
     with patch("homeassistant.components.switcher_kis.utils.DISCOVERY_TIME_SEC", 0):
@@ -173,21 +189,25 @@ async def test_user_setup_abort_no_devices_found(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "confirm"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("confirm")
 
         result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-        assert mock_bridge.is_running is False
-        assert result2["type"] is FlowResultType.ABORT
-        assert result2["reason"] == "no_devices_found"
+        expect(bridge.is_running).to_be(False)
+        expect(result2["type"]).to_be(FlowResultType.ABORT)
+        expect(result2["reason"]).to_equal("no_devices_found")
 
         await hass.async_block_till_done()
 
-        assert len(mock_setup_entry.mock_calls) == 0
+        expect(len(setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_single_instance(hass: HomeAssistant) -> None:
+@test
+async def single_instance(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we only allow a single config flow."""
     MockConfigEntry(domain=DOMAIN).add_to_hass(hass)
     await hass.async_block_till_done()
@@ -196,21 +216,17 @@ async def test_single_instance(hass: HomeAssistant) -> None:
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
 
 
-@pytest.mark.parametrize(
-    ("user_input"),
-    [
-        ({CONF_USERNAME: DUMMY_USERNAME, CONF_TOKEN: DUMMY_TOKEN}),
-    ],
-)
-async def test_reauth_successful(
-    hass: HomeAssistant,
-    user_input: dict[str, str],
+@test
+async def reauth_successful(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test starting a reauthentication flow."""
+    user_input = {CONF_USERNAME: DUMMY_USERNAME, CONF_TOKEN: DUMMY_TOKEN}
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_USERNAME: DUMMY_USERNAME, CONF_TOKEN: DUMMY_TOKEN},
@@ -218,8 +234,8 @@ async def test_reauth_successful(
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.switcher_kis.config_flow.validate_token",
@@ -230,11 +246,15 @@ async def test_reauth_successful(
             user_input=user_input,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-async def test_reauth_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def reauth_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauthentication flow with invalid credentials."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -243,8 +263,8 @@ async def test_reauth_invalid_auth(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.switcher_kis.config_flow.validate_token",
@@ -255,8 +275,8 @@ async def test_reauth_invalid_auth(hass: HomeAssistant) -> None:
             user_input={CONF_USERNAME: "invalid_user", CONF_TOKEN: "invalid_token"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
     with patch(
         "homeassistant.components.switcher_kis.config_flow.validate_token",
@@ -267,5 +287,5 @@ async def test_reauth_invalid_auth(hass: HomeAssistant) -> None:
             {CONF_USERNAME: DUMMY_USERNAME, CONF_TOKEN: DUMMY_TOKEN},
         )
 
-        assert result3["type"] is FlowResultType.ABORT
-        assert result3["reason"] == "reauth_successful"
+        expect(result3["type"]).to_be(FlowResultType.ABORT)
+        expect(result3["reason"]).to_equal("reauth_successful")
