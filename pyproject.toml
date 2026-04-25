@@ -1442,4 +1442,6 @@ dev = [
     "doorbirdpy==3.0.11",
     "pyairobotrest==0.3.0",
     "python-google-drive-api==0.1.0",
+    "pykoplenti==1.5.0",
+    "homevolt==0.5.0",
 ]
