@@ -983,6 +983,7 @@ dev = [
     "eternalegypt==0.0.18",
     "freezegun>=1.5.5",
     "getmac==0.9.5",
+    "gotailwind==0.3.0",
     "gridnet==5.0.1",
     "ha-philipsjs==3.2.4",
     "hass-splunk==0.1.4",

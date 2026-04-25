@@ -8,8 +8,7 @@ from gotailwind import (
     TailwindConnectionError,
     TailwindUnsupportedFirmwareVersionError,
 )
-import pytest
-from syrupy.assertion import SnapshotAssertion
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.tailwind.const import DOMAIN
 from homeassistant.config_entries import SOURCE_DHCP, SOURCE_USER, SOURCE_ZEROCONF
@@ -19,21 +18,34 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
+from ._fixtures import mock_config_entry, mock_setup_entry, mock_tailwind
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup_entry: None = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-@pytest.mark.usefixtures("mock_tailwind")
-async def test_user_flow(hass: HomeAssistant) -> None:
+@test
+async def user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _tailwind: MagicMock = Depends(mock_tailwind),
+) -> None:
     """Test the full happy path user flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -43,33 +55,42 @@ async def test_user_flow(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "3c:e9:0e:6d:21:84"
-    assert config_entry.data == {
-        CONF_HOST: "127.0.0.1",
-        CONF_TOKEN: "987654",
-    }
-    assert not config_entry.options
+    expect(config_entry.unique_id).to_equal("3c:e9:0e:6d:21:84")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOST: "127.0.0.1",
+            CONF_TOKEN: "987654",
+        }
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (TailwindConnectionError, {CONF_HOST: "cannot_connect"}),
-        (TailwindAuthenticationError, {CONF_TOKEN: "invalid_auth"}),
-        (Exception, {"base": "unknown"}),
-    ],
+@test.cases(
+    test.case(
+        "cannot_connect",
+        side_effect=TailwindConnectionError,
+        expected_error={CONF_HOST: "cannot_connect"},
+    ),
+    test.case(
+        "invalid_auth",
+        side_effect=TailwindAuthenticationError,
+        expected_error={CONF_TOKEN: "invalid_auth"},
+    ),
+    test.case("unknown", side_effect=Exception, expected_error={"base": "unknown"}),
 )
-async def test_user_flow_errors(
-    hass: HomeAssistant,
-    mock_tailwind: MagicMock,
-    side_effect: Exception,
+async def user_flow_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    tailwind: MagicMock = Depends(mock_tailwind),
+    *,
+    side_effect: type[Exception],
     expected_error: dict[str, str],
 ) -> None:
     """Test we show user form on a connection error."""
-    mock_tailwind.status.side_effect = side_effect
+    tailwind.status.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -80,11 +101,11 @@ async def test_user_flow_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == expected_error
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal(expected_error)
 
-    mock_tailwind.status.side_effect = None
+    tailwind.status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
@@ -92,22 +113,27 @@ async def test_user_flow_errors(
             CONF_TOKEN: "123456",
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "3c:e9:0e:6d:21:84"
-    assert config_entry.data == {
-        CONF_HOST: "127.0.0.2",
-        CONF_TOKEN: "123456",
-    }
-    assert not config_entry.options
+    expect(config_entry.unique_id).to_equal("3c:e9:0e:6d:21:84")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOST: "127.0.0.2",
+            CONF_TOKEN: "123456",
+        }
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
 
-async def test_user_flow_unsupported_firmware_version(
-    hass: HomeAssistant, mock_tailwind: MagicMock
+@test
+async def user_flow_unsupported_firmware_version(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    tailwind: MagicMock = Depends(mock_tailwind),
 ) -> None:
     """Test configuration flow aborts when the firmware version is not supported."""
-    mock_tailwind.status.side_effect = TailwindUnsupportedFirmwareVersionError
+    tailwind.status.side_effect = TailwindUnsupportedFirmwareVersionError
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
@@ -117,20 +143,20 @@ async def test_user_flow_unsupported_firmware_version(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unsupported_firmware"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unsupported_firmware")
 
 
-@pytest.mark.usefixtures("mock_tailwind")
-async def test_user_flow_already_configured(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def user_flow_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _tailwind: MagicMock = Depends(mock_tailwind),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
-    """Test configuration flow aborts when the device is already configured.
-
-    Also, ensures the existing config entry is updated with the new host.
-    """
-    mock_config_entry.add_to_hass(hass)
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.127"
+    """Test configuration flow aborts when the device is already configured."""
+    config_entry.add_to_hass(hass)
+    expect(config_entry.data[CONF_HOST]).to_equal("127.0.0.127")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -141,16 +167,17 @@ async def test_user_flow_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.1"
-    assert mock_config_entry.data[CONF_TOKEN] == "987654"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(config_entry.data[CONF_HOST]).to_equal("127.0.0.1")
+    expect(config_entry.data[CONF_TOKEN]).to_equal("987654")
 
 
-@pytest.mark.usefixtures("mock_tailwind")
-async def test_zeroconf_flow(
-    hass: HomeAssistant,
-    snapshot: SnapshotAssertion,
+@test
+async def zeroconf_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _tailwind: MagicMock = Depends(mock_tailwind),
 ) -> None:
     """Test the zeroconf happy flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
@@ -172,37 +199,48 @@ async def test_zeroconf_flow(
         ),
     )
 
-    assert result["step_id"] == "zeroconf_confirm"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     progress = hass.config_entries.flow.async_progress()
-    assert len(progress) == 1
-    assert progress[0].get("flow_id") == result["flow_id"]
+    expect(len(progress)).to_equal(1)
+    expect(progress[0].get("flow_id")).to_equal(result["flow_id"])
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_TOKEN: "987654"}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "3c:e9:0e:6d:21:84"
-    assert config_entry.data == {
-        CONF_HOST: "127.0.0.1",
-        CONF_TOKEN: "987654",
-    }
-    assert not config_entry.options
+    expect(config_entry.unique_id).to_equal("3c:e9:0e:6d:21:84")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOST: "127.0.0.1",
+            CONF_TOKEN: "987654",
+        }
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
 
-@pytest.mark.parametrize(
-    ("properties", "expected_reason"),
-    [
-        ({"SW ver": "10.10"}, "no_device_id"),
-        ({"device_id": "_3c_e9_e_6d_21_84_", "SW ver": "0.0"}, "unsupported_firmware"),
-    ],
+@test.cases(
+    test.case(
+        "no_device_id",
+        properties={"SW ver": "10.10"},
+        expected_reason="no_device_id",
+    ),
+    test.case(
+        "unsupported_firmware",
+        properties={"device_id": "_3c_e9_e_6d_21_84_", "SW ver": "0.0"},
+        expected_reason="unsupported_firmware",
+    ),
 )
-async def test_zeroconf_flow_abort_incompatible_properties(
-    hass: HomeAssistant, properties: dict[str, str], expected_reason: str
+async def zeroconf_flow_abort_incompatible_properties(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    properties: dict[str, str],
+    expected_reason: str,
 ) -> None:
     """Test the zeroconf aborts when it advertises incompatible data."""
     result = await hass.config_entries.flow.async_init(
@@ -219,26 +257,33 @@ async def test_zeroconf_flow_abort_incompatible_properties(
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == expected_reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(expected_reason)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (TailwindConnectionError, {"base": "cannot_connect"}),
-        (TailwindAuthenticationError, {CONF_TOKEN: "invalid_auth"}),
-        (Exception, {"base": "unknown"}),
-    ],
+@test.cases(
+    test.case(
+        "cannot_connect",
+        side_effect=TailwindConnectionError,
+        expected_error={"base": "cannot_connect"},
+    ),
+    test.case(
+        "invalid_auth",
+        side_effect=TailwindAuthenticationError,
+        expected_error={CONF_TOKEN: "invalid_auth"},
+    ),
+    test.case("unknown", side_effect=Exception, expected_error={"base": "unknown"}),
 )
-async def test_zeroconf_flow_errors(
-    hass: HomeAssistant,
-    mock_tailwind: MagicMock,
-    side_effect: Exception,
+async def zeroconf_flow_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    tailwind: MagicMock = Depends(mock_tailwind),
+    *,
+    side_effect: type[Exception],
     expected_error: dict[str, str],
 ) -> None:
     """Test we show form on a error."""
-    mock_tailwind.status.side_effect = side_effect
+    tailwind.status.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -266,39 +311,40 @@ async def test_zeroconf_flow_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zeroconf_confirm"
-    assert result["errors"] == expected_error
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
+    expect(result["errors"]).to_equal(expected_error)
 
-    mock_tailwind.status.side_effect = None
+    tailwind.status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
             CONF_TOKEN: "123456",
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "3c:e9:0e:6d:21:84"
-    assert config_entry.data == {
-        CONF_HOST: "127.0.0.1",
-        CONF_TOKEN: "123456",
-    }
-    assert not config_entry.options
+    expect(config_entry.unique_id).to_equal("3c:e9:0e:6d:21:84")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOST: "127.0.0.1",
+            CONF_TOKEN: "123456",
+        }
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
 
-@pytest.mark.usefixtures("mock_tailwind")
-async def test_zeroconf_flow_not_discovered_again(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def zeroconf_flow_not_discovered_again(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _tailwind: MagicMock = Depends(mock_tailwind),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
-    """Test the zeroconf doesn't re-discover an existing device.
-
-    Also, ensures the existing config entry is updated with the new host.
-    """
-    mock_config_entry.add_to_hass(hass)
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.127"
+    """Test the zeroconf doesn't re-discover an existing device."""
+    config_entry.add_to_hass(hass)
+    expect(config_entry.data[CONF_HOST]).to_equal("127.0.0.127")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -319,23 +365,25 @@ async def test_zeroconf_flow_not_discovered_again(
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.1"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(config_entry.data[CONF_HOST]).to_equal("127.0.0.1")
 
 
-@pytest.mark.usefixtures("mock_tailwind")
-async def test_reauth_flow(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _tailwind: MagicMock = Depends(mock_tailwind),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test the reauthentication configuration flow."""
-    mock_config_entry.add_to_hass(hass)
-    assert mock_config_entry.data[CONF_TOKEN] == "123456"
+    config_entry.add_to_hass(hass)
+    expect(config_entry.data[CONF_TOKEN]).to_equal("123456")
 
-    result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -343,32 +391,39 @@ async def test_reauth_flow(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
-    assert mock_config_entry.data[CONF_TOKEN] == "987654"
+    expect(config_entry.data[CONF_TOKEN]).to_equal("987654")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (TailwindConnectionError, {"base": "cannot_connect"}),
-        (TailwindAuthenticationError, {CONF_TOKEN: "invalid_auth"}),
-        (Exception, {"base": "unknown"}),
-    ],
+@test.cases(
+    test.case(
+        "cannot_connect",
+        side_effect=TailwindConnectionError,
+        expected_error={"base": "cannot_connect"},
+    ),
+    test.case(
+        "invalid_auth",
+        side_effect=TailwindAuthenticationError,
+        expected_error={CONF_TOKEN: "invalid_auth"},
+    ),
+    test.case("unknown", side_effect=Exception, expected_error={"base": "unknown"}),
 )
-async def test_reauth_flow_errors(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_tailwind: MagicMock,
-    side_effect: Exception,
+async def reauth_flow_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    tailwind: MagicMock = Depends(mock_tailwind),
+    *,
+    side_effect: type[Exception],
     expected_error: dict[str, str],
 ) -> None:
     """Test we show form on a error."""
-    mock_config_entry.add_to_hass(hass)
-    mock_tailwind.status.side_effect = side_effect
+    config_entry.add_to_hass(hass)
+    tailwind.status.side_effect = side_effect
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -377,11 +432,11 @@ async def test_reauth_flow_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == expected_error
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal(expected_error)
 
-    mock_tailwind.status.side_effect = None
+    tailwind.status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
@@ -389,21 +444,23 @@ async def test_reauth_flow_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-@pytest.mark.usefixtures("mock_tailwind")
-async def test_reconfigure_flow(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _tailwind: MagicMock = Depends(mock_tailwind),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test the reconfiguration flow updates an existing entry."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    result = await config_entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -414,35 +471,42 @@ async def test_reconfigure_flow(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.42"
-    assert mock_config_entry.data[CONF_TOKEN] == "987654"
+    expect(config_entry.data[CONF_HOST]).to_equal("127.0.0.42")
+    expect(config_entry.data[CONF_TOKEN]).to_equal("987654")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (TailwindConnectionError, {CONF_HOST: "cannot_connect"}),
-        (TailwindAuthenticationError, {CONF_TOKEN: "invalid_auth"}),
-        (Exception, {"base": "unknown"}),
-    ],
+@test.cases(
+    test.case(
+        "cannot_connect",
+        side_effect=TailwindConnectionError,
+        expected_error={CONF_HOST: "cannot_connect"},
+    ),
+    test.case(
+        "invalid_auth",
+        side_effect=TailwindAuthenticationError,
+        expected_error={CONF_TOKEN: "invalid_auth"},
+    ),
+    test.case("unknown", side_effect=Exception, expected_error={"base": "unknown"}),
 )
-async def test_reconfigure_flow_errors(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_tailwind: MagicMock,
-    side_effect: Exception,
+async def reconfigure_flow_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    tailwind: MagicMock = Depends(mock_tailwind),
+    *,
+    side_effect: type[Exception],
     expected_error: dict[str, str],
 ) -> None:
     """Test the reconfiguration flow recovers from errors."""
-    mock_config_entry.add_to_hass(hass)
-    mock_tailwind.status.side_effect = side_effect
+    config_entry.add_to_hass(hass)
+    tailwind.status.side_effect = side_effect
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    result = await config_entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -452,11 +516,11 @@ async def test_reconfigure_flow_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-    assert result["errors"] == expected_error
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(result["errors"]).to_equal(expected_error)
 
-    mock_tailwind.status.side_effect = None
+    tailwind.status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
@@ -465,23 +529,25 @@ async def test_reconfigure_flow_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
 
-async def test_reconfigure_flow_different_device(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_tailwind: MagicMock,
+@test
+async def reconfigure_flow_different_device(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    tailwind: MagicMock = Depends(mock_tailwind),
 ) -> None:
     """Test reconfigure aborts when the new device has a different MAC."""
-    mock_config_entry.add_to_hass(hass)
-    mock_tailwind.status.return_value = MagicMock(
+    config_entry.add_to_hass(hass)
+    tailwind.status.return_value = MagicMock(
         mac_address="aa:bb:cc:dd:ee:ff",
         product="iQ3",
     )
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -491,17 +557,19 @@ async def test_reconfigure_flow_different_device(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "different_device"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("different_device")
 
 
-async def test_dhcp_discovery_updates_entry(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def dhcp_discovery_updates_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test DHCP discovery updates config entries."""
-    mock_config_entry.add_to_hass(hass)
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.127"
+    config_entry.add_to_hass(hass)
+    expect(config_entry.data[CONF_HOST]).to_equal("127.0.0.127")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -513,16 +581,17 @@ async def test_dhcp_discovery_updates_entry(
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.1"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(config_entry.data[CONF_HOST]).to_equal("127.0.0.1")
 
 
-async def test_dhcp_discovery_ignores_unknown(hass: HomeAssistant) -> None:
-    """Test DHCP discovery is only used for updates.
-
-    Anything else will just abort the flow.
-    """
+@test
+async def dhcp_discovery_ignores_unknown(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test DHCP discovery is only used for updates."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_DHCP},
@@ -533,5 +602,5 @@ async def test_dhcp_discovery_ignores_unknown(hass: HomeAssistant) -> None:
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
