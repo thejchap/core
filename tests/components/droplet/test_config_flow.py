@@ -43,9 +43,17 @@ def _trigger_executor(
 
 
 @test.cases(
-    test.case("alphanumeric_lower_space", pre_normalized_code="abc 123", normalized_code="ABC123"),
-    test.case("numeric_space", pre_normalized_code=" 123456 ", normalized_code="123456"),
-    test.case("alphanumeric_no_space", pre_normalized_code="123ABC", normalized_code="123ABC"),
+    test.case(
+        "alphanumeric_lower_space",
+        pre_normalized_code="abc 123",
+        normalized_code="ABC123",
+    ),
+    test.case(
+        "numeric_space", pre_normalized_code=" 123456 ", normalized_code="123456"
+    ),
+    test.case(
+        "alphanumeric_no_space", pre_normalized_code="123ABC", normalized_code="123ABC"
+    ),
 )
 async def user_setup(
     _trigger: None = Depends(_trigger_executor),
@@ -160,9 +168,17 @@ async def user_setup_already_configured(
 
 
 @test.cases(
-    test.case("alphanumeric_lower_space", pre_normalized_code="abc 123", normalized_code="ABC123"),
-    test.case("numeric_space", pre_normalized_code=" 123456 ", normalized_code="123456"),
-    test.case("alphanumeric_no_space", pre_normalized_code="123ABC", normalized_code="123ABC"),
+    test.case(
+        "alphanumeric_lower_space",
+        pre_normalized_code="abc 123",
+        normalized_code="ABC123",
+    ),
+    test.case(
+        "numeric_space", pre_normalized_code=" 123456 ", normalized_code="123456"
+    ),
+    test.case(
+        "alphanumeric_no_space", pre_normalized_code="123ABC", normalized_code="123ABC"
+    ),
 )
 async def zeroconf_setup(
     _trigger: None = Depends(_trigger_executor),

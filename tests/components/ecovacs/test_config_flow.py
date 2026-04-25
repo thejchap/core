@@ -26,10 +26,7 @@ from ._fixtures import (
     mock_mqtt_client,
     mock_setup_entry,
 )
-from .const import (
-    VALID_ENTRY_DATA_CLOUD,
-    VALID_ENTRY_DATA_SELF_HOSTED,
-)
+from .const import VALID_ENTRY_DATA_CLOUD, VALID_ENTRY_DATA_SELF_HOSTED
 
 from tests.common import MockConfigEntry
 from tests.hass_fixtures import hass as hass_fixture, mock_network

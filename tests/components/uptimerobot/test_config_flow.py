@@ -103,8 +103,14 @@ async def user_key_read_only(
 
 @test.cases(
     test.case("unknown", exception=Exception, error_key="unknown"),
-    test.case("cannot_connect", exception=UptimeRobotException, error_key="cannot_connect"),
-    test.case("invalid_api_key", exception=UptimeRobotAuthenticationException, error_key="invalid_api_key"),
+    test.case(
+        "cannot_connect", exception=UptimeRobotException, error_key="cannot_connect"
+    ),
+    test.case(
+        "invalid_api_key",
+        exception=UptimeRobotAuthenticationException,
+        error_key="invalid_api_key",
+    ),
 )
 async def exception_thrown(
     _trigger: None = Depends(_trigger_executor),

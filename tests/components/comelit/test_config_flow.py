@@ -121,7 +121,9 @@ async def flow_vedo(
     test.case("unknown", side_effect=ConnectionResetError, error="unknown"),
     test.case("invalid_pin", side_effect=InvalidPin, error="invalid_pin"),
     test.case("invalid_vedo_pin", side_effect=InvalidVedoPin, error="invalid_vedo_pin"),
-    test.case("invalid_vedo_auth", side_effect=InvalidVedoAuth, error="invalid_vedo_auth"),
+    test.case(
+        "invalid_vedo_auth", side_effect=InvalidVedoAuth, error="invalid_vedo_auth"
+    ),
 )
 async def exception_connection(
     _trigger: None = Depends(_trigger_executor),
@@ -290,7 +292,9 @@ async def reconfigure_successful(
     test.case("unknown", side_effect=ConnectionResetError, error="unknown"),
     test.case("invalid_pin", side_effect=InvalidPin, error="invalid_pin"),
     test.case("invalid_vedo_pin", side_effect=InvalidVedoPin, error="invalid_vedo_pin"),
-    test.case("invalid_vedo_auth", side_effect=InvalidVedoAuth, error="invalid_vedo_auth"),
+    test.case(
+        "invalid_vedo_auth", side_effect=InvalidVedoAuth, error="invalid_vedo_auth"
+    ),
 )
 async def reconfigure_fails(
     _trigger: None = Depends(_trigger_executor),

@@ -12,7 +12,9 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("requires ZHA radio manager and homeassistant_hardware firmware mocking stack")
+@test.skip(
+    "requires ZHA radio manager and homeassistant_hardware firmware mocking stack"
+)
 async def config_flow_zigbee(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

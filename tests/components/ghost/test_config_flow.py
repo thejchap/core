@@ -120,8 +120,16 @@ async def form_already_configured(
 
 
 @test.cases(
-    test.case("invalid_auth", side_effect=GhostAuthError("Invalid API key"), error_key="invalid_auth"),
-    test.case("cannot_connect", side_effect=GhostConnectionError("Connection failed"), error_key="cannot_connect"),
+    test.case(
+        "invalid_auth",
+        side_effect=GhostAuthError("Invalid API key"),
+        error_key="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        side_effect=GhostConnectionError("Connection failed"),
+        error_key="cannot_connect",
+    ),
     test.case("unknown", side_effect=RuntimeError("Unexpected"), error_key="unknown"),
 )
 async def form_errors_can_recover(
@@ -199,8 +207,16 @@ async def reauth_flow(
 
 
 @test.cases(
-    test.case("invalid_auth", side_effect=GhostAuthError("Invalid API key"), error_key="invalid_auth"),
-    test.case("cannot_connect", side_effect=GhostConnectionError("Connection failed"), error_key="cannot_connect"),
+    test.case(
+        "invalid_auth",
+        side_effect=GhostAuthError("Invalid API key"),
+        error_key="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        side_effect=GhostConnectionError("Connection failed"),
+        error_key="cannot_connect",
+    ),
     test.case("unknown", side_effect=RuntimeError("Unexpected"), error_key="unknown"),
 )
 async def reauth_flow_errors_can_recover(
@@ -291,8 +307,16 @@ async def reconfigure_flow(
 
 
 @test.cases(
-    test.case("invalid_auth", side_effect=GhostAuthError("Invalid API key"), error_key="invalid_auth"),
-    test.case("cannot_connect", side_effect=GhostConnectionError("Connection failed"), error_key="cannot_connect"),
+    test.case(
+        "invalid_auth",
+        side_effect=GhostAuthError("Invalid API key"),
+        error_key="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        side_effect=GhostConnectionError("Connection failed"),
+        error_key="cannot_connect",
+    ),
     test.case("unknown", side_effect=RuntimeError("Unexpected"), error_key="unknown"),
 )
 async def reconfigure_flow_errors_can_recover(

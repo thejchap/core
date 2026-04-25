@@ -166,9 +166,7 @@ async def flow_no_buckets(
     expect(result["step_id"]).to_equal("user")
     expect(result["errors"]).to_equal({"base": "no_buckets"})
 
-    client.list_buckets.return_value = {
-        "Buckets": [{"Name": USER_INPUT[CONF_BUCKET]}]
-    }
+    client.list_buckets.return_value = {"Buckets": [{"Name": USER_INPUT[CONF_BUCKET]}]}
     result = await hass.config_entries.flow.async_configure(
         flow_id,
         {

@@ -3,8 +3,8 @@
 from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 
-from tryke import fixture
 from trmnl.models import DevicesResponse, UserResponse
+from tryke import fixture
 
 from homeassistant.components.trmnl.const import DOMAIN
 from homeassistant.const import CONF_API_KEY

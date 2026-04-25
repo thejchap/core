@@ -4,8 +4,8 @@ from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
 from bleak.exc import BleakDeviceNotFoundError
-import voluptuous as vol
 from tryke import Depends, expect, fixture, test
+import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components.eurotronic_cometblue.config_flow import (
@@ -26,11 +26,7 @@ from ._fixtures import (
 )
 
 from tests.common import MockConfigEntry
-from tests.hass_fixtures import (
-    enable_bluetooth,
-    hass as hass_fixture,
-    mock_network,
-)
+from tests.hass_fixtures import enable_bluetooth, hass as hass_fixture, mock_network
 
 
 @fixture

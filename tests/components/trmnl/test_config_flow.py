@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock
 
-from tryke import Depends, expect, fixture, test
 from trmnl.exceptions import TRMNLAuthenticationError, TRMNLError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.trmnl.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER

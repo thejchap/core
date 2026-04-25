@@ -68,9 +68,15 @@ async def form_and_flow(
 
 
 @test.cases(
-    test.case("invalid_auth", exception=FireflyAuthenticationError, reason="invalid_auth"),
-    test.case("cannot_connect", exception=FireflyConnectionError, reason="cannot_connect"),
-    test.case("timeout_connect", exception=FireflyTimeoutError, reason="timeout_connect"),
+    test.case(
+        "invalid_auth", exception=FireflyAuthenticationError, reason="invalid_auth"
+    ),
+    test.case(
+        "cannot_connect", exception=FireflyConnectionError, reason="cannot_connect"
+    ),
+    test.case(
+        "timeout_connect", exception=FireflyTimeoutError, reason="timeout_connect"
+    ),
     test.case("unknown", exception=Exception("Some other error"), reason="unknown"),
 )
 async def form_exceptions(
@@ -152,9 +158,7 @@ async def full_flow_reauth(
 ) -> None:
     """Test the full flow of the config flow."""
     config_entry.add_to_hass(hass)
-    await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_USER}
-    )
+    await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
 
     result = await config_entry.start_reauth_flow(hass)
     expect(result["type"]).to_be(FlowResultType.FORM)
@@ -176,9 +180,15 @@ async def full_flow_reauth(
 
 
 @test.cases(
-    test.case("invalid_auth", exception=FireflyAuthenticationError, reason="invalid_auth"),
-    test.case("cannot_connect", exception=FireflyConnectionError, reason="cannot_connect"),
-    test.case("timeout_connect", exception=FireflyTimeoutError, reason="timeout_connect"),
+    test.case(
+        "invalid_auth", exception=FireflyAuthenticationError, reason="invalid_auth"
+    ),
+    test.case(
+        "cannot_connect", exception=FireflyConnectionError, reason="cannot_connect"
+    ),
+    test.case(
+        "timeout_connect", exception=FireflyTimeoutError, reason="timeout_connect"
+    ),
     test.case("unknown", exception=Exception("Some other error"), reason="unknown"),
 )
 async def reauth_flow_exceptions(
@@ -195,9 +205,7 @@ async def reauth_flow_exceptions(
     config_entry.add_to_hass(hass)
     client.get_about.side_effect = exception
 
-    await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_USER}
-    )
+    await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
 
     result = await config_entry.start_reauth_flow(hass)
     expect(result["type"]).to_be(FlowResultType.FORM)
@@ -289,9 +297,15 @@ async def full_flow_reconfigure_unique_id(
 
 
 @test.cases(
-    test.case("invalid_auth", exception=FireflyAuthenticationError, reason="invalid_auth"),
-    test.case("cannot_connect", exception=FireflyConnectionError, reason="cannot_connect"),
-    test.case("timeout_connect", exception=FireflyTimeoutError, reason="timeout_connect"),
+    test.case(
+        "invalid_auth", exception=FireflyAuthenticationError, reason="invalid_auth"
+    ),
+    test.case(
+        "cannot_connect", exception=FireflyConnectionError, reason="cannot_connect"
+    ),
+    test.case(
+        "timeout_connect", exception=FireflyTimeoutError, reason="timeout_connect"
+    ),
     test.case("unknown", exception=Exception("Some other error"), reason="unknown"),
 )
 async def full_flow_reconfigure_exceptions(
