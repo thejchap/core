@@ -1,6 +1,9 @@
 """Test the laundrify config flow."""
 
+from unittest.mock import AsyncMock
+
 from laundrify_aio import exceptions
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.laundrify.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -8,18 +11,32 @@ from homeassistant.const import CONF_ACCESS_TOKEN, CONF_CODE, CONF_SOURCE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import laundrify_api_mock, laundrify_config_entry
 from .const import VALID_ACCESS_TOKEN, VALID_AUTH_CODE, VALID_USER_INPUT
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _api: AsyncMock = Depends(laundrify_api_mock),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -27,17 +44,24 @@ async def test_form(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DOMAIN
-    assert result["data"] == {
-        CONF_ACCESS_TOKEN: VALID_ACCESS_TOKEN,
-    }
-    assert result["result"].unique_id == "1234"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DOMAIN)
+    expect(result["data"]).to_equal(
+        {
+            CONF_ACCESS_TOKEN: VALID_ACCESS_TOKEN,
+        }
+    )
+    expect(result["result"].unique_id).to_equal("1234")
 
 
-async def test_form_invalid_format(hass: HomeAssistant, laundrify_api_mock) -> None:
+@test
+async def form_invalid_format(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: AsyncMock = Depends(laundrify_api_mock),
+) -> None:
     """Test we handle invalid format."""
-    laundrify_api_mock.exchange_auth_code.side_effect = exceptions.InvalidFormat
+    api.exchange_auth_code.side_effect = exceptions.InvalidFormat
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -45,59 +69,75 @@ async def test_form_invalid_format(hass: HomeAssistant, laundrify_api_mock) -> N
         data={CONF_CODE: "invalidFormat"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {CONF_CODE: "invalid_format"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({CONF_CODE: "invalid_format"})
 
 
-async def test_form_invalid_auth(hass: HomeAssistant, laundrify_api_mock) -> None:
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: AsyncMock = Depends(laundrify_api_mock),
+) -> None:
     """Test we handle invalid auth."""
-    laundrify_api_mock.exchange_auth_code.side_effect = exceptions.UnknownAuthCode
+    api.exchange_auth_code.side_effect = exceptions.UnknownAuthCode
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: SOURCE_USER},
         data=VALID_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {CONF_CODE: "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({CONF_CODE: "invalid_auth"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant, laundrify_api_mock) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: AsyncMock = Depends(laundrify_api_mock),
+) -> None:
     """Test we handle cannot connect error."""
-    laundrify_api_mock.exchange_auth_code.side_effect = (
-        exceptions.ApiConnectionException
-    )
+    api.exchange_auth_code.side_effect = exceptions.ApiConnectionException
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: SOURCE_USER},
         data=VALID_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_unkown_exception(hass: HomeAssistant, laundrify_api_mock) -> None:
+@test
+async def form_unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: AsyncMock = Depends(laundrify_api_mock),
+) -> None:
     """Test we handle all other errors."""
-    laundrify_api_mock.exchange_auth_code.side_effect = Exception
+    api.exchange_auth_code.side_effect = Exception
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: SOURCE_USER},
         data=VALID_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "unknown"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_step_reauth(
-    hass: HomeAssistant, laundrify_config_entry: MockConfigEntry
+@test
+async def step_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(laundrify_config_entry),
 ) -> None:
     """Test the reauth form is shown."""
-    result = await laundrify_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -105,11 +145,14 @@ async def test_step_reauth(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
 
-async def test_integration_already_exists(
-    hass: HomeAssistant, laundrify_config_entry: MockConfigEntry
+@test
+async def integration_already_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _config_entry: MockConfigEntry = Depends(laundrify_config_entry),
 ) -> None:
     """Test we only allow a single config flow."""
     result = await hass.config_entries.flow.async_init(
@@ -123,5 +166,5 @@ async def test_integration_already_exists(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
