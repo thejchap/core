@@ -996,6 +996,7 @@ dev = [
     "aiotankerkoenig==0.5.1",
     "aiotedee==0.3.0",
     "aiousbwatcher>=1.1.2",
+    "aiovlc==0.5.1",
     "aiowatttime==0.1.1",
     "aiowebdav2==0.6.2",
     "apple-weatherkit==1.1.3",
