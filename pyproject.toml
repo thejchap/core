@@ -1406,4 +1406,5 @@ dev = [
     "coinbase-advanced-py==1.2.2",
     "ekey-bionyxpy==1.0.1",
     "yalesmartalarmclient==0.4.3",
+    "aioimmich==0.14.0",
 ]
