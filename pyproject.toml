@@ -1004,6 +1004,7 @@ dev = [
     "devialet==1.5.7",
     "discovery30303==0.3.3",
     "dropmqttapi==1.0.3",
+    "dwdwfsapi==1.0.7",
     "eagle100==0.1.1",
     "eq3btsmart==2.3.0",
     "eternalegypt==0.0.18",

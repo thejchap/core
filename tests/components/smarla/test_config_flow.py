@@ -6,13 +6,14 @@ from pysmarlaapi.connection.exceptions import (
     AuthenticationException,
     ConnectionException,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.smarla.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_connection, mock_setup_entry
 from .const import (
     MOCK_ACCESS_TOKEN_JSON,
     MOCK_USER_INPUT,
@@ -21,32 +22,48 @@ from .const import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.usefixtures("mock_setup_entry", "mock_connection")
-async def test_config_flow(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: None = Depends(mock_setup_entry),
+    _connection: MagicMock = Depends(mock_connection),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def config_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test creating a config entry."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=MOCK_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == MOCK_ACCESS_TOKEN_JSON["serialNumber"]
-    assert result["data"] == MOCK_USER_INPUT
-    assert result["result"].unique_id == MOCK_ACCESS_TOKEN_JSON["serialNumber"]
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(MOCK_ACCESS_TOKEN_JSON["serialNumber"])
+    expect(result["data"]).to_equal(MOCK_USER_INPUT)
+    expect(result["result"].unique_id).to_equal(MOCK_ACCESS_TOKEN_JSON["serialNumber"])
 
 
-@pytest.mark.usefixtures("mock_setup_entry", "mock_connection")
-async def test_malformed_token(hass: HomeAssistant) -> None:
+@test
+async def malformed_token(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we show user form on malformed token input."""
     with patch(
         "homeassistant.components.smarla.config_flow.Connection", side_effect=ValueError
@@ -57,34 +74,32 @@ async def test_malformed_token(hass: HomeAssistant) -> None:
             data=MOCK_USER_INPUT,
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "malformed_token"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "malformed_token"})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=MOCK_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.parametrize(
-    ("exception", "error_key"),
-    [
-        (AuthenticationException, "invalid_auth"),
-        (ConnectionException, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("auth", exception=AuthenticationException, error_key="invalid_auth"),
+    test.case("connect", exception=ConnectionException, error_key="cannot_connect"),
 )
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_validation_exception(
-    hass: HomeAssistant,
-    mock_connection: MagicMock,
+async def validation_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    connection: MagicMock = Depends(mock_connection),
+    *,
     exception: type[Exception],
     error_key: str,
 ) -> None:
     """Test we show user form on validation exception."""
-    mock_connection.refresh_token.side_effect = exception
+    connection.refresh_token.side_effect = exception
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -92,26 +107,28 @@ async def test_validation_exception(
         data=MOCK_USER_INPUT,
     )
 
-    mock_connection.refresh_token.side_effect = None
+    connection.refresh_token.side_effect = None
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": error_key}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": error_key})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=MOCK_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.usefixtures("mock_setup_entry", "mock_connection")
-async def test_device_exists_abort(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def device_exists_abort(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we abort config flow if Smarla device already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -119,54 +136,56 @@ async def test_device_exists_abort(
         data=MOCK_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_setup_entry", "mock_connection")
-async def test_reauth_successful(
-    mock_config_entry: MockConfigEntry,
-    hass: HomeAssistant,
+@test
+async def reauth_successful(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test a successful reauthentication flow."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=MOCK_USER_INPUT_RECONFIGURE,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data == MOCK_USER_INPUT_RECONFIGURE
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data).to_equal(MOCK_USER_INPUT_RECONFIGURE)
 
 
-@pytest.mark.usefixtures("mock_setup_entry", "mock_connection")
-async def test_reauth_mismatch(
-    mock_config_entry: MockConfigEntry,
-    hass: HomeAssistant,
+@test
+async def reauth_mismatch(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test a reauthentication flow with mismatched serial number."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=MOCK_USER_INPUT_MISMATCH,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unique_id_mismatch"
-    assert mock_config_entry.data == MOCK_USER_INPUT
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unique_id_mismatch")
+    expect(config_entry.data).to_equal(MOCK_USER_INPUT)
