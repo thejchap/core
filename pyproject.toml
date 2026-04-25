@@ -1119,6 +1119,7 @@ dev = [
     "python-tado==0.18.16",
     "pytile==2024.12.0",
     "pytraccar==3.0.0",
+    "pytrydan==0.8.0",
     "qbittorrent-api==2024.9.67",
     "qbusmqttapi==1.4.3",
     "qingping-ble==1.1.0",
