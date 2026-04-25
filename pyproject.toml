@@ -1173,6 +1173,7 @@ dev = [
     "tesla-wall-connector==1.1.0",
     "tessie-api==0.1.1",
     "tilt-pi==0.2.1",
+    "tololib==1.2.2",
     "typedmonarchmoney==0.7.0",
     "ultraheat-api>=0.5.7",
     "url-normalize==2.2.1",
