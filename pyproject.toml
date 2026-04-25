@@ -1156,6 +1156,7 @@ dev = [
     "steamodd==4.21",
     "subarulink==0.7.19",
     "switchbot-api==2.11.0",
+    "systembridgeconnector==5.4.3",
     "tesla-powerwall==0.5.2",
     "typedmonarchmoney==0.7.0",
     "ultraheat-api>=0.5.7",
