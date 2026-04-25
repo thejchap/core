@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, Mock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 from waterfurnace.waterfurnace import WFCredentialError, WFException
 
 from homeassistant.components.waterfurnace.const import DOMAIN
@@ -11,119 +11,143 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_setup_entry, mock_waterfurnace_client
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_user_flow_success(
-    hass: HomeAssistant, mock_waterfurnace_client: Mock, mock_setup_entry: AsyncMock
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Apply autouse-equivalent fixtures."""
+
+
+@test
+async def user_flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: Mock = Depends(mock_waterfurnace_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test successful user flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test_user", CONF_PASSWORD: "test_password"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "WaterFurnace test_user"
-    assert result["data"] == {
-        CONF_USERNAME: "test_user",
-        CONF_PASSWORD: "test_password",
-    }
-    assert result["result"].unique_id == "test_account_id"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("WaterFurnace test_user")
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: "test_user",
+            CONF_PASSWORD: "test_password",
+        }
+    )
+    expect(result["result"].unique_id).to_equal("test_account_id")
+    expect(client.login.called).to_be(True)
 
-    # Verify login was called (once during config flow, once during setup)
-    assert mock_waterfurnace_client.login.called
 
-
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (WFCredentialError("Invalid credentials"), "invalid_auth"),
-        (WFException("Connection failed"), "cannot_connect"),
-        (Exception("Unexpected error"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        exception=WFCredentialError("Invalid credentials"),
+        error="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        exception=WFException("Connection failed"),
+        error="cannot_connect",
+    ),
+    test.case(
+        "unknown",
+        exception=Exception("Unexpected error"),
+        error="unknown",
+    ),
 )
-async def test_user_flow_exceptions(
-    hass: HomeAssistant,
-    mock_waterfurnace_client: Mock,
-    mock_setup_entry: AsyncMock,
+async def user_flow_exceptions(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: Mock = Depends(mock_waterfurnace_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    *,
     exception: Exception,
     error: str,
 ) -> None:
-    """Test user flow with invalid credentials."""
-    mock_waterfurnace_client.login.side_effect = exception
+    """Test user flow with errors and recovery."""
+    client.login.side_effect = exception
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "bad_user", CONF_PASSWORD: "bad_password"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    # Verify we can recover from the error
-    mock_waterfurnace_client.login.side_effect = None
+    client.login.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test_user", CONF_PASSWORD: "test_password"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_user_flow_no_devices(
-    hass: HomeAssistant, mock_waterfurnace_client: Mock, mock_setup_entry: AsyncMock
+@test
+async def user_flow_no_devices(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: Mock = Depends(mock_waterfurnace_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user flow with no devices."""
-    mock_waterfurnace_client.devices = []
+    client.devices = []
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_USERNAME: "bad_user",
-            CONF_PASSWORD: "bad_password",
-        },
+        {CONF_USERNAME: "bad_user", CONF_PASSWORD: "bad_password"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "no_devices"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "no_devices"})
 
-    mock_waterfurnace_client.devices = [Mock(gwid="TEST_GWID_12345")]
+    client.devices = [Mock(gwid="TEST_GWID_12345")]
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_USERNAME: "test_user",
-            CONF_PASSWORD: "test_password",
-        },
+        {CONF_USERNAME: "test_user", CONF_PASSWORD: "test_password"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_user_flow_account_id_none(
-    hass: HomeAssistant, mock_waterfurnace_client: Mock, mock_setup_entry: AsyncMock
+@test
+async def user_flow_account_id_none(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: Mock = Depends(mock_waterfurnace_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user flow when account_id is None."""
-    mock_waterfurnace_client.account_id = None
+    client.account_id = None
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -134,37 +158,40 @@ async def test_user_flow_account_id_none(
         {CONF_USERNAME: "test_user", CONF_PASSWORD: "test_password"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "unknown"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_user_flow_already_configured(
-    hass: HomeAssistant,
-    mock_waterfurnace_client: Mock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def user_flow_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: Mock = Depends(mock_waterfurnace_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test user flow when device is already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_USERNAME: "test_user",
-            CONF_PASSWORD: "test_password",
-        },
+        {CONF_USERNAME: "test_user", CONF_PASSWORD: "test_password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_import_flow_success(
-    hass: HomeAssistant, mock_waterfurnace_client: Mock, mock_setup_entry: AsyncMock
+@test
+async def import_flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: Mock = Depends(mock_waterfurnace_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test successful import flow from YAML."""
     result = await hass.config_entries.flow.async_init(
@@ -173,22 +200,23 @@ async def test_import_flow_success(
         data={CONF_USERNAME: "test_user", CONF_PASSWORD: "test_password"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "WaterFurnace test_user"
-    assert result["data"] == {
-        CONF_USERNAME: "test_user",
-        CONF_PASSWORD: "test_password",
-    }
-    assert result["result"].unique_id == "test_account_id"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("WaterFurnace test_user")
+    expect(result["data"]).to_equal(
+        {CONF_USERNAME: "test_user", CONF_PASSWORD: "test_password"}
+    )
+    expect(result["result"].unique_id).to_equal("test_account_id")
 
 
-async def test_import_flow_already_configured(
-    hass: HomeAssistant,
-    mock_waterfurnace_client: Mock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def import_flow_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: Mock = Depends(mock_waterfurnace_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test import flow when device is already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -196,26 +224,33 @@ async def test_import_flow_already_configured(
         data={CONF_USERNAME: "test_user", CONF_PASSWORD: "test_password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("exception", "reason"),
-    [
-        (WFCredentialError("Invalid credentials"), "invalid_auth"),
-        (WFException("Connection failed"), "cannot_connect"),
-        (Exception("Unexpected error"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        exception=WFCredentialError("Invalid credentials"),
+        reason="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        exception=WFException("Connection failed"),
+        reason="cannot_connect",
+    ),
+    test.case("unknown", exception=Exception("Unexpected error"), reason="unknown"),
 )
-async def test_import_flow_exceptions(
-    hass: HomeAssistant,
-    mock_waterfurnace_client: Mock,
+async def import_flow_exceptions(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: Mock = Depends(mock_waterfurnace_client),
+    *,
     exception: Exception,
     reason: str,
 ) -> None:
     """Test import flow with connection error."""
-    mock_waterfurnace_client.login.side_effect = exception
+    client.login.side_effect = exception
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -223,15 +258,18 @@ async def test_import_flow_exceptions(
         data={CONF_USERNAME: "test_user", CONF_PASSWORD: "test_password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(reason)
 
 
-async def test_import_flow_account_id_none(
-    hass: HomeAssistant, mock_waterfurnace_client: Mock
+@test
+async def import_flow_account_id_none(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: Mock = Depends(mock_waterfurnace_client),
 ) -> None:
     """Test import flow when account_id is None."""
-    mock_waterfurnace_client.account_id = None
+    client.account_id = None
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -239,15 +277,18 @@ async def test_import_flow_account_id_none(
         data={CONF_USERNAME: "test_user", CONF_PASSWORD: "test_password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_import_flow_no_devices(
-    hass: HomeAssistant, mock_waterfurnace_client: Mock
+@test
+async def import_flow_no_devices(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: Mock = Depends(mock_waterfurnace_client),
 ) -> None:
     """Test import flow with no devices."""
-    mock_waterfurnace_client.devices = []
+    client.devices = []
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -255,116 +296,129 @@ async def test_import_flow_no_devices(
         data={CONF_USERNAME: "test_user", CONF_PASSWORD: "test_password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices")
 
 
-async def test_reauth_flow_success(
-    hass: HomeAssistant,
-    mock_waterfurnace_client: Mock,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+@test
+async def reauth_flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: Mock = Depends(mock_waterfurnace_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test successful reauth flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "new_user", CONF_PASSWORD: "new_password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.title == "WaterFurnace new_user"
-    assert mock_config_entry.data[CONF_USERNAME] == "new_user"
-    assert mock_config_entry.data[CONF_PASSWORD] == "new_password"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.title).to_equal("WaterFurnace new_user")
+    expect(config_entry.data[CONF_USERNAME]).to_equal("new_user")
+    expect(config_entry.data[CONF_PASSWORD]).to_equal("new_password")
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (WFCredentialError("Invalid credentials"), "invalid_auth"),
-        (WFException("Connection failed"), "cannot_connect"),
-        (Exception("Unexpected error"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        exception=WFCredentialError("Invalid credentials"),
+        error="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        exception=WFException("Connection failed"),
+        error="cannot_connect",
+    ),
+    test.case("unknown", exception=Exception("Unexpected error"), error="unknown"),
 )
-async def test_reauth_flow_exceptions(
-    hass: HomeAssistant,
-    mock_waterfurnace_client: Mock,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+async def reauth_flow_exceptions(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: Mock = Depends(mock_waterfurnace_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    *,
     exception: Exception,
     error: str,
 ) -> None:
     """Test reauth flow with errors and recovery."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    mock_waterfurnace_client.login.side_effect = exception
+    client.login.side_effect = exception
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test_user", CONF_PASSWORD: "bad_password"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    mock_waterfurnace_client.login.side_effect = None
+    client.login.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test_user", CONF_PASSWORD: "new_password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-async def test_reauth_flow_wrong_account(
-    hass: HomeAssistant,
-    mock_waterfurnace_client: Mock,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+@test
+async def reauth_flow_wrong_account(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: Mock = Depends(mock_waterfurnace_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reauth flow aborts when a different account is used."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    mock_waterfurnace_client.account_id = "different_account_id"
+    client.account_id = "different_account_id"
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "other_user", CONF_PASSWORD: "other_password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "wrong_account"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("wrong_account")
 
 
-async def test_reauth_flow_no_account_id(
-    hass: HomeAssistant,
-    mock_waterfurnace_client: Mock,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+@test
+async def reauth_flow_no_account_id(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: Mock = Depends(mock_waterfurnace_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reauth flow when no account ID is returned."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    mock_waterfurnace_client.account_id = None
+    client.account_id = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test_user", CONF_PASSWORD: "new_password"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
