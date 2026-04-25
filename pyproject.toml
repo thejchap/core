@@ -1386,4 +1386,5 @@ dev = [
     "deebot-client==18.1.0",
     "py-sucks==0.9.11",
     "wyoming==1.7.2",
+    "zcc-helper==3.8",
 ]
