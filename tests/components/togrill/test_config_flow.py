@@ -1,9 +1,9 @@
 """Test the ToGrill config flow."""
 
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from bleak.exc import BleakError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.togrill.const import DOMAIN
@@ -11,18 +11,28 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import TOGRILL_SERVICE_INFO, TOGRILL_SERVICE_INFO_NO_NAME, setup_entry
+from ._fixtures import mock_client, mock_client_class, mock_entry, mock_setup_entry
 
 from tests.common import MockConfigEntry
 from tests.components.bluetooth import inject_bluetooth_service_info
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    _client: Mock = Depends(mock_client),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
 
 
-async def test_user_selection(
-    hass: HomeAssistant,
+@test
+async def user_selection(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we can select a device."""
-
     inject_bluetooth_service_info(hass, TOGRILL_SERVICE_INFO)
     inject_bluetooth_service_info(hass, TOGRILL_SERVICE_INFO_NO_NAME)
     await hass.async_block_till_done(wait_background_tasks=True)
@@ -30,26 +40,30 @@ async def test_user_selection(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={"address": TOGRILL_SERVICE_INFO.address},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        "address": TOGRILL_SERVICE_INFO.address,
-        "model": "Pro-05",
-        "probe_count": 0,
-        "has_ambient": False,
-    }
-    assert result["title"] == "Pro-05"
-    assert result["result"].unique_id == TOGRILL_SERVICE_INFO.address
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            "address": TOGRILL_SERVICE_INFO.address,
+            "model": "Pro-05",
+            "probe_count": 0,
+            "has_ambient": False,
+        }
+    )
+    expect(result["title"]).to_equal("Pro-05")
+    expect(result["result"].unique_id).to_equal(TOGRILL_SERVICE_INFO.address)
 
 
-async def test_user_selection_ignored(
-    hass: HomeAssistant,
+@test
+async def user_selection_ignored(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we can select a device."""
     entry = MockConfigEntry(
@@ -65,119 +79,126 @@ async def test_user_selection_ignored(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={"address": TOGRILL_SERVICE_INFO.address},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_failed_connect(
-    hass: HomeAssistant,
-    mock_client: Mock,
-    mock_client_class: Mock,
+@test
+async def failed_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: Mock = Depends(mock_client),
+    client_class: Mock = Depends(mock_client_class),
 ) -> None:
     """Test failure to connect result."""
-
-    mock_client_class.connect.side_effect = BleakError("Failed to connect")
+    client_class.connect.side_effect = BleakError("Failed to connect")
 
     inject_bluetooth_service_info(hass, TOGRILL_SERVICE_INFO)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={"address": TOGRILL_SERVICE_INFO.address},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "failed_to_read_config"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("failed_to_read_config")
 
 
-async def test_failed_read(
-    hass: HomeAssistant,
-    mock_client: Mock,
+@test
+async def failed_read(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: Mock = Depends(mock_client),
 ) -> None:
     """Test failure to read from device."""
-
     inject_bluetooth_service_info(hass, TOGRILL_SERVICE_INFO)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    mock_client.read.side_effect = BleakError("something went wrong")
+    client.read.side_effect = BleakError("something went wrong")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={"address": TOGRILL_SERVICE_INFO.address},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "failed_to_read_config"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("failed_to_read_config")
 
 
-async def test_no_devices(
-    hass: HomeAssistant,
+@test
+async def no_devices(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test missing device."""
-
     inject_bluetooth_service_info(hass, TOGRILL_SERVICE_INFO_NO_NAME)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
 
 
-async def test_duplicate_setup(
-    hass: HomeAssistant,
-    mock_entry: MockConfigEntry,
+@test
+async def duplicate_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(mock_entry),
 ) -> None:
     """Test we can not setup a device again."""
-
     inject_bluetooth_service_info(hass, TOGRILL_SERVICE_INFO)
     await hass.async_block_till_done(wait_background_tasks=True)
 
-    await setup_entry(hass, mock_entry, [])
+    await setup_entry(hass, entry, [])
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
 
 
-async def test_bluetooth(
-    hass: HomeAssistant,
+@test
+async def bluetooth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test bluetooth device discovery."""
-
-    # Inject the service info will trigger the flow to start
+    # Inject the service info will trigger the flow to start.
     inject_bluetooth_service_info(hass, TOGRILL_SERVICE_INFO)
     await hass.async_block_till_done(wait_background_tasks=True)
 
     result = next(iter(hass.config_entries.flow.async_progress_by_handler(DOMAIN)))
 
-    assert result["step_id"] == "bluetooth_confirm"
+    expect(result["step_id"]).to_equal("bluetooth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        "address": TOGRILL_SERVICE_INFO.address,
-        "model": "Pro-05",
-        "probe_count": 0,
-        "has_ambient": False,
-    }
-    assert result["title"] == "Pro-05"
-    assert result["result"].unique_id == TOGRILL_SERVICE_INFO.address
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            "address": TOGRILL_SERVICE_INFO.address,
+            "model": "Pro-05",
+            "probe_count": 0,
+            "has_ambient": False,
+        }
+    )
+    expect(result["title"]).to_equal("Pro-05")
+    expect(result["result"].unique_id).to_equal(TOGRILL_SERVICE_INFO.address)
