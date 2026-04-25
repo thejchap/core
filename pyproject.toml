@@ -1164,6 +1164,7 @@ dev = [
     "systembridgeconnector==5.4.3",
     "tailscale==0.7.0",
     "tami4edgeapi==3.0",
+    "tellduslive==0.10.12",
     "tesla-powerwall==0.5.2",
     "typedmonarchmoney==0.7.0",
     "ultraheat-api>=0.5.7",
