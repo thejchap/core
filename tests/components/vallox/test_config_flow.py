@@ -1,7 +1,9 @@
 """Test the Vallox integration config flow."""
 
+from typing import Any
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
 from vallox_websocket_api import ValloxApiException, ValloxWebsocketException
 
 from homeassistant.components.vallox.const import DOMAIN
@@ -9,28 +11,52 @@ from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import create_mock_entry, do_setup_vallox_entry
+from ._fixtures import (
+    create_mock_entry,
+    do_setup_vallox_entry,
+    fetch_metric_data_mock,
+    init_reconfigure_flow,
+)
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form_no_input(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _metrics_mock: Any = Depends(fetch_metric_data_mock),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form_no_input(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the form is returned with no input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
 
-async def test_form_create_entry(hass: HomeAssistant) -> None:
+@test
+async def form_create_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that an entry is created with valid input."""
     init = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert init["type"] is FlowResultType.FORM
-    assert init["errors"] is None
+    expect(init["type"]).to_be(FlowResultType.FORM)
+    expect(init["errors"]).to_be(None)
 
     with (
         patch(
@@ -48,13 +74,17 @@ async def test_form_create_entry(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Vallox"
-    assert result["data"] == {"host": "1.2.3.4", "name": "Vallox"}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Vallox")
+    expect(result["data"]).to_equal({"host": "1.2.3.4", "name": "Vallox"})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_ip(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_ip(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that invalid IP error is handled."""
     init = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -66,8 +96,8 @@ async def test_form_invalid_ip(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"host": "invalid_host"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"host": "invalid_host"})
 
     with (
         patch(
@@ -85,12 +115,16 @@ async def test_form_invalid_ip(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Vallox"
-    assert result["data"] == {"host": "1.2.3.4", "name": "Vallox"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Vallox")
+    expect(result["data"]).to_equal({"host": "1.2.3.4", "name": "Vallox"})
 
 
-async def test_form_vallox_api_exception_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_vallox_api_exception_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that cannot connect error is handled."""
     init = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -106,8 +140,8 @@ async def test_form_vallox_api_exception_cannot_connect(hass: HomeAssistant) -> 
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"host": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"host": "cannot_connect"})
 
     with (
         patch(
@@ -125,12 +159,16 @@ async def test_form_vallox_api_exception_cannot_connect(hass: HomeAssistant) -> 
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Vallox"
-    assert result["data"] == {"host": "1.2.3.4", "name": "Vallox"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Vallox")
+    expect(result["data"]).to_equal({"host": "1.2.3.4", "name": "Vallox"})
 
 
-async def test_form_os_error_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_os_error_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that cannot connect error is handled."""
     init = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -146,8 +184,8 @@ async def test_form_os_error_cannot_connect(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"host": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"host": "cannot_connect"})
 
     with (
         patch(
@@ -165,12 +203,16 @@ async def test_form_os_error_cannot_connect(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Vallox"
-    assert result["data"] == {"host": "1.2.3.4", "name": "Vallox"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Vallox")
+    expect(result["data"]).to_equal({"host": "1.2.3.4", "name": "Vallox"})
 
 
-async def test_form_unknown_exception(hass: HomeAssistant) -> None:
+@test
+async def form_unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that unknown exceptions are handled."""
     init = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -186,8 +228,8 @@ async def test_form_unknown_exception(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"host": "unknown"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"host": "unknown"})
 
     with (
         patch(
@@ -205,12 +247,16 @@ async def test_form_unknown_exception(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Vallox"
-    assert result["data"] == {"host": "1.2.3.4", "name": "Vallox"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Vallox")
+    expect(result["data"]).to_equal({"host": "1.2.3.4", "name": "Vallox"})
 
 
-async def test_form_already_configured(hass: HomeAssistant) -> None:
+@test
+async def form_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that already configured error is handled."""
     init = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -224,13 +270,18 @@ async def test_form_already_configured(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reconfigure_host(hass: HomeAssistant, init_reconfigure_flow) -> None:
+@test
+async def reconfigure_host(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    init_flow: tuple[MockConfigEntry, Any] = Depends(init_reconfigure_flow),
+) -> None:
     """Test that the host can be reconfigured."""
-    entry, init_flow_result = init_reconfigure_flow
+    entry, init_flow_result = init_flow
 
     reconfigure_result = await hass.config_entries.flow.async_configure(
         init_flow_result["flow_id"],
@@ -239,20 +290,23 @@ async def test_reconfigure_host(hass: HomeAssistant, init_reconfigure_flow) -> N
         },
     )
     await hass.async_block_till_done()
-    assert reconfigure_result["type"] is FlowResultType.ABORT
-    assert reconfigure_result["reason"] == "reconfigure_successful"
+    expect(reconfigure_result["type"]).to_be(FlowResultType.ABORT)
+    expect(reconfigure_result["reason"]).to_equal("reconfigure_successful")
 
-    # changed entry
-    assert entry.data["host"] == "192.168.100.60"
+    # Changed entry.
+    expect(entry.data["host"]).to_equal("192.168.100.60")
 
 
-async def test_reconfigure_host_to_same_host_as_another_fails(
-    hass: HomeAssistant, init_reconfigure_flow
+@test
+async def reconfigure_host_to_same_host_as_another_fails(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    init_flow: tuple[MockConfigEntry, Any] = Depends(init_reconfigure_flow),
 ) -> None:
     """Test that changing host to a host that already exists fails."""
-    entry, init_flow_result = init_reconfigure_flow
+    entry, init_flow_result = init_flow
 
-    # Create second device
+    # Create second device.
     create_mock_entry(hass=hass, host="192.168.100.70", name="Vallox 2")
     await do_setup_vallox_entry(hass=hass, host="192.168.100.70", name="Vallox 2")
 
@@ -263,18 +317,21 @@ async def test_reconfigure_host_to_same_host_as_another_fails(
         },
     )
     await hass.async_block_till_done()
-    assert reconfigure_result["type"] is FlowResultType.ABORT
-    assert reconfigure_result["reason"] == "already_configured"
+    expect(reconfigure_result["type"]).to_be(FlowResultType.ABORT)
+    expect(reconfigure_result["reason"]).to_equal("already_configured")
 
-    # entry not changed
-    assert entry.data["host"] == "192.168.100.50"
+    # Entry not changed.
+    expect(entry.data["host"]).to_equal("192.168.100.50")
 
 
-async def test_reconfigure_host_to_invalid_ip_fails(
-    hass: HomeAssistant, init_reconfigure_flow
+@test
+async def reconfigure_host_to_invalid_ip_fails(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    init_flow: tuple[MockConfigEntry, Any] = Depends(init_reconfigure_flow),
 ) -> None:
     """Test that an invalid IP error is handled by the reconfigure step."""
-    entry, init_flow_result = init_reconfigure_flow
+    entry, init_flow_result = init_flow
 
     reconfigure_result = await hass.config_entries.flow.async_configure(
         init_flow_result["flow_id"],
@@ -283,13 +340,13 @@ async def test_reconfigure_host_to_invalid_ip_fails(
         },
     )
     await hass.async_block_till_done()
-    assert reconfigure_result["type"] is FlowResultType.FORM
-    assert reconfigure_result["errors"] == {"host": "invalid_host"}
+    expect(reconfigure_result["type"]).to_be(FlowResultType.FORM)
+    expect(reconfigure_result["errors"]).to_equal({"host": "invalid_host"})
 
-    # entry not changed
-    assert entry.data["host"] == "192.168.100.50"
+    # Entry not changed.
+    expect(entry.data["host"]).to_equal("192.168.100.50")
 
-    # makes sure we can recover and continue
+    # Makes sure we can recover and continue.
     reconfigure_result = await hass.config_entries.flow.async_configure(
         init_flow_result["flow_id"],
         {
@@ -297,18 +354,21 @@ async def test_reconfigure_host_to_invalid_ip_fails(
         },
     )
     await hass.async_block_till_done()
-    assert reconfigure_result["type"] is FlowResultType.ABORT
-    assert reconfigure_result["reason"] == "reconfigure_successful"
+    expect(reconfigure_result["type"]).to_be(FlowResultType.ABORT)
+    expect(reconfigure_result["reason"]).to_equal("reconfigure_successful")
 
-    # changed entry
-    assert entry.data["host"] == "192.168.100.60"
+    # Changed entry.
+    expect(entry.data["host"]).to_equal("192.168.100.60")
 
 
-async def test_reconfigure_host_vallox_api_exception_cannot_connect(
-    hass: HomeAssistant, init_reconfigure_flow
+@test
+async def reconfigure_host_vallox_api_exception_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    init_flow: tuple[MockConfigEntry, Any] = Depends(init_reconfigure_flow),
 ) -> None:
     """Test that cannot connect error is handled by the reconfigure step."""
-    entry, init_flow_result = init_reconfigure_flow
+    entry, init_flow_result = init_flow
 
     with patch(
         "homeassistant.components.vallox.config_flow.Vallox.fetch_metric_data",
@@ -322,13 +382,13 @@ async def test_reconfigure_host_vallox_api_exception_cannot_connect(
         )
         await hass.async_block_till_done()
 
-    assert reconfigure_result["type"] is FlowResultType.FORM
-    assert reconfigure_result["errors"] == {"host": "cannot_connect"}
+    expect(reconfigure_result["type"]).to_be(FlowResultType.FORM)
+    expect(reconfigure_result["errors"]).to_equal({"host": "cannot_connect"})
 
-    # entry not changed
-    assert entry.data["host"] == "192.168.100.50"
+    # Entry not changed.
+    expect(entry.data["host"]).to_equal("192.168.100.50")
 
-    # makes sure we can recover and continue
+    # Makes sure we can recover and continue.
     reconfigure_result = await hass.config_entries.flow.async_configure(
         init_flow_result["flow_id"],
         {
@@ -336,18 +396,21 @@ async def test_reconfigure_host_vallox_api_exception_cannot_connect(
         },
     )
     await hass.async_block_till_done()
-    assert reconfigure_result["type"] is FlowResultType.ABORT
-    assert reconfigure_result["reason"] == "reconfigure_successful"
+    expect(reconfigure_result["type"]).to_be(FlowResultType.ABORT)
+    expect(reconfigure_result["reason"]).to_equal("reconfigure_successful")
 
-    # changed entry
-    assert entry.data["host"] == "192.168.100.60"
+    # Changed entry.
+    expect(entry.data["host"]).to_equal("192.168.100.60")
 
 
-async def test_reconfigure_host_unknown_exception(
-    hass: HomeAssistant, init_reconfigure_flow
+@test
+async def reconfigure_host_unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    init_flow: tuple[MockConfigEntry, Any] = Depends(init_reconfigure_flow),
 ) -> None:
     """Test that cannot connect error is handled by the reconfigure step."""
-    entry, init_flow_result = init_reconfigure_flow
+    entry, init_flow_result = init_flow
 
     with patch(
         "homeassistant.components.vallox.config_flow.Vallox.fetch_metric_data",
@@ -361,13 +424,13 @@ async def test_reconfigure_host_unknown_exception(
         )
         await hass.async_block_till_done()
 
-    assert reconfigure_result["type"] is FlowResultType.FORM
-    assert reconfigure_result["errors"] == {"host": "unknown"}
+    expect(reconfigure_result["type"]).to_be(FlowResultType.FORM)
+    expect(reconfigure_result["errors"]).to_equal({"host": "unknown"})
 
-    # entry not changed
-    assert entry.data["host"] == "192.168.100.50"
+    # Entry not changed.
+    expect(entry.data["host"]).to_equal("192.168.100.50")
 
-    # makes sure we can recover and continue
+    # Makes sure we can recover and continue.
     reconfigure_result = await hass.config_entries.flow.async_configure(
         init_flow_result["flow_id"],
         {
@@ -375,8 +438,8 @@ async def test_reconfigure_host_unknown_exception(
         },
     )
     await hass.async_block_till_done()
-    assert reconfigure_result["type"] is FlowResultType.ABORT
-    assert reconfigure_result["reason"] == "reconfigure_successful"
+    expect(reconfigure_result["type"]).to_be(FlowResultType.ABORT)
+    expect(reconfigure_result["reason"]).to_equal("reconfigure_successful")
 
-    # changed entry
-    assert entry.data["host"] == "192.168.100.60"
+    # Changed entry.
+    expect(entry.data["host"]).to_equal("192.168.100.60")
