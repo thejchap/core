@@ -1208,5 +1208,6 @@ dev = [
     "wsdiscovery==2.1.2",
     "yalexs==9.2.0",
     "yalexs-ble==3.3.0",
+    "yt-dlp[default]==2026.3.17",
     "zeversolar==0.3.2",
 ]
