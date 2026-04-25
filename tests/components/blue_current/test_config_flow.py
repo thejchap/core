@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.blue_current import DOMAIN
@@ -15,26 +15,41 @@ from homeassistant.components.blue_current.config_flow import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import config_entry as config_entry_fx
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test if the form is created."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["errors"] == {}
-    assert result["type"] is FlowResultType.FORM
+    expect(result["errors"]).to_equal({})
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
 
-async def test_user(hass: HomeAssistant) -> None:
+@test
+async def user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test if the api token is set."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["errors"] == {}
-    assert result["type"] is FlowResultType.FORM
+    expect(result["errors"]).to_equal({})
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with (
         patch(
@@ -58,22 +73,25 @@ async def test_user(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["title"] == "test@email.com"
-    assert result2["data"] == {"api_token": "123"}
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
+    expect(result2["title"]).to_equal("test@email.com")
+    expect(result2["data"]).to_equal({"api_token": "123"})
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.parametrize(
-    ("error", "message"),
-    [
-        (InvalidApiToken(), "invalid_token"),
-        (RequestLimitReached(), "limit_reached"),
-        (AlreadyConnected(), "already_connected"),
-        (Exception(), "unknown"),
-        (WebsocketError(), "cannot_connect"),
-    ],
+@test.cases(
+    test.case("invalid_token", error=InvalidApiToken(), message="invalid_token"),
+    test.case("limit_reached", error=RequestLimitReached(), message="limit_reached"),
+    test.case("already_connected", error=AlreadyConnected(), message="already_connected"),
+    test.case("unknown", error=Exception(), message="unknown"),
+    test.case("websocket_error", error=WebsocketError(), message="cannot_connect"),
 )
-async def test_flow_fails(hass: HomeAssistant, error: Exception, message: str) -> None:
+async def flow_fails(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    error: Exception,
+    message: str,
+) -> None:
     """Test bluecurrent api errors during configuration flow."""
     with patch(
         "homeassistant.components.blue_current.config_flow.Client.validate_api_token",
@@ -84,8 +102,8 @@ async def test_flow_fails(hass: HomeAssistant, error: Exception, message: str) -
             context={"source": config_entries.SOURCE_USER},
             data={"api_token": "123"},
         )
-        assert result["errors"]["base"] == message
-        assert result["type"] is FlowResultType.FORM
+        expect(result["errors"]["base"]).to_equal(message)
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
     with (
         patch(
@@ -109,21 +127,30 @@ async def test_flow_fails(hass: HomeAssistant, error: Exception, message: str) -
         )
         await hass.async_block_till_done()
 
-        assert result2["title"] == "test@email.com"
-        assert result2["data"] == {"api_token": "123"}
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
+        expect(result2["title"]).to_equal("test@email.com")
+        expect(result2["data"]).to_equal({"api_token": "123"})
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.parametrize(
-    ("customer_id", "reason", "expected_api_token"),
-    [
-        ("1234", "reauth_successful", "1234567890"),
-        ("6666", "wrong_account", "123"),
-    ],
+@test.cases(
+    test.case(
+        "reauth_successful",
+        customer_id="1234",
+        reason="reauth_successful",
+        expected_api_token="1234567890",
+    ),
+    test.case(
+        "wrong_account",
+        customer_id="6666",
+        reason="wrong_account",
+        expected_api_token="123",
+    ),
 )
-async def test_reauth(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry_fx),
+    *,
     customer_id: str,
     reason: str,
     expected_api_token: str,
@@ -131,8 +158,8 @@ async def test_reauth(
     """Test reauth flow."""
     config_entry.add_to_hass(hass)
     result = await config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -155,8 +182,8 @@ async def test_reauth(
             result["flow_id"],
             user_input={"api_token": "1234567890"},
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == reason
-        assert config_entry.data["api_token"] == expected_api_token
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal(reason)
+        expect(config_entry.data["api_token"]).to_equal(expected_api_token)
 
         await hass.async_block_till_done()
