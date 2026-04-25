@@ -1431,4 +1431,5 @@ dev = [
     "goslide-api==0.7.0",
     "pyhik==0.4.2",
     "pyuptimerobot==24.0.1",
+    "pycync==0.5.0",
 ]

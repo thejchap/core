@@ -2,13 +2,13 @@
 
 from unittest.mock import patch
 
-import pytest
 from pyuptimerobot import (
     API_PATH_USER_ME,
     UptimeRobotAuthenticationException,
     UptimeRobotConnectionException,
     UptimeRobotException,
 )
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.uptimerobot.const import DOMAIN
@@ -26,16 +26,25 @@ from .common import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_user(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user flow."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with (
         patch(
@@ -55,21 +64,24 @@ async def test_user(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["result"].unique_id == MOCK_UPTIMEROBOT_EMAIL
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == MOCK_UPTIMEROBOT_ACCOUNT["email"]
-    assert result2["data"] == {CONF_API_KEY: MOCK_UPTIMEROBOT_API_KEY}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["result"].unique_id).to_equal(MOCK_UPTIMEROBOT_EMAIL)
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(MOCK_UPTIMEROBOT_ACCOUNT["email"])
+    expect(result2["data"]).to_equal({CONF_API_KEY: MOCK_UPTIMEROBOT_API_KEY})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_key_read_only(hass: HomeAssistant) -> None:
+@test
+async def user_key_read_only(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user flow with read only key."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with patch(
         "homeassistant.components.uptimerobot.config_flow.UptimeRobot.async_get_account_details",
@@ -84,20 +96,23 @@ async def test_user_key_read_only(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"]
-    assert result2["errors"]["base"] == "not_main_key"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result2["errors"])).to_be(True)
+    expect(result2["errors"]["base"]).to_equal("not_main_key")
 
 
-@pytest.mark.parametrize(
-    ("exception", "error_key"),
-    [
-        (Exception, "unknown"),
-        (UptimeRobotException, "cannot_connect"),
-        (UptimeRobotAuthenticationException, "invalid_api_key"),
-    ],
+@test.cases(
+    test.case("unknown", exception=Exception, error_key="unknown"),
+    test.case("cannot_connect", exception=UptimeRobotException, error_key="cannot_connect"),
+    test.case("invalid_api_key", exception=UptimeRobotAuthenticationException, error_key="invalid_api_key"),
 )
-async def test_exception_thrown(hass: HomeAssistant, exception, error_key) -> None:
+async def exception_thrown(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    exception: type[Exception],
+    error_key: str,
+) -> None:
     """Test user flow throwing exceptions."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -112,13 +127,17 @@ async def test_exception_thrown(hass: HomeAssistant, exception, error_key) -> No
             {CONF_API_KEY: MOCK_UPTIMEROBOT_API_KEY},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"]
-    assert result2["errors"]["base"] == error_key
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result2["errors"])).to_be(True)
+    expect(result2["errors"]["base"]).to_equal(error_key)
 
 
-async def test_api_error(hass: HomeAssistant, caplog: pytest.LogCaptureFixture) -> None:
-    """Test expected API error is catch."""
+@test
+async def api_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test expected API error is caught."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -132,12 +151,14 @@ async def test_api_error(hass: HomeAssistant, caplog: pytest.LogCaptureFixture) 
             {CONF_API_KEY: MOCK_UPTIMEROBOT_API_KEY},
         )
 
-    assert result2["errors"]
-    assert result2["errors"]["base"] == "cannot_connect"
+    expect(bool(result2["errors"])).to_be(True)
+    expect(result2["errors"]["base"]).to_equal("cannot_connect")
 
 
-async def test_user_unique_id_already_exists(
-    hass: HomeAssistant,
+@test
+async def user_unique_id_already_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test creating an entry where the unique_id already exists."""
     entry = MockConfigEntry(**MOCK_UPTIMEROBOT_CONFIG_ENTRY_DATA)
@@ -146,8 +167,8 @@ async def test_user_unique_id_already_exists(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with (
         patch(
@@ -168,13 +189,15 @@ async def test_user_unique_id_already_exists(
         )
         await hass.async_block_till_done()
 
-    assert len(mock_setup_entry.mock_calls) == 0
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")
 
 
-async def test_reauthentication(
-    hass: HomeAssistant,
+@test
+async def reauthentication(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test UptimeRobot reauthentication."""
     old_entry = MockConfigEntry(**MOCK_UPTIMEROBOT_CONFIG_ENTRY_DATA)
@@ -182,9 +205,9 @@ async def test_reauthentication(
 
     result = await old_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with (
         patch(
@@ -205,12 +228,14 @@ async def test_reauthentication(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
 
 
-async def test_reauthentication_failure(
-    hass: HomeAssistant,
+@test
+async def reauthentication_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test UptimeRobot reauthentication failure."""
     old_entry = MockConfigEntry(**MOCK_UPTIMEROBOT_CONFIG_ENTRY_DATA)
@@ -218,9 +243,9 @@ async def test_reauthentication_failure(
 
     result = await old_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with (
         patch(
@@ -238,14 +263,16 @@ async def test_reauthentication_failure(
         )
         await hass.async_block_till_done()
 
-    assert result2["step_id"] == "reauth_confirm"
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"]
-    assert result2["errors"]["base"] == "cannot_connect"
+    expect(result2["step_id"]).to_equal("reauth_confirm")
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result2["errors"])).to_be(True)
+    expect(result2["errors"]["base"]).to_equal("cannot_connect")
 
 
-async def test_reauthentication_failure_no_existing_entry(
-    hass: HomeAssistant,
+@test
+async def reauthentication_failure_no_existing_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test UptimeRobot reauthentication with no existing entry."""
     old_entry = MockConfigEntry(
@@ -255,9 +282,9 @@ async def test_reauthentication_failure_no_existing_entry(
 
     result = await old_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with (
         patch(
@@ -278,12 +305,14 @@ async def test_reauthentication_failure_no_existing_entry(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_failed_existing"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_failed_existing")
 
 
-async def test_reauthentication_failure_account_not_matching(
-    hass: HomeAssistant,
+@test
+async def reauthentication_failure_account_not_matching(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test UptimeRobot reauthentication failure when using another account."""
     old_entry = MockConfigEntry(**MOCK_UPTIMEROBOT_CONFIG_ENTRY_DATA)
@@ -291,9 +320,9 @@ async def test_reauthentication_failure_account_not_matching(
 
     result = await old_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with (
         patch(
@@ -317,14 +346,16 @@ async def test_reauthentication_failure_account_not_matching(
         )
         await hass.async_block_till_done()
 
-    assert result2["step_id"] == "reauth_confirm"
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"]
-    assert result2["errors"]["base"] == "reauth_failed_matching_account"
+    expect(result2["step_id"]).to_equal("reauth_confirm")
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result2["errors"])).to_be(True)
+    expect(result2["errors"]["base"]).to_equal("reauth_failed_matching_account")
 
 
-async def test_reconfigure_successful(
-    hass: HomeAssistant,
+@test
+async def reconfigure_successful(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test that the entry can be reconfigured."""
     config_entry = MockConfigEntry(
@@ -334,9 +365,9 @@ async def test_reconfigure_successful(
 
     result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     new_key = "u0242ac120003-new"
 
@@ -357,15 +388,15 @@ async def test_reconfigure_successful(
             user_input={CONF_API_KEY: new_key},
         )
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reconfigure_successful"
-
-    # changed entry
-    assert config_entry.data[CONF_API_KEY] == new_key
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data[CONF_API_KEY]).to_equal(new_key)
 
 
-async def test_reconfigure_failed(
-    hass: HomeAssistant,
+@test
+async def reconfigure_failed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test that the entry reconfigure fails with a wrong key."""
     config_entry = MockConfigEntry(
@@ -375,9 +406,9 @@ async def test_reconfigure_failed(
 
     result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     wrong_key = "u0242ac120003-wrong"
 
@@ -396,9 +427,9 @@ async def test_reconfigure_failed(
             user_input={CONF_API_KEY: wrong_key},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"]
-    assert result2["errors"]["base"] == "invalid_api_key"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result2["errors"])).to_be(True)
+    expect(result2["errors"]["base"]).to_equal("invalid_api_key")
 
     new_key = "u0242ac120003-new"
 
@@ -419,8 +450,6 @@ async def test_reconfigure_failed(
             user_input={CONF_API_KEY: new_key},
         )
 
-    assert result3["type"] is FlowResultType.ABORT
-    assert result3["reason"] == "reconfigure_successful"
-
-    # changed entry
-    assert config_entry.data[CONF_API_KEY] == new_key
+    expect(result3["type"]).to_be(FlowResultType.ABORT)
+    expect(result3["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data[CONF_API_KEY]).to_equal(new_key)
