@@ -1387,4 +1387,5 @@ dev = [
     "py-sucks==0.9.11",
     "wyoming==1.7.2",
     "zcc-helper==3.8",
+    "victron-vrm==0.1.8",
 ]
