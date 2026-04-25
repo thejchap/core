@@ -1227,6 +1227,7 @@ dev = [
     "pysmarlaapi==1.0.2",
     "pysmarty2==0.10.3",
     "pysmhi==2.0.0",
+    "pysnooz==0.8.6",
     "pysoma==0.0.12",
     "pyspeex-noise>=2.0.0",
     "pysrdaligateway==0.20.4",
@@ -1400,4 +1401,6 @@ dev = [
     "aiomusiccast==0.15.0",
     "actron-neo-api==0.5.3",
     "pyfirefly==0.1.12",
+    "pythonkuma==0.5.0",
+    "coinbase-advanced-py==1.2.2",
 ]
