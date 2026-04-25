@@ -1,8 +1,8 @@
 """Tests for the Atag config flow."""
 
-from unittest.mock import PropertyMock, patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.atag import DOMAIN
@@ -10,37 +10,52 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import UID, USER_INPUT, init_integration, mock_connection
+from ._fixtures import mock_pyatag_sleep, mock_setup_entry
 
+from tests.hass_fixtures import aioclient_mock, hass as hass_fixture, mock_network
 from tests.test_util.aiohttp import AiohttpClientMocker
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    _sleep: None = Depends(mock_pyatag_sleep),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-async def test_show_form(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def show_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
 ) -> None:
     """Test that the form is served with no input."""
-    mock_connection(aioclient_mock)
+    mock_connection(aioclient)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_adding_second_device(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def adding_second_device(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
 ) -> None:
     """Test that only one Atag configuration is allowed."""
-    await init_integration(hass, aioclient_mock, unique_id=UID)
+    await init_integration(hass, aioclient, unique_id=UID)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}, data=USER_INPUT
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
     with patch(
         "pyatag.AtagOne.id",
         new_callable=PropertyMock(return_value="secondary_device"),
@@ -48,50 +63,59 @@ async def test_adding_second_device(
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}, data=USER_INPUT
         )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_connection_error(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
 ) -> None:
     """Test we show user form on Atag connection error."""
-    mock_connection(aioclient_mock, conn_error=True)
+    mock_connection(aioclient, conn_error=True)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
         data=USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_unauthorized(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def unauthorized(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
 ) -> None:
     """Test we show correct form when Unauthorized error is raised."""
-    mock_connection(aioclient_mock, authorized=False)
+    mock_connection(aioclient, authorized=False)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
         data=USER_INPUT,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "unauthorized"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "unauthorized"})
 
 
-async def test_full_flow_implementation(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def full_flow_implementation(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
 ) -> None:
     """Test registering an integration and finishing flow works."""
-    mock_connection(aioclient_mock)
+    mock_connection(aioclient)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
         data=USER_INPUT,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == UID
-    assert result["result"].unique_id == UID
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(UID)
+    expect(result["result"].unique_id).to_equal(UID)

@@ -948,6 +948,7 @@ property-decorators = ["propcache.api.cached_property"]
 dev = [
     "advantage-air==0.4.4",
     "aio-geojson-generic-client==0.5",
+    "aio-geojson-geonetnz-volcano==0.9",
     "aio-georss-gdacs==0.10",
     "aio-ownet>=0.0.5",
     "aioeagle==1.1.0",
@@ -1183,6 +1184,7 @@ dev = [
     "starline==0.1.5",
     "starlink-grpc-core==1.2.5",
     "steamodd==4.21",
+    "stookwijzer==1.6.1",
     "subarulink==0.7.19",
     "switchbot-api==2.11.0",
     "systembridgeconnector==5.4.3",
