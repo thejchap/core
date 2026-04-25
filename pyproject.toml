@@ -1187,6 +1187,7 @@ dev = [
     "url-normalize==2.2.1",
     "vehicle==2.2.2",
     "venstarcolortouch==0.21",
+    "vilfo-api-client==0.5.0",
     "wakeonlan==3.1.0",
     "webio-api==0.1.12",
     "wsdiscovery==2.1.2",
