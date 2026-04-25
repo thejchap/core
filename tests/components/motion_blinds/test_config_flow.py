@@ -1,9 +1,9 @@
 """Test the Motionblinds config flow."""
 
 import socket
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.motion_blinds import const
@@ -13,7 +13,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
+from ._fixtures import motion_blinds_connect
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 
 TEST_HOST = "1.2.3.4"
 TEST_HOST2 = "5.6.7.8"
@@ -24,22 +28,6 @@ TEST_API_KEY2 = "f8e76dc5-43ba-21"
 TEST_MAC = "ab:bb:cc:dd:ee:ff"
 TEST_MAC2 = "ff:ee:dd:cc:bb:aa"
 DHCP_FORMATTED_MAC = "aabbccddeeff"
-TEST_DEVICE_LIST = {TEST_MAC: Mock()}
-
-TEST_DISCOVERY_1 = {
-    TEST_HOST: {
-        "msgType": "GetDeviceListAck",
-        "mac": TEST_MAC,
-        "deviceType": "02000002",
-        "ProtocolVersion": "0.9",
-        "token": "12345A678B9CDEFG",
-        "data": [
-            {"mac": "abcdefghujkl", "deviceType": "02000002"},
-            {"mac": "abcdefghujkl0001", "deviceType": "10000000"},
-            {"mac": "abcdefghujkl0002", "deviceType": "10000000"},
-        ],
-    }
-}
 
 TEST_DISCOVERY_2 = {
     TEST_HOST: {
@@ -66,285 +54,234 @@ TEST_DISCOVERY_2 = {
     },
 }
 
-TEST_INTERFACES = [
-    {"enabled": True, "default": True, "ipv4": [{"address": TEST_HOST_HA}]}
-]
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _connect: None = Depends(motion_blinds_connect),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
 
 
-@pytest.fixture(name="motion_blinds_connect", autouse=True)
-def motion_blinds_connect_fixture():
-    """Mock Motionblinds connection and entry setup."""
-    with (
-        patch(
-            "homeassistant.components.motion_blinds.gateway.MotionGateway.GetDeviceList",
-            return_value=True,
-        ),
-        patch(
-            "homeassistant.components.motion_blinds.gateway.MotionGateway.Update",
-            return_value=True,
-        ),
-        patch(
-            "homeassistant.components.motion_blinds.gateway.MotionGateway.Check_gateway_multicast",
-            return_value=True,
-        ),
-        patch(
-            "homeassistant.components.motion_blinds.gateway.MotionGateway.device_list",
-            TEST_DEVICE_LIST,
-        ),
-        patch(
-            "homeassistant.components.motion_blinds.gateway.MotionGateway.mac",
-            TEST_MAC,
-        ),
-        patch(
-            "homeassistant.components.motion_blinds.config_flow.MotionDiscovery.discover",
-            return_value=TEST_DISCOVERY_1,
-        ),
-        patch(
-            "homeassistant.components.motion_blinds.config_flow.MotionGateway.GetDeviceList",
-            return_value=True,
-        ),
-        patch(
-            "homeassistant.components.motion_blinds.config_flow.MotionGateway.available",
-            True,
-        ),
-        patch(
-            "homeassistant.components.motion_blinds.gateway.AsyncMotionMulticast.Start_listen",
-            return_value=True,
-        ),
-        patch(
-            "homeassistant.components.motion_blinds.gateway.AsyncMotionMulticast.Stop_listen",
-            return_value=True,
-        ),
-        patch(
-            "homeassistant.components.motion_blinds.gateway.network.async_get_adapters",
-            return_value=TEST_INTERFACES,
-        ),
-        patch(
-            "homeassistant.components.motion_blinds.async_setup_entry",
-            return_value=True,
-        ),
-    ):
-        yield
-
-
-async def test_config_flow_manual_host_success(hass: HomeAssistant) -> None:
+@test
+async def config_flow_manual_host_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Successful flow manually initialized by the user."""
     result = await hass.config_entries.flow.async_init(
         const.DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_HOST: TEST_HOST},
+        result["flow_id"], {CONF_HOST: TEST_HOST}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "connect"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("connect")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_API_KEY: TEST_API_KEY},
+        result["flow_id"], {CONF_API_KEY: TEST_API_KEY}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_GATEWAY_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_API_KEY: TEST_API_KEY,
-        const.CONF_INTERFACE: TEST_HOST_ANY,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_GATEWAY_NAME)
+    expect(result["data"]).to_equal(
+        {CONF_HOST: TEST_HOST, CONF_API_KEY: TEST_API_KEY, const.CONF_INTERFACE: TEST_HOST_ANY}
+    )
 
 
-async def test_config_flow_discovery_1_success(hass: HomeAssistant) -> None:
+@test
+async def config_flow_discovery_1_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Successful flow with 1 gateway discovered."""
     result = await hass.config_entries.flow.async_init(
         const.DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {},
-    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "connect"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("connect")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.motion_blinds.gateway.AsyncMotionMulticast.Stop_listen",
         side_effect=socket.gaierror,
     ):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {CONF_API_KEY: TEST_API_KEY},
+            result["flow_id"], {CONF_API_KEY: TEST_API_KEY}
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_GATEWAY_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_API_KEY: TEST_API_KEY,
-        const.CONF_INTERFACE: TEST_HOST_ANY,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_GATEWAY_NAME)
+    expect(result["data"]).to_equal(
+        {CONF_HOST: TEST_HOST, CONF_API_KEY: TEST_API_KEY, const.CONF_INTERFACE: TEST_HOST_ANY}
+    )
 
 
-async def test_config_flow_discovery_2_success(hass: HomeAssistant) -> None:
+@test
+async def config_flow_discovery_2_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Successful flow with 2 gateway discovered."""
     result = await hass.config_entries.flow.async_init(
         const.DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.motion_blinds.config_flow.MotionDiscovery.discover",
         return_value=TEST_DISCOVERY_2,
     ):
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {},
-        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "select"
-    assert result["data_schema"].schema["select_ip"].container == [
-        TEST_HOST,
-        TEST_HOST2,
-    ]
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("select")
+    expect(result["data_schema"].schema["select_ip"].container).to_equal(
+        [TEST_HOST, TEST_HOST2]
+    )
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {"select_ip": TEST_HOST2},
+        result["flow_id"], {"select_ip": TEST_HOST2}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "connect"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("connect")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.motion_blinds.gateway.MotionGateway.Check_gateway_multicast",
         side_effect=socket.timeout,
     ):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {CONF_API_KEY: TEST_API_KEY},
+            result["flow_id"], {CONF_API_KEY: TEST_API_KEY}
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_GATEWAY_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST2,
-        CONF_API_KEY: TEST_API_KEY,
-        const.CONF_INTERFACE: TEST_HOST_ANY,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_GATEWAY_NAME)
+    expect(result["data"]).to_equal(
+        {CONF_HOST: TEST_HOST2, CONF_API_KEY: TEST_API_KEY, const.CONF_INTERFACE: TEST_HOST_ANY}
+    )
 
 
-async def test_config_flow_connection_error(hass: HomeAssistant) -> None:
+@test
+async def config_flow_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Failed flow manually initialized by the user with connection timeout."""
     result = await hass.config_entries.flow.async_init(
         const.DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_HOST: TEST_HOST},
+        result["flow_id"], {CONF_HOST: TEST_HOST}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "connect"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("connect")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.motion_blinds.gateway.MotionGateway.GetDeviceList",
         side_effect=socket.timeout,
     ):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {CONF_API_KEY: TEST_API_KEY},
+            result["flow_id"], {CONF_API_KEY: TEST_API_KEY}
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "connection_error"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("connection_error")
 
 
-async def test_config_flow_discovery_fail(hass: HomeAssistant) -> None:
+@test
+async def config_flow_discovery_fail(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Failed flow with no gateways discovered."""
     result = await hass.config_entries.flow.async_init(
         const.DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.motion_blinds.config_flow.MotionDiscovery.discover",
         return_value={},
     ):
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {},
-        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "discovery_error"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "discovery_error"})
 
 
-async def test_config_flow_invalid_interface(hass: HomeAssistant) -> None:
+@test
+async def config_flow_invalid_interface(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Failed flow manually initialized by the user with invalid interface."""
     result = await hass.config_entries.flow.async_init(
         const.DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_HOST: TEST_HOST},
+        result["flow_id"], {CONF_HOST: TEST_HOST}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "connect"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("connect")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.motion_blinds.gateway.AsyncMotionMulticast.Start_listen",
         side_effect=socket.gaierror,
     ):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {CONF_API_KEY: TEST_API_KEY},
+            result["flow_id"], {CONF_API_KEY: TEST_API_KEY}
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_GATEWAY_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_API_KEY: TEST_API_KEY,
-        const.CONF_INTERFACE: TEST_HOST_ANY,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_GATEWAY_NAME)
+    expect(result["data"]).to_equal(
+        {CONF_HOST: TEST_HOST, CONF_API_KEY: TEST_API_KEY, const.CONF_INTERFACE: TEST_HOST_ANY}
+    )
 
 
-async def test_dhcp_flow(hass: HomeAssistant) -> None:
+@test
+async def dhcp_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Successful flow from DHCP discovery."""
     dhcp_data = DhcpServiceInfo(
         ip=TEST_HOST,
@@ -356,29 +293,30 @@ async def test_dhcp_flow(hass: HomeAssistant) -> None:
         const.DOMAIN, context={"source": config_entries.SOURCE_DHCP}, data=dhcp_data
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "connect"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("connect")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.motion_blinds.gateway.AsyncMotionMulticast.Start_listen",
         side_effect=OSError,
     ):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {CONF_API_KEY: TEST_API_KEY},
+            result["flow_id"], {CONF_API_KEY: TEST_API_KEY}
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_GATEWAY_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_API_KEY: TEST_API_KEY,
-        const.CONF_INTERFACE: TEST_HOST_ANY,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_GATEWAY_NAME)
+    expect(result["data"]).to_equal(
+        {CONF_HOST: TEST_HOST, CONF_API_KEY: TEST_API_KEY, const.CONF_INTERFACE: TEST_HOST_ANY}
+    )
 
 
-async def test_dhcp_flow_abort(hass: HomeAssistant) -> None:
+@test
+async def dhcp_flow_abort(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that DHCP discovery aborts if not Motionblinds."""
     dhcp_data = DhcpServiceInfo(
         ip=TEST_HOST,
@@ -394,11 +332,15 @@ async def test_dhcp_flow_abort(hass: HomeAssistant) -> None:
             const.DOMAIN, context={"source": config_entries.SOURCE_DHCP}, data=dhcp_data
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_motionblinds"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("not_motionblinds")
 
 
-async def test_dhcp_flow_abort_invalid_response(hass: HomeAssistant) -> None:
+@test
+async def dhcp_flow_abort_invalid_response(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that DHCP discovery aborts if device responded with invalid data."""
     dhcp_data = DhcpServiceInfo(
         ip=TEST_HOST,
@@ -414,43 +356,46 @@ async def test_dhcp_flow_abort_invalid_response(hass: HomeAssistant) -> None:
             const.DOMAIN, context={"source": config_entries.SOURCE_DHCP}, data=dhcp_data
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_motionblinds"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("not_motionblinds")
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test specifying non default settings using options flow."""
     config_entry = MockConfigEntry(
         domain=const.DOMAIN,
         unique_id=TEST_MAC,
-        data={
-            CONF_HOST: TEST_HOST,
-            CONF_API_KEY: TEST_API_KEY,
-        },
+        data={CONF_HOST: TEST_HOST, CONF_API_KEY: TEST_API_KEY},
         title=DEFAULT_GATEWAY_NAME,
     )
     config_entry.add_to_hass(hass)
 
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
 
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={const.CONF_WAIT_FOR_PUSH: False},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {
-        const.CONF_WAIT_FOR_PUSH: False,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal({const.CONF_WAIT_FOR_PUSH: False})
 
 
-async def test_change_connection_settings(hass: HomeAssistant) -> None:
+@test
+async def change_connection_settings(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test changing connection settings by issuing a second user config flow."""
     config_entry = MockConfigEntry(
         domain=const.DOMAIN,
@@ -468,25 +413,23 @@ async def test_change_connection_settings(hass: HomeAssistant) -> None:
         const.DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_HOST: TEST_HOST2},
+        result["flow_id"], {CONF_HOST: TEST_HOST2}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "connect"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("connect")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {CONF_API_KEY: TEST_API_KEY2},
+        result["flow_id"], {CONF_API_KEY: TEST_API_KEY2}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert config_entry.data[CONF_HOST] == TEST_HOST2
-    assert config_entry.data[CONF_API_KEY] == TEST_API_KEY2
-    assert config_entry.data[const.CONF_INTERFACE] == TEST_HOST_ANY
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(config_entry.data[CONF_HOST]).to_equal(TEST_HOST2)
+    expect(config_entry.data[CONF_API_KEY]).to_equal(TEST_API_KEY2)
+    expect(config_entry.data[const.CONF_INTERFACE]).to_equal(TEST_HOST_ANY)

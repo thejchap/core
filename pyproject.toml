@@ -1415,4 +1415,5 @@ dev = [
     "teltasync==0.2.0",
     "pyvlx==0.2.33",
     "airthings-ble==1.2.0",
+    "motionblinds==0.6.30",
 ]
