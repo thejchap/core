@@ -1416,4 +1416,6 @@ dev = [
     "pyvlx==0.2.33",
     "airthings-ble==1.2.0",
     "motionblinds==0.6.30",
+    "aioasuswrt==1.5.4",
+    "asusrouter==1.21.3",
 ]
