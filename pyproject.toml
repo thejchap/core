@@ -1189,6 +1189,7 @@ dev = [
     "pyweatherflowudp==1.5.2",
     "pywebpush==2.3.0",
     "pywemo==1.4.0",
+    "pywilight==0.0.74",
     "pyws66i==1.1",
     "pyyardian==1.1.1",
     "pyzerproc==0.4.8",
