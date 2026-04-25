@@ -946,6 +946,7 @@ property-decorators = ["propcache.api.cached_property"]
 
 [dependency-groups]
 dev = [
+    "advantage-air==0.4.4",
     "aio-geojson-generic-client==0.5",
     "aio-ownet>=0.0.5",
     "aioeagle==1.1.0",
