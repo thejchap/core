@@ -1122,6 +1122,7 @@ dev = [
     "pytraccar==3.0.0",
     "pytrydan==0.8.0",
     "pyweatherflowudp==1.5.2",
+    "pyzerproc==0.4.8",
     "qbittorrent-api==2024.9.67",
     "qbusmqttapi==1.4.3",
     "qingping-ble==1.1.0",

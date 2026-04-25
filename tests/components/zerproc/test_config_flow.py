@@ -3,21 +3,32 @@
 from unittest.mock import patch
 
 import pyzerproc
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.zerproc.config_flow import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-async def test_flow_success(hass: HomeAssistant) -> None:
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with (
         patch(
@@ -35,21 +46,24 @@ async def test_flow_success(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Zerproc"
-    assert result2["data"] == {}
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Zerproc")
+    expect(result2["data"]).to_equal({})
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_flow_no_devices_found(hass: HomeAssistant) -> None:
+@test
+async def flow_no_devices_found(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with (
         patch(
@@ -66,20 +80,23 @@ async def test_flow_no_devices_found(hass: HomeAssistant) -> None:
             {},
         )
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "no_devices_found"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("no_devices_found")
     await hass.async_block_till_done()
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_flow_exceptions_caught(hass: HomeAssistant) -> None:
+@test
+async def flow_exceptions_caught(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with (
         patch(
@@ -96,7 +113,7 @@ async def test_flow_exceptions_caught(hass: HomeAssistant) -> None:
             {},
         )
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "no_devices_found"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("no_devices_found")
     await hass.async_block_till_done()
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
