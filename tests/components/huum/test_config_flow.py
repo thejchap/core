@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock
 
 from huum.exceptions import Forbidden
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.huum.const import DOMAIN
@@ -11,21 +11,33 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_huum_client, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 TEST_USERNAME = "huum@sauna.org"
 TEST_PASSWORD = "ukuuku"
 
 
-@pytest.mark.usefixtures("mock_huum_client")
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
-    """Test we get the form."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _huum: AsyncMock = Depends(mock_huum_client),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -36,23 +48,27 @@ async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_USERNAME
-    assert result["data"] == {
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: TEST_PASSWORD,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_USERNAME)
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: TEST_PASSWORD,
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_huum_client")
-async def test_signup_flow_already_set_up(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def signup_flow_already_set_up(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _huum: AsyncMock = Depends(mock_huum_client),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that we handle already existing entities with same id."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -66,24 +82,20 @@ async def test_signup_flow_already_set_up(
         },
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-@pytest.mark.parametrize(
-    (
-        "raises",
-        "error_base",
-    ),
-    [
-        (Exception, "unknown"),
-        (Forbidden, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("unknown", raises=Exception, error_base="unknown"),
+    test.case("invalid_auth", raises=Forbidden, error_base="invalid_auth"),
 )
-async def test_huum_errors(
-    hass: HomeAssistant,
-    mock_huum_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    raises: Exception,
+async def huum_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    huum: AsyncMock = Depends(mock_huum_client),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    raises: type[Exception],
     error_base: str,
 ) -> None:
     """Test we handle cannot connect error."""
@@ -91,7 +103,7 @@ async def test_huum_errors(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    mock_huum_client.status.side_effect = raises
+    huum.status.side_effect = raises
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -100,10 +112,10 @@ async def test_huum_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_base}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_base})
 
-    mock_huum_client.status.side_effect = None
+    huum.status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -111,22 +123,24 @@ async def test_huum_errors(
             CONF_PASSWORD: TEST_PASSWORD,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.usefixtures("mock_huum_client")
-async def test_reauth_flow(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _huum: AsyncMock = Depends(mock_huum_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reauthentication flow succeeds with valid credentials."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -134,68 +148,67 @@ async def test_reauth_flow(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data[CONF_USERNAME] == TEST_USERNAME
-    assert mock_config_entry.data[CONF_PASSWORD] == "new_password"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data[CONF_USERNAME]).to_equal(TEST_USERNAME)
+    expect(config_entry.data[CONF_PASSWORD]).to_equal("new_password")
 
 
-@pytest.mark.parametrize(
-    (
-        "raises",
-        "error_base",
-    ),
-    [
-        (Exception, "unknown"),
-        (Forbidden, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("unknown", raises=Exception, error_base="unknown"),
+    test.case("invalid_auth", raises=Forbidden, error_base="invalid_auth"),
 )
-async def test_reauth_errors(
-    hass: HomeAssistant,
-    mock_huum_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    raises: Exception,
+async def reauth_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    huum: AsyncMock = Depends(mock_huum_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    *,
+    raises: type[Exception],
     error_base: str,
 ) -> None:
     """Test reauthentication flow handles errors and recovers."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    mock_huum_client.status.side_effect = raises
+    huum.status.side_effect = raises
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PASSWORD: "wrong_password"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_base}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_base})
 
-    # Recover with valid credentials
-    mock_huum_client.status.side_effect = None
+    # Recover with valid credentials.
+    huum.status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PASSWORD: "new_password"},
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data[CONF_USERNAME] == TEST_USERNAME
-    assert mock_config_entry.data[CONF_PASSWORD] == "new_password"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data[CONF_USERNAME]).to_equal(TEST_USERNAME)
+    expect(config_entry.data[CONF_PASSWORD]).to_equal("new_password")
 
 
-@pytest.mark.usefixtures("mock_huum_client", "mock_setup_entry")
-async def test_reconfigure_flow(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _huum: AsyncMock = Depends(mock_huum_client),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reconfiguration flow."""
-    mock_config_entry.add_to_hass(hass)
-    result = await mock_config_entry.start_reconfigure_flow(hass)
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -206,20 +219,23 @@ async def test_reconfigure_flow(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.title == "new@sauna.org"
-    assert mock_config_entry.data[CONF_USERNAME] == "new@sauna.org"
-    assert mock_config_entry.data[CONF_PASSWORD] == "new_password"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.title).to_equal("new@sauna.org")
+    expect(config_entry.data[CONF_USERNAME]).to_equal("new@sauna.org")
+    expect(config_entry.data[CONF_PASSWORD]).to_equal("new_password")
 
 
-@pytest.mark.usefixtures("mock_huum_client", "mock_setup_entry")
-async def test_reconfigure_flow_already_configured(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure_flow_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _huum: AsyncMock = Depends(mock_huum_client),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reconfiguration flow aborts when username already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     other_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -231,7 +247,7 @@ async def test_reconfigure_flow_already_configured(
     )
     other_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -241,34 +257,30 @@ async def test_reconfigure_flow_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    (
-        "raises",
-        "error_base",
-    ),
-    [
-        (Exception, "unknown"),
-        (Forbidden, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("unknown", raises=Exception, error_base="unknown"),
+    test.case("invalid_auth", raises=Forbidden, error_base="invalid_auth"),
 )
-async def test_reconfigure_errors(
-    hass: HomeAssistant,
-    mock_huum_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    raises: Exception,
+async def reconfigure_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    huum: AsyncMock = Depends(mock_huum_client),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    *,
+    raises: type[Exception],
     error_base: str,
 ) -> None:
     """Test reconfiguration flow handles errors and recovers."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
 
-    mock_huum_client.status.side_effect = raises
+    huum.status.side_effect = raises
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -277,11 +289,11 @@ async def test_reconfigure_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_base}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_base})
 
-    # Recover with valid credentials
-    mock_huum_client.status.side_effect = None
+    # Recover with valid credentials.
+    huum.status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -291,7 +303,7 @@ async def test_reconfigure_errors(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.data[CONF_USERNAME] == TEST_USERNAME
-    assert mock_config_entry.data[CONF_PASSWORD] == "new_password"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data[CONF_USERNAME]).to_equal(TEST_USERNAME)
+    expect(config_entry.data[CONF_PASSWORD]).to_equal("new_password")
