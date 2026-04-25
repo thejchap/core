@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock
 
 from autoskope_client.models import CannotConnect, InvalidAuth
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.autoskope.const import (
     DEFAULT_HOST,
@@ -15,7 +15,16 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_autoskope_client, mock_config_entry, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
 
 USER_INPUT = {
     CONF_USERNAME: "test_user",
@@ -26,44 +35,55 @@ USER_INPUT = {
 }
 
 
-async def test_full_flow(
-    hass: HomeAssistant,
-    mock_autoskope_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(mock_autoskope_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test full user config flow from form to entry creation."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Autoskope (test_user)"
-    assert result["data"] == {
-        CONF_USERNAME: "test_user",
-        CONF_PASSWORD: "test_password",
-        CONF_HOST: DEFAULT_HOST,
-    }
-    assert result["result"].unique_id == f"test_user@{DEFAULT_HOST}"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Autoskope (test_user)")
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: "test_user",
+            CONF_PASSWORD: "test_password",
+            CONF_HOST: DEFAULT_HOST,
+        }
+    )
+    expect(result["result"].unique_id).to_equal(f"test_user@{DEFAULT_HOST}")
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (InvalidAuth("Invalid credentials"), "invalid_auth"),
-        (CannotConnect("Connection failed"), "cannot_connect"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        exception=InvalidAuth("Invalid credentials"),
+        error="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        exception=CannotConnect("Connection failed"),
+        error="cannot_connect",
+    ),
 )
-async def test_flow_errors(
-    hass: HomeAssistant,
-    mock_autoskope_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+async def flow_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_autoskope_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    *,
     exception: Exception,
     error: str,
 ) -> None:
@@ -72,29 +92,30 @@ async def test_flow_errors(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    mock_autoskope_client.__aenter__.side_effect = exception
+    client.__aenter__.side_effect = exception
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    # Recovery: clear the error and retry
-    mock_autoskope_client.__aenter__.side_effect = None
+    client.__aenter__.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_flow_invalid_url(
-    hass: HomeAssistant,
-    mock_autoskope_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def flow_invalid_url(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(mock_autoskope_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test config flow rejects invalid URL with recovery."""
     result = await hass.config_entries.flow.async_init(
@@ -111,24 +132,25 @@ async def test_flow_invalid_url(
             },
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_url"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_url"})
 
-    # Recovery: provide a valid URL
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_already_configured(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_autoskope_client: AsyncMock,
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _client: AsyncMock = Depends(mock_autoskope_client),
 ) -> None:
     """Test aborting if already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -138,14 +160,16 @@ async def test_already_configured(
         USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_custom_host(
-    hass: HomeAssistant,
-    mock_autoskope_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def custom_host(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(mock_autoskope_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test config flow with a custom white-label host."""
     result = await hass.config_entries.flow.async_init(
@@ -162,75 +186,87 @@ async def test_custom_host(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_HOST] == "https://custom.autoskope.server"
-    assert result["result"].unique_id == "test_user@https://custom.autoskope.server"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_HOST]).to_equal("https://custom.autoskope.server")
+    expect(result["result"].unique_id).to_equal(
+        "test_user@https://custom.autoskope.server"
+    )
 
 
-async def test_reauth_flow(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_autoskope_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _client: AsyncMock = Depends(mock_autoskope_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reauth flow updates password and reloads entry."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PASSWORD: "new_password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data == {
-        CONF_USERNAME: "test_user",
-        CONF_PASSWORD: "new_password",
-        CONF_HOST: DEFAULT_HOST,
-    }
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_USERNAME: "test_user",
+            CONF_PASSWORD: "new_password",
+            CONF_HOST: DEFAULT_HOST,
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (InvalidAuth("Invalid credentials"), "invalid_auth"),
-        (CannotConnect("Connection failed"), "cannot_connect"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        exception=InvalidAuth("Invalid credentials"),
+        error="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        exception=CannotConnect("Connection failed"),
+        error="cannot_connect",
+    ),
 )
-async def test_reauth_flow_errors(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_autoskope_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+async def reauth_flow_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    client: AsyncMock = Depends(mock_autoskope_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    *,
     exception: Exception,
     error: str,
 ) -> None:
     """Test reauth flow error handling with recovery."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_autoskope_client.__aenter__.side_effect = exception
+    client.__aenter__.side_effect = exception
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PASSWORD: "wrong_password"},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    # Recovery: clear the error and retry
-    mock_autoskope_client.__aenter__.side_effect = None
+    client.__aenter__.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PASSWORD: "new_password"},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
