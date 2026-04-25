@@ -1000,6 +1000,7 @@ dev = [
     "eagle100==0.1.1",
     "eq3btsmart==2.3.0",
     "eternalegypt==0.0.18",
+    "evolutionhttp==0.0.18",
     "fing-agent-api==1.1.0",
     "fjaraskupan==2.3.3",
     "fluss-api==0.2.4",
