@@ -1037,6 +1037,7 @@ dev = [
     "fjaraskupan==2.3.3",
     "fluss-api==0.2.4",
     "freezegun>=1.5.5",
+    "fritzconnection[qr]==1.15.1",
     "fumis==0.2.1",
     "gassist-text==0.0.14",
     "geniushub-client==0.7.1",
