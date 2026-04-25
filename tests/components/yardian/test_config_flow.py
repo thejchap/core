@@ -2,24 +2,39 @@
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from pyyardian import NetworkException, NotAuthorizedException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.yardian.const import DOMAIN, PRODUCT_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+from ._fixtures import mock_setup_entry
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.yardian.config_flow.AsyncYardianClient.fetch_device_info",
@@ -34,19 +49,24 @@ async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == PRODUCT_NAME
-    assert result2["data"] == {
-        "host": "fake_host",
-        "access_token": "fake_token",
-        "name": "fake_name",
-        "yid": "fake_yid",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(PRODUCT_NAME)
+    expect(result2["data"]).to_equal(
+        {
+            "host": "fake_host",
+            "access_token": "fake_token",
+            "name": "fake_name",
+            "yid": "fake_yid",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
@@ -65,10 +85,9 @@ async def test_form_invalid_auth(
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
-    # Should be recoverable after hits error
     with patch(
         "homeassistant.components.yardian.config_flow.AsyncYardianClient.fetch_device_info",
         return_value={"name": "fake_name", "yid": "fake_yid"},
@@ -82,19 +101,24 @@ async def test_form_invalid_auth(
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == PRODUCT_NAME
-    assert result3["data"] == {
-        "host": "fake_host",
-        "access_token": "fake_token",
-        "name": "fake_name",
-        "yid": "fake_yid",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal(PRODUCT_NAME)
+    expect(result3["data"]).to_equal(
+        {
+            "host": "fake_host",
+            "access_token": "fake_token",
+            "name": "fake_name",
+            "yid": "fake_yid",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_cannot_connect(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
@@ -113,10 +137,9 @@ async def test_form_cannot_connect(
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
-    # Should be recoverable after hits error
     with patch(
         "homeassistant.components.yardian.config_flow.AsyncYardianClient.fetch_device_info",
         return_value={"name": "fake_name", "yid": "fake_yid"},
@@ -130,19 +153,24 @@ async def test_form_cannot_connect(
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == PRODUCT_NAME
-    assert result3["data"] == {
-        "host": "fake_host",
-        "access_token": "fake_token",
-        "name": "fake_name",
-        "yid": "fake_yid",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal(PRODUCT_NAME)
+    expect(result3["data"]).to_equal(
+        {
+            "host": "fake_host",
+            "access_token": "fake_token",
+            "name": "fake_name",
+            "yid": "fake_yid",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_uncategorized_error(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def form_uncategorized_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we handle uncategorized error."""
     result = await hass.config_entries.flow.async_init(
@@ -161,10 +189,9 @@ async def test_form_uncategorized_error(
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
-    # Should be recoverable after hits error
     with patch(
         "homeassistant.components.yardian.config_flow.AsyncYardianClient.fetch_device_info",
         return_value={"name": "fake_name", "yid": "fake_yid"},
@@ -178,12 +205,14 @@ async def test_form_uncategorized_error(
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == PRODUCT_NAME
-    assert result3["data"] == {
-        "host": "fake_host",
-        "access_token": "fake_token",
-        "name": "fake_name",
-        "yid": "fake_yid",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal(PRODUCT_NAME)
+    expect(result3["data"]).to_equal(
+        {
+            "host": "fake_host",
+            "access_token": "fake_token",
+            "name": "fake_name",
+            "yid": "fake_yid",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
