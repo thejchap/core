@@ -1382,4 +1382,8 @@ dev = [
     "zinvolt==0.4.3",
     "zwave-me-ws==0.4.3",
     "devolo-plc-api==1.5.1",
+    "surepy==0.9.0",
+    "deebot-client==18.1.0",
+    "py-sucks==0.9.11",
+    "wyoming==1.7.2",
 ]
