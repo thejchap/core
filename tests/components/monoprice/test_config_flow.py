@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from serial import SerialException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.monoprice.const import (
@@ -17,6 +18,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 
 CONFIG = {
     CONF_PORT: "/test/port",
@@ -26,14 +29,22 @@ CONFIG = {
 }
 
 
-async def test_form(hass: HomeAssistant) -> None:
-    """Test we get the form."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -50,16 +61,22 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == CONFIG[CONF_PORT]
-    assert result2["data"] == {
-        CONF_PORT: CONFIG[CONF_PORT],
-        CONF_SOURCES: {"1": CONFIG[CONF_SOURCE_1], "4": CONFIG[CONF_SOURCE_4]},
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(CONFIG[CONF_PORT])
+    expect(result2["data"]).to_equal(
+        {
+            CONF_PORT: CONFIG[CONF_PORT],
+            CONF_SOURCES: {"1": CONFIG[CONF_SOURCE_1], "4": CONFIG[CONF_SOURCE_4]},
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -73,11 +90,15 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             result["flow_id"], CONFIG
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_generic_exception(hass: HomeAssistant) -> None:
+@test
+async def generic_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot generic exception."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -91,11 +112,15 @@ async def test_generic_exception(hass: HomeAssistant) -> None:
             result["flow_id"], CONFIG
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow options."""
     conf = {CONF_PORT: "/test/port", CONF_SOURCES: {"4": "four"}}
 
@@ -108,18 +133,24 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     with patch(
         "homeassistant.components.monoprice.async_setup_entry", return_value=True
     ):
-        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        expect(bool(await hass.config_entries.async_setup(config_entry.entry_id))).to_be(
+            True
+        )
         await hass.async_block_till_done()
 
         result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
-            user_input={CONF_SOURCE_1: "one", CONF_SOURCE_4: "", CONF_SOURCE_5: "five"},
+            user_input={
+                CONF_SOURCE_1: "one",
+                CONF_SOURCE_4: "",
+                CONF_SOURCE_5: "five",
+            },
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert config_entry.options[CONF_SOURCES] == {"1": "one", "5": "five"}
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(config_entry.options[CONF_SOURCES]).to_equal({"1": "one", "5": "five"})
