@@ -2,22 +2,37 @@
 
 from unittest.mock import AsyncMock, patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.streamlabswater.const import DOMAIN
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch("homeassistant.components.streamlabswater.config_flow.StreamlabsClient"):
         result = await hass.config_entries.flow.async_configure(
@@ -26,14 +41,17 @@ async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Streamlabs"
-    assert result["data"] == {CONF_API_KEY: "abc"}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Streamlabs")
+    expect(result["data"]).to_equal({CONF_API_KEY: "abc"})
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_cannot_connect(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
@@ -49,8 +67,8 @@ async def test_form_cannot_connect(
             {CONF_API_KEY: "abc"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     with patch("homeassistant.components.streamlabswater.config_flow.StreamlabsClient"):
         result = await hass.config_entries.flow.async_configure(
@@ -59,13 +77,18 @@ async def test_form_cannot_connect(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Streamlabs"
-    assert result["data"] == {CONF_API_KEY: "abc"}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Streamlabs")
+    expect(result["data"]).to_equal({CONF_API_KEY: "abc"})
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_unknown(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@test
+async def form_unknown(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we handle unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -80,8 +103,8 @@ async def test_form_unknown(hass: HomeAssistant, mock_setup_entry: AsyncMock) ->
             {CONF_API_KEY: "abc"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "unknown"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "unknown"})
 
     with patch("homeassistant.components.streamlabswater.config_flow.StreamlabsClient"):
         result = await hass.config_entries.flow.async_configure(
@@ -90,13 +113,17 @@ async def test_form_unknown(hass: HomeAssistant, mock_setup_entry: AsyncMock) ->
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Streamlabs"
-    assert result["data"] == {CONF_API_KEY: "abc"}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Streamlabs")
+    expect(result["data"]).to_equal({CONF_API_KEY: "abc"})
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_entry_already_exists(hass: HomeAssistant) -> None:
+@test
+async def form_entry_already_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle if the entry already exists."""
 
     entry = MockConfigEntry(
@@ -118,5 +145,5 @@ async def test_form_entry_already_exists(hass: HomeAssistant) -> None:
             {CONF_API_KEY: "abc"},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
