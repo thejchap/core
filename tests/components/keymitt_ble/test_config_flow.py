@@ -2,6 +2,8 @@
 
 from unittest.mock import ANY, AsyncMock, patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.config_entries import SOURCE_BLUETOOTH, SOURCE_IGNORE, SOURCE_USER
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_ADDRESS
 from homeassistant.core import HomeAssistant
@@ -15,6 +17,11 @@ from . import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    enable_bluetooth,
+    hass as hass_fixture,
+    mock_network,
+)
 
 DOMAIN = "keymitt_ble"
 
@@ -26,15 +33,27 @@ def patch_microbot_api():
     )
 
 
-async def test_bluetooth_discovery(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _bluetooth: None = Depends(enable_bluetooth),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def bluetooth_discovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test discovery via bluetooth with a valid device."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_BLUETOOTH},
         data=SERVICE_INFO,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     with patch_async_setup_entry() as mock_setup_entry, patch_microbot_api():
         result = await hass.config_entries.flow.async_configure(
@@ -43,12 +62,15 @@ async def test_bluetooth_discovery(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
-    assert len(mock_setup_entry.mock_calls) == 0
 
-
-async def test_bluetooth_discovery_already_setup(hass: HomeAssistant) -> None:
+@test
+async def bluetooth_discovery_already_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test discovery via bluetooth with a valid device when already setup."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -64,11 +86,15 @@ async def test_bluetooth_discovery_already_setup(hass: HomeAssistant) -> None:
             context={"source": SOURCE_BLUETOOTH},
             data=SERVICE_INFO,
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_user_setup(hass: HomeAssistant) -> None:
+@test
+async def user_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the user initiated form with valid mac."""
 
     with patch(
@@ -78,9 +104,9 @@ async def test_user_setup(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+    expect(result["errors"]).to_equal({})
 
     with patch_microbot_api():
         result2 = await hass.config_entries.flow.async_configure(
@@ -89,9 +115,9 @@ async def test_user_setup(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "link"
-    assert result2["errors"] is None
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("link")
+    expect(result2["errors"]).to_be(None)
 
     with patch_microbot_api(), patch_async_setup_entry() as mock_setup_entry:
         result3 = await hass.config_entries.flow.async_configure(
@@ -100,15 +126,21 @@ async def test_user_setup(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["result"].data == {
-        CONF_ADDRESS: "aa:bb:cc:dd:ee:ff",
-        CONF_ACCESS_TOKEN: ANY,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["result"].data).to_equal(
+        {
+            CONF_ADDRESS: "aa:bb:cc:dd:ee:ff",
+            CONF_ACCESS_TOKEN: ANY,
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_setup_already_configured(hass: HomeAssistant) -> None:
+@test
+async def user_setup_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the user initiated form with valid mac."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -125,11 +157,15 @@ async def test_user_setup_already_configured(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
 
 
-async def test_user_no_devices(hass: HomeAssistant) -> None:
+@test
+async def user_no_devices(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the user initiated form with valid mac."""
     with (
         patch_microbot_api(),
@@ -141,11 +177,15 @@ async def test_user_no_devices(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
 
 
-async def test_no_link(hass: HomeAssistant) -> None:
+@test
+async def no_link(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the user initiated form with invalid response."""
 
     with (
@@ -158,9 +198,9 @@ async def test_no_link(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+    expect(result["errors"]).to_equal({})
 
     with patch_microbot_api():
         result2 = await hass.config_entries.flow.async_configure(
@@ -168,8 +208,8 @@ async def test_no_link(hass: HomeAssistant) -> None:
             USER_INPUT,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "link"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("link")
     with (
         patch(
             "homeassistant.components.keymitt_ble.config_flow.MicroBotApiClient",
@@ -183,14 +223,18 @@ async def test_no_link(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["step_id"] == "link"
-    assert result3["errors"] == {"base": "linking"}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["step_id"]).to_equal("link")
+    expect(result3["errors"]).to_equal({"base": "linking"})
 
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_user_setup_replaces_ignored_device(hass: HomeAssistant) -> None:
+@test
+async def user_setup_replaces_ignored_device(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the user initiated form can replace an ignored device."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -207,11 +251,12 @@ async def test_user_setup_replaces_ignored_device(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
-    # Verify the ignored device is in the dropdown
-    assert "aa:bb:cc:dd:ee:ff" in result["data_schema"].schema["address"].container
+    expect(
+        "aa:bb:cc:dd:ee:ff" in result["data_schema"].schema["address"].container
+    ).to_be(True)
 
     with patch_microbot_api():
         result2 = await hass.config_entries.flow.async_configure(
@@ -220,8 +265,8 @@ async def test_user_setup_replaces_ignored_device(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "link"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("link")
 
     with patch_microbot_api(), patch_async_setup_entry() as mock_setup_entry:
         result3 = await hass.config_entries.flow.async_configure(
@@ -230,10 +275,12 @@ async def test_user_setup_replaces_ignored_device(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["result"].data == {
-        CONF_ADDRESS: "aa:bb:cc:dd:ee:ff",
-        CONF_ACCESS_TOKEN: ANY,
-    }
-    assert result3["result"].unique_id == "aa:bb:cc:dd:ee:ff"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["result"].data).to_equal(
+        {
+            CONF_ADDRESS: "aa:bb:cc:dd:ee:ff",
+            CONF_ACCESS_TOKEN: ANY,
+        }
+    )
+    expect(result3["result"].unique_id).to_equal("aa:bb:cc:dd:ee:ff")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
