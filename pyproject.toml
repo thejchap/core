@@ -1093,6 +1093,7 @@ dev = [
     "melnor-bluetooth==0.0.25",
     "meteo-lt-pkg==0.2.4",
     "meteofrance-api==1.5.0",
+    "microBeesPy==0.3.5",
     "moat-ble==0.1.1",
     "momonga==0.3.0",
     "monzopy==1.5.1",
@@ -1388,4 +1389,8 @@ dev = [
     "wyoming==1.7.2",
     "zcc-helper==3.8",
     "victron-vrm==0.1.8",
+    "led-ble==1.1.8",
+    "home-assistant-intents==2026.3.24",
+    "idrive-e2-client==0.1.1",
+    "forecast-solar==5.0.0",
 ]
