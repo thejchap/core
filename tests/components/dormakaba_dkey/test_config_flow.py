@@ -17,11 +17,7 @@ from homeassistant.data_entry_flow import FlowResult, FlowResultType
 from . import DKEY_DISCOVERY_INFO, NOT_DKEY_DISCOVERY_INFO
 
 from tests.common import MockConfigEntry
-from tests.hass_fixtures import (
-    enable_bluetooth,
-    hass as hass_fixture,
-    mock_network,
-)
+from tests.hass_fixtures import enable_bluetooth, hass as hass_fixture, mock_network
 
 
 @fixture
@@ -350,9 +346,7 @@ async def bluetooth_step_cannot_connect(
         exc=dkey_errors.InvalidActivationCode,
         error="invalid_code",
     ),
-    test.case(
-        "wrong_code", exc=dkey_errors.WrongActivationCode, error="wrong_code"
-    ),
+    test.case("wrong_code", exc=dkey_errors.WrongActivationCode, error="wrong_code"),
 )
 async def bluetooth_step_cannot_associate(
     _trigger: None = Depends(_trigger_executor),

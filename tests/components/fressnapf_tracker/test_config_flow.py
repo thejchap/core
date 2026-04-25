@@ -315,9 +315,7 @@ async def _reauth_reconfigure_invalid_phone(
 
     result = await flow_starter(config_entry, hass)
 
-    auth_client.request_sms_code.side_effect = (
-        FressnapfTrackerInvalidPhoneNumberError
-    )
+    auth_client.request_sms_code.side_effect = FressnapfTrackerInvalidPhoneNumberError
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],

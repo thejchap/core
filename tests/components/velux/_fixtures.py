@@ -194,8 +194,6 @@ def mock_pyvlx(
 
     with (
         patch("homeassistant.components.velux.PyVLX", return_value=pyvlx),
-        patch(
-            "homeassistant.components.velux.config_flow.PyVLX", return_value=pyvlx
-        ),
+        patch("homeassistant.components.velux.config_flow.PyVLX", return_value=pyvlx),
     ):
         yield pyvlx

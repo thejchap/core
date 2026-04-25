@@ -17,12 +17,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import setup_integration
-from ._fixtures import (
-    mock_client,
-    mock_config_entry,
-    mock_location,
-    mock_setup_entry,
-)
+from ._fixtures import mock_client, mock_config_entry, mock_location, mock_setup_entry
 from .const import LOCATION_ID, PASSWORD, USERNAME
 
 from tests.common import MockConfigEntry

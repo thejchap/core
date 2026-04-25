@@ -20,11 +20,7 @@ from . import (
 )
 
 from tests.common import MockConfigEntry
-from tests.hass_fixtures import (
-    enable_bluetooth,
-    hass as hass_fixture,
-    mock_network,
-)
+from tests.hass_fixtures import enable_bluetooth, hass as hass_fixture, mock_network
 
 
 @fixture

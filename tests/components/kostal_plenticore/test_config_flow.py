@@ -71,15 +71,11 @@ async def form_g1(
         apiclient.__aexit__.assert_called_once()
         apiclient.login.assert_called_once_with("test-password", service_code=None)
         apiclient.get_settings.assert_called_once()
-        apiclient.get_setting_values.assert_called_once_with(
-            "scb:network", "Hostname"
-        )
+        apiclient.get_setting_values.assert_called_once_with("scb:network", "Hostname")
 
     expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     expect(result["title"]).to_equal("scb")
-    expect(result["data"]).to_equal(
-        {"host": "1.1.1.1", "password": "test-password"}
-    )
+    expect(result["data"]).to_equal({"host": "1.1.1.1", "password": "test-password"})
     expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 

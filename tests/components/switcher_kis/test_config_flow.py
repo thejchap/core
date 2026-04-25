@@ -58,9 +58,7 @@ async def user_setup(
         expect(bridge.is_running).to_be(False)
         expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
         expect(result2["title"]).to_equal("Switcher")
-        expect(result2["result"].data).to_equal(
-            {CONF_USERNAME: None, CONF_TOKEN: None}
-        )
+        expect(result2["result"].data).to_equal({CONF_USERNAME: None, CONF_TOKEN: None})
 
         await hass.async_block_till_done()
 
