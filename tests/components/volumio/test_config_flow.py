@@ -3,6 +3,8 @@
 from ipaddress import ip_address
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.volumio.config_flow import CannotConnectError
 from homeassistant.components.volumio.const import DOMAIN
@@ -11,6 +13,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 TEST_SYSTEM_INFO = {"id": "1111-1111-1111-1111", "name": "TestVolumio"}
 
@@ -39,13 +42,22 @@ TEST_DISCOVERY_RESULT = {
 }
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -63,14 +75,18 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "TestVolumio"
-    assert result2["data"] == {**TEST_SYSTEM_INFO, **TEST_CONNECTION}
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("TestVolumio")
+    expect(result2["data"]).to_equal({**TEST_SYSTEM_INFO, **TEST_CONNECTION})
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_updates_unique_id(hass: HomeAssistant) -> None:
+@test
+async def form_updates_unique_id(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a duplicate id aborts and updates existing entry."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -104,19 +120,23 @@ async def test_form_updates_unique_id(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")
 
-    assert entry.data == {**TEST_SYSTEM_INFO, **TEST_CONNECTION}
+    expect(entry.data).to_equal({**TEST_SYSTEM_INFO, **TEST_CONNECTION})
 
 
-async def test_empty_system_info(hass: HomeAssistant) -> None:
+@test
+async def empty_system_info(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test old volumio versions with empty system info."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -134,19 +154,25 @@ async def test_empty_system_info(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == TEST_CONNECTION["host"]
-    assert result2["data"] == {
-        "host": TEST_CONNECTION["host"],
-        "port": TEST_CONNECTION["port"],
-        "name": TEST_CONNECTION["host"],
-        "id": None,
-    }
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(TEST_CONNECTION["host"])
+    expect(result2["data"]).to_equal(
+        {
+            "host": TEST_CONNECTION["host"],
+            "port": TEST_CONNECTION["port"],
+            "name": TEST_CONNECTION["host"],
+            "id": None,
+        }
+    )
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -161,11 +187,15 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             TEST_CONNECTION,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_exception(hass: HomeAssistant) -> None:
+@test
+async def form_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle generic error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -180,13 +210,16 @@ async def test_form_exception(hass: HomeAssistant) -> None:
             TEST_CONNECTION,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_discovery(hass: HomeAssistant) -> None:
+@test
+async def discovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test discovery flow works."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_ZEROCONF}, data=TEST_DISCOVERY
     )
@@ -207,19 +240,22 @@ async def test_discovery(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == TEST_DISCOVERY_RESULT["name"]
-    assert result2["data"] == TEST_DISCOVERY_RESULT
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(TEST_DISCOVERY_RESULT["name"])
+    expect(result2["data"]).to_equal(TEST_DISCOVERY_RESULT)
 
-    assert result2["result"]
-    assert result2["result"].unique_id == TEST_DISCOVERY_RESULT["id"]
+    expect(bool(result2["result"])).to_be(True)
+    expect(result2["result"].unique_id).to_equal(TEST_DISCOVERY_RESULT["id"])
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_discovery_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def discovery_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test discovery aborts if cannot connect."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_ZEROCONF}, data=TEST_DISCOVERY
     )
@@ -233,26 +269,34 @@ async def test_discovery_cannot_connect(hass: HomeAssistant) -> None:
             user_input={},
         )
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "cannot_connect"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("cannot_connect")
 
 
-async def test_discovery_duplicate_data(hass: HomeAssistant) -> None:
+@test
+async def discovery_duplicate_data(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test discovery aborts if same mDNS packet arrives."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_ZEROCONF}, data=TEST_DISCOVERY
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_ZEROCONF}, data=TEST_DISCOVERY
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_in_progress"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_in_progress")
 
 
-async def test_discovery_updates_unique_id(hass: HomeAssistant) -> None:
+@test
+async def discovery_updates_unique_id(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a duplicate discovery id aborts and updates existing entry."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -279,8 +323,8 @@ async def test_discovery_updates_unique_id(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert entry.data == TEST_DISCOVERY_RESULT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(entry.data).to_equal(TEST_DISCOVERY_RESULT)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)

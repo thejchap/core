@@ -1123,6 +1123,7 @@ dev = [
     "pytile==2024.12.0",
     "pytraccar==3.0.0",
     "pytrydan==0.8.0",
+    "pyvolumio==0.1.5",
     "pyweatherflowudp==1.5.2",
     "pyyardian==1.1.1",
     "pyzerproc==0.4.8",
