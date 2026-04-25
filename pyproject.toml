@@ -1244,6 +1244,7 @@ dev = [
     "pyvesync==3.4.1",
     "pyvicare==2.59.0",
     "pyvolumio==0.1.5",
+    "pywaze==1.2.0",
     "pyweatherflowudp==1.5.2",
     "pywebpush==2.3.0",
     "pywemo==1.4.0",
