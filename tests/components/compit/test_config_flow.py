@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.compit.config_flow import CannotConnect, InvalidAuth
@@ -11,151 +11,174 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import (
+    mock_compit_api,
+    mock_config_entry as mock_config_entry_fixture,
+    mock_setup_entry,
+)
 from .consts import CONFIG_INPUT
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_async_step_user_success(
-    hass: HomeAssistant, mock_compit_api: AsyncMock, mock_setup_entry: AsyncMock
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def async_step_user_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: AsyncMock = Depends(mock_compit_api),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user step with successful authentication."""
-    mock_compit_api.return_value = True
+    api.return_value = True
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == config_entries.SOURCE_USER
-    assert result["description_placeholders"] == {
-        "compit_url": "https://inext.compit.pl/"
-    }
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(config_entries.SOURCE_USER)
+    expect(result["description_placeholders"]).to_equal(
+        {"compit_url": "https://inext.compit.pl/"}
+    )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], CONFIG_INPUT
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == CONFIG_INPUT[CONF_EMAIL]
-    assert result["data"] == CONFIG_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(CONFIG_INPUT[CONF_EMAIL])
+    expect(result["data"]).to_equal(CONFIG_INPUT)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_error"),
-    [
-        (InvalidAuth(), "invalid_auth"),
-        (CannotConnect(), "cannot_connect"),
-        (Exception(), "unknown"),
-        (False, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", exception=InvalidAuth(), expected_error="invalid_auth"),
+    test.case(
+        "cannot_connect", exception=CannotConnect(), expected_error="cannot_connect"
+    ),
+    test.case("unknown_exception", exception=Exception(), expected_error="unknown"),
+    test.case("false_value", exception=False, expected_error="unknown"),
 )
-async def test_async_step_user_failed_auth(
-    hass: HomeAssistant,
-    exception: Exception,
+async def async_step_user_failed_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: AsyncMock = Depends(mock_compit_api),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    exception: object,
     expected_error: str,
-    mock_compit_api: AsyncMock,
-    mock_setup_entry: AsyncMock,
 ) -> None:
     """Test user step with invalid authentication then success after error is cleared."""
-    mock_compit_api.side_effect = [exception, True]
+    api.side_effect = [exception, True]
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == config_entries.SOURCE_USER
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(config_entries.SOURCE_USER)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], CONFIG_INPUT
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": expected_error})
 
-    # Test success after error is cleared
+    # Test success after error is cleared.
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], CONFIG_INPUT
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == CONFIG_INPUT[CONF_EMAIL]
-    assert result["data"] == CONFIG_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(CONFIG_INPUT[CONF_EMAIL])
+    expect(result["data"]).to_equal(CONFIG_INPUT)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_async_step_reauth_success(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_compit_api: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def async_step_reauth_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry_fixture),
+    api: AsyncMock = Depends(mock_compit_api),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reauth step with successful authentication."""
-    mock_compit_api.return_value = True
+    api.return_value = True
 
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_PASSWORD: "new-password"}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data == {
-        CONF_EMAIL: CONFIG_INPUT[CONF_EMAIL],
-        CONF_PASSWORD: "new-password",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_EMAIL: CONFIG_INPUT[CONF_EMAIL],
+            CONF_PASSWORD: "new-password",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_error"),
-    [
-        (InvalidAuth(), "invalid_auth"),
-        (CannotConnect(), "cannot_connect"),
-        (Exception(), "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", exception=InvalidAuth(), expected_error="invalid_auth"),
+    test.case(
+        "cannot_connect", exception=CannotConnect(), expected_error="cannot_connect"
+    ),
+    test.case("unknown_exception", exception=Exception(), expected_error="unknown"),
 )
-async def test_async_step_reauth_confirm_failed_auth(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+async def async_step_reauth_confirm_failed_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry_fixture),
+    api: AsyncMock = Depends(mock_compit_api),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
     exception: Exception,
     expected_error: str,
-    mock_compit_api: AsyncMock,
-    mock_setup_entry: AsyncMock,
 ) -> None:
-    """Test reauth confirm step with invalid authentication then success after error is cleared."""
-    mock_compit_api.side_effect = [exception, True]
+    """Test reauth confirm step with invalid auth then success after error is cleared."""
+    api.side_effect = [exception, True]
 
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_PASSWORD: "new-password"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": expected_error})
 
-    # Test success after error is cleared
+    # Test success after error is cleared.
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_EMAIL: CONFIG_INPUT[CONF_EMAIL], CONF_PASSWORD: "correct-password"},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data == {
-        CONF_EMAIL: CONFIG_INPUT[CONF_EMAIL],
-        CONF_PASSWORD: "correct-password",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_EMAIL: CONFIG_INPUT[CONF_EMAIL],
+            CONF_PASSWORD: "correct-password",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
