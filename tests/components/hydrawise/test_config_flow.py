@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 from aiohttp import ClientError
 from pydrawise.exceptions import NotAuthorizedError
 from pydrawise.schema import User
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.hydrawise.const import DOMAIN
@@ -13,25 +13,33 @@ from homeassistant.const import CONF_API_KEY, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_auth, mock_pydrawise, mock_setup_entry, user
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Apply autouse-equivalent fixtures."""
 
 
-async def test_form(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_auth: AsyncMock,
-    mock_pydrawise: AsyncMock,
-    user: User,
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    auth: AsyncMock = Depends(mock_auth),
+    pydrawise: AsyncMock = Depends(mock_pydrawise),
+    user_obj: User = Depends(user),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -41,26 +49,34 @@ async def test_form(
             CONF_API_KEY: "__api-key__",
         },
     )
-    mock_pydrawise.get_user.return_value = user
+    pydrawise.get_user.return_value = user_obj
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "asdf@asdf.com"
-    assert result["data"] == {
-        CONF_USERNAME: "asdf@asdf.com",
-        CONF_PASSWORD: "__password__",
-        CONF_API_KEY: "__api-key__",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
-    mock_auth.check.assert_awaited_once_with()
-    mock_pydrawise.get_user.assert_awaited_once_with(fetch_zones=False)
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("asdf@asdf.com")
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: "asdf@asdf.com",
+            CONF_PASSWORD: "__password__",
+            CONF_API_KEY: "__api-key__",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    auth.check.assert_awaited_once_with()
+    pydrawise.get_user.assert_awaited_once_with(fetch_zones=False)
 
 
-async def test_form_api_error(
-    hass: HomeAssistant, mock_auth: AsyncMock, mock_pydrawise: AsyncMock, user: User
+@test
+async def form_api_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _auth: AsyncMock = Depends(mock_auth),
+    pydrawise: AsyncMock = Depends(mock_pydrawise),
+    user_obj: User = Depends(user),
 ) -> None:
     """Test we handle API errors."""
-    mock_pydrawise.get_user.side_effect = ClientError("XXX")
+    pydrawise.get_user.side_effect = ClientError("XXX")
 
     init_result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -73,25 +89,28 @@ async def test_form_api_error(
     result = await hass.config_entries.flow.async_configure(
         init_result["flow_id"], data
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    mock_pydrawise.get_user.reset_mock(side_effect=True)
-    mock_pydrawise.get_user.return_value = user
+    pydrawise.get_user.reset_mock(side_effect=True)
+    pydrawise.get_user.return_value = user_obj
     result = await hass.config_entries.flow.async_configure(result["flow_id"], data)
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_form_auth_connect_timeout(
-    hass: HomeAssistant, mock_auth: AsyncMock, mock_pydrawise: AsyncMock
+@test
+async def form_auth_connect_timeout(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    auth: AsyncMock = Depends(mock_auth),
+    _pydrawise: AsyncMock = Depends(mock_pydrawise),
 ) -> None:
     """Test we handle connection timeout errors."""
-    mock_auth.check.side_effect = TimeoutError
+    auth.check.side_effect = TimeoutError
     init_result = await hass.config_entries.flow.async_init(
         DOMAIN,
-        context={
-            "source": config_entries.SOURCE_USER,
-        },
+        context={"source": config_entries.SOURCE_USER},
     )
     data = {
         CONF_USERNAME: "asdf@asdf.com",
@@ -102,19 +121,25 @@ async def test_form_auth_connect_timeout(
         init_result["flow_id"], data
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "timeout_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "timeout_connect"})
 
-    mock_auth.check.reset_mock(side_effect=True)
+    auth.check.reset_mock(side_effect=True)
     result = await hass.config_entries.flow.async_configure(result["flow_id"], data)
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_form_client_connect_timeout(
-    hass: HomeAssistant, mock_auth: AsyncMock, mock_pydrawise: AsyncMock, user: User
+@test
+async def form_client_connect_timeout(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _auth: AsyncMock = Depends(mock_auth),
+    pydrawise: AsyncMock = Depends(mock_pydrawise),
+    user_obj: User = Depends(user),
 ) -> None:
     """Test we handle API errors."""
-    mock_pydrawise.get_user.side_effect = TimeoutError
+    pydrawise.get_user.side_effect = TimeoutError
     init_result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -127,20 +152,25 @@ async def test_form_client_connect_timeout(
         init_result["flow_id"], data
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "timeout_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "timeout_connect"})
 
-    mock_pydrawise.get_user.reset_mock(side_effect=True)
-    mock_pydrawise.get_user.return_value = user
+    pydrawise.get_user.reset_mock(side_effect=True)
+    pydrawise.get_user.return_value = user_obj
     result = await hass.config_entries.flow.async_configure(result["flow_id"], data)
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_form_not_authorized_error(
-    hass: HomeAssistant, mock_auth: AsyncMock, mock_pydrawise: AsyncMock
+@test
+async def form_not_authorized_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    auth: AsyncMock = Depends(mock_auth),
+    _pydrawise: AsyncMock = Depends(mock_pydrawise),
 ) -> None:
     """Test we handle API errors."""
-    mock_auth.check.side_effect = NotAuthorizedError
+    auth.check.side_effect = NotAuthorizedError
 
     init_result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -153,19 +183,22 @@ async def test_form_not_authorized_error(
     result = await hass.config_entries.flow.async_configure(
         init_result["flow_id"], data
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
-    mock_auth.check.reset_mock(side_effect=True)
+    auth.check.reset_mock(side_effect=True)
     result = await hass.config_entries.flow.async_configure(result["flow_id"], data)
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_reauth(
-    hass: HomeAssistant,
-    user: User,
-    mock_auth: AsyncMock,
-    mock_pydrawise: AsyncMock,
+@test
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    user_obj: User = Depends(user),
+    _auth: AsyncMock = Depends(mock_auth),
+    pydrawise: AsyncMock = Depends(mock_pydrawise),
 ) -> None:
     """Test that re-authorization works."""
     mock_config_entry = MockConfigEntry(
@@ -184,11 +217,11 @@ async def test_reauth(
     await hass.async_block_till_done()
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
     [result] = flows
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_pydrawise.get_user.return_value = user
+    pydrawise.get_user.return_value = user_obj
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -198,12 +231,18 @@ async def test_reauth(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-async def test_reauth_fails(
-    hass: HomeAssistant, mock_auth: AsyncMock, mock_pydrawise: AsyncMock, user: User
+@test
+async def reauth_fails(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    auth: AsyncMock = Depends(mock_auth),
+    pydrawise: AsyncMock = Depends(mock_pydrawise),
+    user_obj: User = Depends(user),
 ) -> None:
     """Test that the reauth flow handles API errors."""
     mock_config_entry = MockConfigEntry(
@@ -219,9 +258,9 @@ async def test_reauth_fails(
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_auth.check.side_effect = NotAuthorizedError
+    auth.check.side_effect = NotAuthorizedError
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -230,11 +269,11 @@ async def test_reauth_fails(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
-    mock_auth.check.reset_mock(side_effect=True)
-    mock_pydrawise.get_user.return_value = user
+    auth.check.reset_mock(side_effect=True)
+    pydrawise.get_user.return_value = user_obj
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -243,5 +282,5 @@ async def test_reauth_fails(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
