@@ -1179,6 +1179,7 @@ dev = [
     "pysoma==0.0.12",
     "pyspeex-noise>=2.0.0",
     "pysrdaligateway==0.20.4",
+    "pystiebeleltron==0.2.5",
     "pysuezv2==2.0.7",
     "pyswitchbee==1.8.3",
     "pysyncthru==0.8.0",
