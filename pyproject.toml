@@ -1434,4 +1434,6 @@ dev = [
     "pyuptimerobot==24.0.1",
     "pycync==0.5.0",
     "pyicloud==2.4.1",
+    "fressnapftracker==0.2.2",
+    "aiopvapi==3.3.0",
 ]
