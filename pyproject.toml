@@ -1173,6 +1173,7 @@ dev = [
     "pymetno==0.13.0",
     "pymicro-vad>=2.0.1",
     "pymicrobot==0.0.23",
+    "pymiele==0.6.1",
     "pymonoprice==0.5",
     "pymysensors==0.26.0",
     "pynecil==4.2.1",
