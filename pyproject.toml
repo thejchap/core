@@ -1418,4 +1418,6 @@ dev = [
     "motionblinds==0.6.30",
     "aioasuswrt==1.5.4",
     "asusrouter==1.21.3",
+    "motioneye-client==0.3.14",
+    "aiowithings==3.1.6",
 ]
