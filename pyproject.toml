@@ -1396,4 +1396,5 @@ dev = [
     "forecast-solar==5.0.0",
     "waterfurnace==1.6.5",
     "blebox-uniapi==2.5.0",
+    "google-air-quality-api==3.0.1",
 ]
