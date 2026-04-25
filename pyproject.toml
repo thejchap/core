@@ -1343,6 +1343,7 @@ dev = [
     "wled==0.22.0",
     "wolf-comm==0.0.48",
     "wsdiscovery==2.1.2",
+    "wsdot==0.0.1",
     "yalexs==9.2.0",
     "yalexs-ble==3.3.0",
     "yt-dlp[default]==2026.3.17",
