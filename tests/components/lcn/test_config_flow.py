@@ -8,7 +8,7 @@ from pypck.connection import (
     PchkConnectionRefusedError,
     PchkLicenseError,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.components.lcn.config_flow import LcnFlowHandler, validate_connection
@@ -30,7 +30,10 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 
+from ._fixtures import entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 CONFIG_DATA = {
     CONF_IP_ADDRESS: "127.0.0.1",
@@ -51,18 +54,31 @@ IMPORT_DATA = {
 }
 
 
-async def test_show_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def show_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the form is served with no input."""
     flow = LcnFlowHandler()
     flow.hass = hass
 
     result = await flow.async_step_user(user_input=None)
 
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_step_user(hass: HomeAssistant) -> None:
+@test
+async def step_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test for user step."""
     with (
         patch("homeassistant.components.lcn.PchkConnectionManager.async_connect"),
@@ -73,42 +89,64 @@ async def test_step_user(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": config_entries.SOURCE_USER}, data=data
         )
 
-        assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-        assert result["title"] == CONNECTION_DATA[CONF_HOST]
-        assert result["data"] == {
-            **CONNECTION_DATA,
-            CONF_DEVICES: [],
-            CONF_ENTITIES: [],
-        }
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(CONNECTION_DATA[CONF_HOST])
+        expect(result["data"]).to_equal(
+            {
+                **CONNECTION_DATA,
+                CONF_DEVICES: [],
+                CONF_ENTITIES: [],
+            }
+        )
 
 
-async def test_step_user_existing_host(
-    hass: HomeAssistant, entry: MockConfigEntry
+@test
+async def step_user_existing_host(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(entry),
 ) -> None:
     """Test for user defined host already exists."""
-    entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     with patch("homeassistant.components.lcn.PchkConnectionManager.async_connect"):
-        config_data = entry.data.copy()
+        config_data = config_entry.data.copy()
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}, data=config_data
         )
 
-        assert result["type"] == data_entry_flow.FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("error", "errors"),
-    [
-        (PchkAuthenticationError, {CONF_BASE: "authentication_error"}),
-        (PchkLicenseError, {CONF_BASE: "license_error"}),
-        (PchkConnectionFailedError, {CONF_BASE: "connection_refused"}),
-        (PchkConnectionRefusedError, {CONF_BASE: "connection_refused"}),
-    ],
+@test.cases(
+    test.case(
+        "auth_error",
+        error=PchkAuthenticationError,
+        errors={CONF_BASE: "authentication_error"},
+    ),
+    test.case(
+        "license_error",
+        error=PchkLicenseError,
+        errors={CONF_BASE: "license_error"},
+    ),
+    test.case(
+        "connection_failed",
+        error=PchkConnectionFailedError,
+        errors={CONF_BASE: "connection_refused"},
+    ),
+    test.case(
+        "connection_refused",
+        error=PchkConnectionRefusedError,
+        errors={CONF_BASE: "connection_refused"},
+    ),
 )
-async def test_step_user_error(
-    hass: HomeAssistant, error: type[Exception], errors: dict[str, str]
+async def step_user_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    error: type[Exception],
+    errors: dict[str, str],
 ) -> None:
     """Test for error in user step is handled correctly."""
     with patch(
@@ -121,18 +159,23 @@ async def test_step_user_error(
             DOMAIN, context={"source": config_entries.SOURCE_USER}, data=data
         )
 
-        assert result["type"] == data_entry_flow.FlowResultType.FORM
-        assert result["errors"] == errors
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+        expect(result["errors"]).to_equal(errors)
 
 
-async def test_step_reconfigure(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+@test
+async def step_reconfigure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(entry),
+) -> None:
     """Test for reconfigure step."""
-    entry.add_to_hass(hass)
-    old_entry_data = entry.data.copy()
+    config_entry.add_to_hass(hass)
+    old_entry_data = config_entry.data.copy()
 
-    result = await entry.start_reconfigure_flow(hass)
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    result = await config_entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     with (
         patch("homeassistant.components.lcn.PchkConnectionManager.async_connect"),
@@ -142,35 +185,50 @@ async def test_step_reconfigure(hass: HomeAssistant, entry: MockConfigEntry) -> 
             result["flow_id"],
             CONFIG_DATA.copy(),
         )
-        assert result["type"] == data_entry_flow.FlowResultType.ABORT
-        assert result["reason"] == "reconfigure_successful"
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("reconfigure_successful")
 
-        entry = hass.config_entries.async_get_entry(entry.entry_id)
-        assert entry.title == CONNECTION_DATA[CONF_HOST]
-        assert entry.data == {**old_entry_data, **CONFIG_DATA}
+        updated_entry = hass.config_entries.async_get_entry(config_entry.entry_id)
+        expect(updated_entry.title).to_equal(CONNECTION_DATA[CONF_HOST])
+        expect(updated_entry.data).to_equal({**old_entry_data, **CONFIG_DATA})
 
 
-@pytest.mark.parametrize(
-    ("error", "errors"),
-    [
-        (PchkAuthenticationError, {CONF_BASE: "authentication_error"}),
-        (PchkLicenseError, {CONF_BASE: "license_error"}),
-        (PchkConnectionFailedError, {CONF_BASE: "connection_refused"}),
-        (PchkConnectionRefusedError, {CONF_BASE: "connection_refused"}),
-    ],
+@test.cases(
+    test.case(
+        "auth_error",
+        error=PchkAuthenticationError,
+        errors={CONF_BASE: "authentication_error"},
+    ),
+    test.case(
+        "license_error",
+        error=PchkLicenseError,
+        errors={CONF_BASE: "license_error"},
+    ),
+    test.case(
+        "connection_failed",
+        error=PchkConnectionFailedError,
+        errors={CONF_BASE: "connection_refused"},
+    ),
+    test.case(
+        "connection_refused",
+        error=PchkConnectionRefusedError,
+        errors={CONF_BASE: "connection_refused"},
+    ),
 )
-async def test_step_reconfigure_error(
-    hass: HomeAssistant,
-    entry: MockConfigEntry,
+async def step_reconfigure_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(entry),
+    *,
     error: type[Exception],
     errors: dict[str, str],
 ) -> None:
     """Test for error in reconfigure step is handled correctly."""
-    entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await entry.start_reconfigure_flow(hass)
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    result = await config_entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     with patch(
         "homeassistant.components.lcn.PchkConnectionManager.async_connect",
@@ -181,11 +239,14 @@ async def test_step_reconfigure_error(
             CONFIG_DATA.copy(),
         )
 
-        assert result["type"] == data_entry_flow.FlowResultType.FORM
-        assert result["errors"] == errors
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+        expect(result["errors"]).to_equal(errors)
 
 
-async def test_validate_connection() -> None:
+@test
+async def validate_connection_test(
+    _trigger: None = Depends(_trigger_executor),
+) -> None:
     """Test the connection validation."""
     data = CONNECTION_DATA.copy()
 
@@ -199,6 +260,6 @@ async def test_validate_connection() -> None:
     ):
         result = await validate_connection(data=data)
 
-    assert async_connect.is_called
-    assert async_close.is_called
-    assert result is None
+    expect(bool(async_connect.is_called)).to_be(True)
+    expect(bool(async_close.is_called)).to_be(True)
+    expect(result).to_be(None)
