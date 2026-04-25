@@ -1,48 +1,83 @@
 """Test Lidarr config flow."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.lidarr.const import DEFAULT_NAME, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.const import CONF_API_KEY, CONF_SOURCE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import CONF_DATA, MOCK_INPUT, ComponentSetup
+from ._fixtures import (
+    CONF_DATA,
+    MOCK_INPUT,
+    ComponentSetup,
+    cannot_connect,
+    config_entry,
+    connection,
+    invalid_auth,
+    setup_integration,
+    unknown,
+    wrong_app,
+    zeroconf_failed,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_flow_user_form(hass: HomeAssistant, connection) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def flow_user_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _connection: None = Depends(connection),
+) -> None:
     """Test that the user set up form is served."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=MOCK_INPUT,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_NAME
-    assert result["data"] == CONF_DATA
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_NAME)
+    expect(result["data"]).to_equal(CONF_DATA)
 
 
-async def test_flow_user_invalid_auth(hass: HomeAssistant, invalid_auth) -> None:
+@test
+async def flow_user_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _invalid_auth: None = Depends(invalid_auth),
+) -> None:
     """Test invalid authentication."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: SOURCE_USER},
         data=CONF_DATA,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"]["base"] == "invalid_auth"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]["base"]).to_equal("invalid_auth")
 
 
-async def test_flow_user_cannot_connect(hass: HomeAssistant, cannot_connect) -> None:
+@test
+async def flow_user_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _cannot_connect: None = Depends(cannot_connect),
+) -> None:
     """Test connection error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -50,12 +85,17 @@ async def test_flow_user_cannot_connect(hass: HomeAssistant, cannot_connect) -> 
         data=CONF_DATA,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"]["base"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]["base"]).to_equal("cannot_connect")
 
 
-async def test_wrong_app(hass: HomeAssistant, wrong_app) -> None:
+@test
+async def wrong_app_test(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _wrong_app: None = Depends(wrong_app),
+) -> None:
     """Test we show user form on wrong app."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -63,12 +103,17 @@ async def test_wrong_app(hass: HomeAssistant, wrong_app) -> None:
         data=MOCK_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"]["base"] == "wrong_app"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]["base"]).to_equal("wrong_app")
 
 
-async def test_zeroconf_failed(hass: HomeAssistant, zeroconf_failed) -> None:
+@test
+async def zeroconf_failed_test(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _zeroconf_failed: None = Depends(zeroconf_failed),
+) -> None:
     """Test we show user form on zeroconf failure."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -76,12 +121,17 @@ async def test_zeroconf_failed(hass: HomeAssistant, zeroconf_failed) -> None:
         data=MOCK_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"]["base"] == "zeroconf_failed"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]["base"]).to_equal("zeroconf_failed")
 
 
-async def test_flow_user_unknown_error(hass: HomeAssistant, unknown) -> None:
+@test
+async def flow_user_unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _unknown: None = Depends(unknown),
+) -> None:
     """Test unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -91,32 +141,34 @@ async def test_flow_user_unknown_error(hass: HomeAssistant, unknown) -> None:
         result["flow_id"],
         user_input=CONF_DATA,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"]["base"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]["base"]).to_equal("unknown")
 
 
-async def test_flow_reauth(
-    hass: HomeAssistant,
-    setup_integration: ComponentSetup,
-    connection,
-    config_entry: MockConfigEntry,
+@test
+async def flow_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup: ComponentSetup = Depends(setup_integration),
+    _connection: None = Depends(connection),
+    entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test reauth."""
-    await setup_integration()
-    result = await config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    await setup()
+    result = await entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_API_KEY: "abc123"},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert config_entry.data[CONF_API_KEY] == "abc123"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.data[CONF_API_KEY]).to_equal("abc123")
