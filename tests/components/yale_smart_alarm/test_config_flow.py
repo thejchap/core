@@ -248,7 +248,11 @@ async def reconfigure(
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {"username": "test-username", "password": "new-test-password", "area_id": "2"},
+            {
+                "username": "test-username",
+                "password": "new-test-password",
+                "area_id": "2",
+            },
         )
         await hass.async_block_till_done()
 
@@ -278,7 +282,11 @@ async def reconfigure_username_exist(
         title="other-username",
         domain=DOMAIN,
         unique_id="other-username",
-        data={"username": "other-username", "password": "test-password", "area_id": "1"},
+        data={
+            "username": "other-username",
+            "password": "test-password",
+            "area_id": "1",
+        },
         version=2,
         minor_version=2,
     )
@@ -317,7 +325,11 @@ async def reconfigure_username_exist(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {"username": "other-new-username", "password": "test-password", "area_id": "1"},
+            {
+                "username": "other-new-username",
+                "password": "test-password",
+                "area_id": "1",
+            },
         )
         await hass.async_block_till_done()
 
@@ -360,7 +372,11 @@ async def reconfigure_flow_error(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {"username": "test-username", "password": "update-password", "area_id": "1"},
+            {
+                "username": "test-username",
+                "password": "update-password",
+                "area_id": "1",
+            },
         )
         await hass.async_block_till_done()
 
@@ -380,7 +396,11 @@ async def reconfigure_flow_error(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {"username": "test-username", "password": "new-test-password", "area_id": "1"},
+            {
+                "username": "test-username",
+                "password": "new-test-password",
+                "area_id": "1",
+            },
         )
         await hass.async_block_till_done()
 

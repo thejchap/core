@@ -21,7 +21,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from ._fixtures import mock_api, mock_config_entry, mock_setup_entry, mock_subentries
+from ._fixtures import mock_api, mock_config_entry, mock_setup_entry
 
 from tests.common import MockConfigEntry, get_schema_suggested_value
 from tests.hass_fixtures import hass as hass_fixture, mock_network
@@ -107,7 +107,11 @@ async def form_with_referrer(
 
 
 @test.cases(
-    test.case("cannot_connect", api_exception=GoogleAirQualityApiError(), expected_error="cannot_connect"),
+    test.case(
+        "cannot_connect",
+        api_exception=GoogleAirQualityApiError(),
+        expected_error="cannot_connect",
+    ),
     test.case("unknown", api_exception=ValueError(), expected_error="unknown"),
 )
 async def form_exceptions(
@@ -138,7 +142,9 @@ async def form_exceptions(
     expect(result["errors"]).to_equal({"base": expected_error})
     data_schema = result["data_schema"].schema
     expect(get_schema_suggested_value(data_schema, CONF_NAME)).to_equal("test-name")
-    expect(get_schema_suggested_value(data_schema, CONF_API_KEY)).to_equal("test-api-key")
+    expect(get_schema_suggested_value(data_schema, CONF_API_KEY)).to_equal(
+        "test-api-key"
+    )
     expect(get_schema_suggested_value(data_schema, CONF_LOCATION)).to_equal(
         {CONF_LATITUDE: 10.1, CONF_LONGITUDE: 20.1}
     )
@@ -234,9 +240,7 @@ async def form_not_already_configured(
         },
     )
 
-    api.async_get_current_conditions.assert_called_once_with(
-        lat=10.1002, lon=20.0998
-    )
+    api.async_get_current_conditions.assert_called_once_with(lat=10.1002, lon=20.0998)
 
     expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     expect(result["title"]).to_equal("Google Air Quality")

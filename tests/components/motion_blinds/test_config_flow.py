@@ -18,7 +18,6 @@ from ._fixtures import motion_blinds_connect
 from tests.common import MockConfigEntry
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-
 TEST_HOST = "1.2.3.4"
 TEST_HOST2 = "5.6.7.8"
 TEST_HOST_HA = "9.10.11.12"
@@ -92,7 +91,11 @@ async def config_flow_manual_host_success(
     expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     expect(result["title"]).to_equal(DEFAULT_GATEWAY_NAME)
     expect(result["data"]).to_equal(
-        {CONF_HOST: TEST_HOST, CONF_API_KEY: TEST_API_KEY, const.CONF_INTERFACE: TEST_HOST_ANY}
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_API_KEY: TEST_API_KEY,
+            const.CONF_INTERFACE: TEST_HOST_ANY,
+        }
     )
 
 
@@ -127,7 +130,11 @@ async def config_flow_discovery_1_success(
     expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     expect(result["title"]).to_equal(DEFAULT_GATEWAY_NAME)
     expect(result["data"]).to_equal(
-        {CONF_HOST: TEST_HOST, CONF_API_KEY: TEST_API_KEY, const.CONF_INTERFACE: TEST_HOST_ANY}
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_API_KEY: TEST_API_KEY,
+            const.CONF_INTERFACE: TEST_HOST_ANY,
+        }
     )
 
 
@@ -177,7 +184,11 @@ async def config_flow_discovery_2_success(
     expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     expect(result["title"]).to_equal(DEFAULT_GATEWAY_NAME)
     expect(result["data"]).to_equal(
-        {CONF_HOST: TEST_HOST2, CONF_API_KEY: TEST_API_KEY, const.CONF_INTERFACE: TEST_HOST_ANY}
+        {
+            CONF_HOST: TEST_HOST2,
+            CONF_API_KEY: TEST_API_KEY,
+            const.CONF_INTERFACE: TEST_HOST_ANY,
+        }
     )
 
 
@@ -273,7 +284,11 @@ async def config_flow_invalid_interface(
     expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     expect(result["title"]).to_equal(DEFAULT_GATEWAY_NAME)
     expect(result["data"]).to_equal(
-        {CONF_HOST: TEST_HOST, CONF_API_KEY: TEST_API_KEY, const.CONF_INTERFACE: TEST_HOST_ANY}
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_API_KEY: TEST_API_KEY,
+            const.CONF_INTERFACE: TEST_HOST_ANY,
+        }
     )
 
 
@@ -308,7 +323,11 @@ async def dhcp_flow(
     expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     expect(result["title"]).to_equal(DEFAULT_GATEWAY_NAME)
     expect(result["data"]).to_equal(
-        {CONF_HOST: TEST_HOST, CONF_API_KEY: TEST_API_KEY, const.CONF_INTERFACE: TEST_HOST_ANY}
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_API_KEY: TEST_API_KEY,
+            const.CONF_INTERFACE: TEST_HOST_ANY,
+        }
     )
 
 

@@ -73,13 +73,13 @@ async def form(
         }
     )
     expect(len(mock_setup_entry.mock_calls)).to_equal(1)
-    expect(result2["result"].unique_id).to_equal(
-        "ekerö-slagsta-10:00-['mon', 'fri']"
-    )
+    expect(result2["result"].unique_id).to_equal("ekerö-slagsta-10:00-['mon', 'fri']")
 
 
 @test.cases(
-    test.case("invalid_auth", side_effect=InvalidAuthentication, base_error="invalid_auth"),
+    test.case(
+        "invalid_auth", side_effect=InvalidAuthentication, base_error="invalid_auth"
+    ),
     test.case("invalid_route", side_effect=NoFerryFound, base_error="invalid_route"),
     test.case("cannot_connect", side_effect=Exception, base_error="cannot_connect"),
 )
@@ -170,7 +170,9 @@ async def reauth_flow(
 
 
 @test.cases(
-    test.case("invalid_auth", side_effect=InvalidAuthentication, p_error="invalid_auth"),
+    test.case(
+        "invalid_auth", side_effect=InvalidAuthentication, p_error="invalid_auth"
+    ),
     test.case("invalid_route", side_effect=NoFerryFound, p_error="invalid_route"),
     test.case("cannot_connect", side_effect=Exception, p_error="cannot_connect"),
 )

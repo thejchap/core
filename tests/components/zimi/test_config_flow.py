@@ -24,7 +24,6 @@ from ._fixtures import discovery_mock, mock_setup_entry
 from tests.common import MockConfigEntry
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-
 INPUT_MAC = "aa:bb:cc:dd:ee:ff"
 INPUT_MAC_EXTRA = "aa:bb:cc:dd:ee:ee"
 INPUT_HOST = "192.168.1.100"
@@ -52,8 +51,8 @@ async def user_discovery_success(
     discovery.discovers.return_value = [
         ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT)
     ]
-    discovery.return_value.validate_connection.return_value = (
-        ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
+    discovery.return_value.validate_connection.return_value = ControlPointDescription(
+        host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC
     )
 
     result = await hass.config_entries.flow.async_init(
@@ -89,10 +88,8 @@ async def user_discovery_success_selection(
     expect(result["step_id"]).to_equal("selection")
     expect(result["errors"]).to_equal({})
 
-    discovery.return_value.validate_connection.return_value = (
-        ControlPointDescription(
-            host=INPUT_HOST_EXTRA, port=INPUT_PORT_EXTRA, mac=INPUT_MAC_EXTRA
-        )
+    discovery.return_value.validate_connection.return_value = ControlPointDescription(
+        host=INPUT_HOST_EXTRA, port=INPUT_PORT_EXTRA, mac=INPUT_MAC_EXTRA
     )
 
     result = await hass.config_entries.flow.async_configure(
@@ -102,7 +99,11 @@ async def user_discovery_success_selection(
 
     expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     expect(result["data"]).to_equal(
-        {"host": INPUT_HOST_EXTRA, "port": INPUT_PORT_EXTRA, "mac": format_mac(INPUT_MAC_EXTRA)}
+        {
+            "host": INPUT_HOST_EXTRA,
+            "port": INPUT_PORT_EXTRA,
+            "mac": format_mac(INPUT_MAC_EXTRA),
+        }
     )
 
 
@@ -126,8 +127,8 @@ async def user_discovery_duplicates(
     discovery.discovers.return_value = [
         ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT)
     ]
-    discovery.return_value.validate_connection.return_value = (
-        ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
+    discovery.return_value.validate_connection.return_value = ControlPointDescription(
+        host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC
     )
 
     result = await hass.config_entries.flow.async_init(
@@ -146,8 +147,8 @@ async def finish_manual_success(
 ) -> None:
     """Test manual form transitions to creation with valid data."""
     discovery.discovers.side_effect = ControlPointError("Discovery failed")
-    discovery.return_value.validate_connection.return_value = (
-        ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
+    discovery.return_value.validate_connection.return_value = ControlPointDescription(
+        host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC
     )
 
     result = await hass.config_entries.flow.async_init(
@@ -201,8 +202,8 @@ async def manual_cannot_connect(
     expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     discovery.return_value.validate_connection.side_effect = None
-    discovery.return_value.validate_connection.return_value = (
-        ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
+    discovery.return_value.validate_connection.return_value = ControlPointDescription(
+        host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC
     )
 
     result = await hass.config_entries.flow.async_configure(
@@ -248,8 +249,8 @@ async def manual_gethostbyname_error(
     expect(result["errors"]).to_equal({"base": "invalid_host"})
 
     discovery.return_value.validate_connection.side_effect = None
-    discovery.return_value.validate_connection.return_value = (
-        ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
+    discovery.return_value.validate_connection.return_value = ControlPointDescription(
+        host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC
     )
 
     result = await hass.config_entries.flow.async_configure(
@@ -265,10 +266,26 @@ async def manual_gethostbyname_error(
 
 
 @test.cases(
-    test.case("invalid_host", side_effect=ControlPointInvalidHostError, error_expected={"base": "invalid_host"}),
-    test.case("connection_refused", side_effect=ControlPointConnectionRefusedError, error_expected={"base": "connection_refused"}),
-    test.case("cannot_connect", side_effect=ControlPointCannotConnectError, error_expected={"base": "cannot_connect"}),
-    test.case("timeout", side_effect=ControlPointTimeoutError, error_expected={"base": "timeout"}),
+    test.case(
+        "invalid_host",
+        side_effect=ControlPointInvalidHostError,
+        error_expected={"base": "invalid_host"},
+    ),
+    test.case(
+        "connection_refused",
+        side_effect=ControlPointConnectionRefusedError,
+        error_expected={"base": "connection_refused"},
+    ),
+    test.case(
+        "cannot_connect",
+        side_effect=ControlPointCannotConnectError,
+        error_expected={"base": "cannot_connect"},
+    ),
+    test.case(
+        "timeout",
+        side_effect=ControlPointTimeoutError,
+        error_expected={"base": "timeout"},
+    ),
     test.case("unknown", side_effect=Exception, error_expected={"base": "unknown"}),
 )
 async def manual_connection_errors(
@@ -302,8 +319,8 @@ async def manual_connection_errors(
     expect(result["errors"]).to_equal(error_expected)
 
     discovery.return_value.validate_connection.side_effect = None
-    discovery.return_value.validate_connection.return_value = (
-        ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
+    discovery.return_value.validate_connection.return_value = ControlPointDescription(
+        host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC
     )
 
     result = await hass.config_entries.flow.async_configure(

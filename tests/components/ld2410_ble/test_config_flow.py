@@ -15,11 +15,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from . import LD2410_BLE_DISCOVERY_INFO, NOT_LD2410_BLE_DISCOVERY_INFO
 
 from tests.common import MockConfigEntry
-from tests.hass_fixtures import (
-    enable_bluetooth,
-    hass as hass_fixture,
-    mock_network,
-)
+from tests.hass_fixtures import enable_bluetooth, hass as hass_fixture, mock_network
 
 
 @fixture
@@ -251,7 +247,9 @@ async def user_setup_replaces_ignored_device(
     expect(result["type"]).to_be(FlowResultType.FORM)
     expect(result["step_id"]).to_equal("user")
 
-    expect("AA:BB:CC:DD:EE:FF" in result["data_schema"].schema["address"].container).to_be(True)
+    expect(
+        "AA:BB:CC:DD:EE:FF" in result["data_schema"].schema["address"].container
+    ).to_be(True)
 
     with (
         patch("homeassistant.components.ld2410_ble.config_flow.LD2410BLE.initialise"),

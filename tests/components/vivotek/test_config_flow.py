@@ -31,7 +31,6 @@ from ._fixtures import mock_config_entry, mock_setup_entry, mock_vivotek_camera
 from tests.common import MockConfigEntry
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-
 USER_DATA = {
     CONF_IP_ADDRESS: "1.2.3.4",
     CONF_PORT: 80,

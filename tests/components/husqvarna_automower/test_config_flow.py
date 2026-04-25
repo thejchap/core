@@ -18,13 +18,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_entry_oauth2_flow
 
 from . import setup_integration
-from ._fixtures import (
-    expires_at,
-    jwt,
-    mock_automower_client,
-    mock_config_entry,
-    setup_credentials,
-)
+from ._fixtures import jwt, mock_automower_client, mock_config_entry, setup_credentials
 from .const import CLIENT_ID, USER_ID
 
 from tests.common import MockConfigEntry, async_load_fixture
@@ -49,10 +43,34 @@ def _trigger_executor(
 
 
 @test.cases(
-    test.case("ok", new_scope="iam:read amc:api", fixture="mower.json", exception=None, amount=1),
-    test.case("exc", new_scope="iam:read amc:api", fixture="mower.json", exception=Exception, amount=0),
-    test.case("missing_scope", new_scope="iam:read", fixture="mower.json", exception=None, amount=0),
-    test.case("empty", new_scope="iam:read amc:api", fixture="empty.json", exception=None, amount=0),
+    test.case(
+        "ok",
+        new_scope="iam:read amc:api",
+        fixture="mower.json",
+        exception=None,
+        amount=1,
+    ),
+    test.case(
+        "exc",
+        new_scope="iam:read amc:api",
+        fixture="mower.json",
+        exception=Exception,
+        amount=0,
+    ),
+    test.case(
+        "missing_scope",
+        new_scope="iam:read",
+        fixture="mower.json",
+        exception=None,
+        amount=0,
+    ),
+    test.case(
+        "empty",
+        new_scope="iam:read amc:api",
+        fixture="empty.json",
+        exception=None,
+        amount=0,
+    ),
 )
 async def full_flow(
     _trigger: None = Depends(_trigger_executor),
@@ -173,9 +191,27 @@ async def config_non_unique_profile(
 
 
 @test.cases(
-    test.case("reauth_full", scope="iam:read amc:api", step_id="reauth_confirm", reason="reauth_successful", new_scope="iam:read amc:api"),
-    test.case("missing_to_full", scope="iam:read", step_id="missing_scope", reason="reauth_successful", new_scope="iam:read amc:api"),
-    test.case("missing_to_missing", scope="iam:read", step_id="missing_scope", reason="missing_amc_scope", new_scope="iam:read"),
+    test.case(
+        "reauth_full",
+        scope="iam:read amc:api",
+        step_id="reauth_confirm",
+        reason="reauth_successful",
+        new_scope="iam:read amc:api",
+    ),
+    test.case(
+        "missing_to_full",
+        scope="iam:read",
+        step_id="missing_scope",
+        reason="reauth_successful",
+        new_scope="iam:read amc:api",
+    ),
+    test.case(
+        "missing_to_missing",
+        scope="iam:read",
+        step_id="missing_scope",
+        reason="missing_amc_scope",
+        new_scope="iam:read",
+    ),
 )
 async def reauth(
     _trigger: None = Depends(_trigger_executor),
@@ -248,8 +284,12 @@ async def reauth(
 
     expect(config_entry.unique_id).to_equal(USER_ID)
     expect("token" in config_entry.data).to_be(True)
-    expect(config_entry.data["token"].get("access_token")).to_equal("mock-updated-token")
-    expect(config_entry.data["token"].get("refresh_token")).to_equal("mock-refresh-token")
+    expect(config_entry.data["token"].get("access_token")).to_equal(
+        "mock-updated-token"
+    )
+    expect(config_entry.data["token"].get("refresh_token")).to_equal(
+        "mock-refresh-token"
+    )
 
 
 @test

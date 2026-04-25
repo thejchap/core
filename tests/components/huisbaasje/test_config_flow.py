@@ -73,8 +73,14 @@ async def form(
 
 
 @test.cases(
-    test.case("invalid_auth", side_effect=EnergyFlipException, base_error="invalid_auth"),
-    test.case("cannot_connect", side_effect=EnergyFlipConnectionException, base_error="cannot_connect"),
+    test.case(
+        "invalid_auth", side_effect=EnergyFlipException, base_error="invalid_auth"
+    ),
+    test.case(
+        "cannot_connect",
+        side_effect=EnergyFlipConnectionException,
+        base_error="cannot_connect",
+    ),
     test.case("unknown", side_effect=Exception, base_error="unknown"),
 )
 async def form_authenticate_errors(
@@ -103,8 +109,16 @@ async def form_authenticate_errors(
 
 
 @test.cases(
-    test.case("cannot_connect", side_effect=EnergyFlipConnectionException, base_error="cannot_connect"),
-    test.case("invalid_auth", side_effect=EnergyFlipUnauthenticatedException, base_error="invalid_auth"),
+    test.case(
+        "cannot_connect",
+        side_effect=EnergyFlipConnectionException,
+        base_error="cannot_connect",
+    ),
+    test.case(
+        "invalid_auth",
+        side_effect=EnergyFlipUnauthenticatedException,
+        base_error="invalid_auth",
+    ),
     test.case("unknown", side_effect=Exception, base_error="unknown"),
 )
 async def form_customer_overview_errors(
