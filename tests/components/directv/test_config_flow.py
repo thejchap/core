@@ -4,6 +4,7 @@ import dataclasses
 from unittest.mock import patch
 
 from aiohttp import ClientError as HTTPClientError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.directv.const import CONF_RECEIVER_ID, DOMAIN
 from homeassistant.config_entries import SOURCE_SSDP, SOURCE_USER
@@ -22,22 +23,39 @@ from . import (
     setup_integration,
 )
 
+from tests.hass_fixtures import (
+    aioclient_mock as aioclient_mock_fx,
+    hass as hass_fixture,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
 
 
-async def test_show_user_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def show_user_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the user set up form is served."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: SOURCE_USER},
     )
 
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
 
-async def test_show_ssdp_form(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def show_ssdp_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test that the ssdp confirmation form is served."""
     mock_connection(aioclient_mock)
@@ -47,13 +65,16 @@ async def test_show_ssdp_form(
         DOMAIN, context={CONF_SOURCE: SOURCE_SSDP}, data=discovery_info
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "ssdp_confirm"
-    assert result["description_placeholders"] == {CONF_NAME: HOST}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("ssdp_confirm")
+    expect(result["description_placeholders"]).to_equal({CONF_NAME: HOST})
 
 
-async def test_cannot_connect(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we show user form on connection error."""
     aioclient_mock.get("http://127.0.0.1:8080/info/getVersion", exc=HTTPClientError)
@@ -65,13 +86,16 @@ async def test_cannot_connect(
         data=user_input,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_ssdp_cannot_connect(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def ssdp_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we abort SSDP flow on connection error."""
     aioclient_mock.get("http://127.0.0.1:8080/info/getVersion", exc=HTTPClientError)
@@ -83,12 +107,15 @@ async def test_ssdp_cannot_connect(
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_ssdp_confirm_cannot_connect(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def ssdp_confirm_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we abort SSDP flow on connection error."""
     aioclient_mock.get("http://127.0.0.1:8080/info/getVersion", exc=HTTPClientError)
@@ -100,12 +127,15 @@ async def test_ssdp_confirm_cannot_connect(
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_user_device_exists_abort(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def user_device_exists_abort(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we abort user flow if DirecTV receiver already configured."""
     await setup_integration(hass, aioclient_mock, skip_entry_setup=True)
@@ -117,12 +147,15 @@ async def test_user_device_exists_abort(
         data=user_input,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_ssdp_device_exists_abort(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def ssdp_device_exists_abort(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we abort SSDP flow if DirecTV receiver already configured."""
     await setup_integration(hass, aioclient_mock, skip_entry_setup=True)
@@ -134,12 +167,15 @@ async def test_ssdp_device_exists_abort(
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_ssdp_with_receiver_id_device_exists_abort(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def ssdp_with_receiver_id_device_exists_abort(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we abort SSDP flow if DirecTV receiver already configured."""
     await setup_integration(hass, aioclient_mock, skip_entry_setup=True)
@@ -152,12 +188,15 @@ async def test_ssdp_with_receiver_id_device_exists_abort(
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_unknown_error(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we show user form on unknown error."""
     user_input = MOCK_USER_INPUT.copy()
@@ -171,12 +210,15 @@ async def test_unknown_error(
             data=user_input,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_ssdp_unknown_error(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def ssdp_unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we abort SSDP flow on unknown error."""
     discovery_info = dataclasses.replace(MOCK_SSDP_DISCOVERY_INFO)
@@ -190,12 +232,15 @@ async def test_ssdp_unknown_error(
             data=discovery_info,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_ssdp_confirm_unknown_error(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def ssdp_confirm_unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we abort SSDP flow on unknown error."""
     discovery_info = dataclasses.replace(MOCK_SSDP_DISCOVERY_INFO)
@@ -209,12 +254,15 @@ async def test_ssdp_confirm_unknown_error(
             data=discovery_info,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_full_user_flow_implementation(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def full_user_flow_implementation(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test the full manual user flow from start to finish."""
     mock_connection(aioclient_mock)
@@ -224,8 +272,8 @@ async def test_full_user_flow_implementation(
         context={CONF_SOURCE: SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     user_input = MOCK_USER_INPUT.copy()
     with patch("homeassistant.components.directv.async_setup_entry", return_value=True):
@@ -234,16 +282,19 @@ async def test_full_user_flow_implementation(
             user_input=user_input,
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == HOST
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(HOST)
 
-    assert result["data"]
-    assert result["data"][CONF_HOST] == HOST
-    assert result["data"][CONF_RECEIVER_ID] == RECEIVER_ID
+    expect(bool(result["data"])).to_be(True)
+    expect(result["data"][CONF_HOST]).to_equal(HOST)
+    expect(result["data"][CONF_RECEIVER_ID]).to_equal(RECEIVER_ID)
 
 
-async def test_full_ssdp_flow_implementation(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def full_ssdp_flow_implementation(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test the full SSDP flow from start to finish."""
     mock_connection(aioclient_mock)
@@ -253,17 +304,17 @@ async def test_full_ssdp_flow_implementation(
         DOMAIN, context={CONF_SOURCE: SOURCE_SSDP}, data=discovery_info
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "ssdp_confirm"
-    assert result["description_placeholders"] == {CONF_NAME: HOST}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("ssdp_confirm")
+    expect(result["description_placeholders"]).to_equal({CONF_NAME: HOST})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == HOST
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(HOST)
 
-    assert result["data"]
-    assert result["data"][CONF_HOST] == HOST
-    assert result["data"][CONF_RECEIVER_ID] == RECEIVER_ID
+    expect(bool(result["data"])).to_be(True)
+    expect(result["data"][CONF_HOST]).to_equal(HOST)
+    expect(result["data"][CONF_RECEIVER_ID]).to_equal(RECEIVER_ID)
