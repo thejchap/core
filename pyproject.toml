@@ -1436,4 +1436,5 @@ dev = [
     "fressnapftracker==0.2.2",
     "aiopvapi==3.3.0",
     "adext==0.4.4",
+    "aiocomelit==2.0.2",
 ]
