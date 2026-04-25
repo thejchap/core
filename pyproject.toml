@@ -1225,6 +1225,7 @@ dev = [
     "pysenz==1.0.2",
     "pyseventeentrack==1.1.3",
     "pysiaalarm==3.2.2",
+    "pysma==1.1.0",
     "pysmarlaapi==1.0.2",
     "pysmarty2==0.10.3",
     "pysmhi==2.0.0",
@@ -1343,6 +1344,7 @@ dev = [
     "togrill-bluetooth==0.8.1",
     "tololib==1.2.2",
     "total-connect-client==2025.12.2",
+    "tplink-omada-client==1.5.7",
     "transmission-rpc==7.0.3",
     "triggercmd==0.0.36",
     "ttls==1.8.3",
@@ -1421,4 +1423,6 @@ dev = [
     "motioneye-client==0.3.14",
     "aiowithings==3.1.6",
     "python-sn2==0.4.0",
+    "aiowaqi==3.1.0",
+    "py-dormakaba-dkey==1.0.6",
 ]
