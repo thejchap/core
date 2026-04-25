@@ -1180,6 +1180,7 @@ dev = [
     "twentemilieu==3.0.0",
     "typedmonarchmoney==0.7.0",
     "ultraheat-api>=0.5.7",
+    "upb-lib==0.6.1",
     "url-normalize==2.2.1",
     "vehicle==2.2.2",
     "webio-api==0.1.12",
