@@ -1004,6 +1004,7 @@ dev = [
     "decora-wifi==1.4",
     "denon-rs232==4.1.0",
     "devialet==1.5.7",
+    "devolo-home-control-api==0.19.0",
     "discovery30303==0.3.3",
     "dropmqttapi==1.0.3",
     "dwdwfsapi==1.0.7",

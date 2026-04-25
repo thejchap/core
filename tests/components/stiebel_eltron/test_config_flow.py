@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.stiebel_eltron.const import DOMAIN
 from homeassistant.config_entries import SOURCE_IMPORT, SOURCE_USER
@@ -10,17 +10,32 @@ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_modbus, mock_stiebel_eltron_client
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.usefixtures("mock_stiebel_eltron_client")
-async def test_full_flow(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _modbus: MagicMock = Depends(mock_modbus),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: MagicMock = Depends(mock_stiebel_eltron_client),
+) -> None:
     """Test the full flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -30,24 +45,28 @@ async def test_full_flow(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Stiebel Eltron"
-    assert result["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: 502,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Stiebel Eltron")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_PORT: 502,
+        }
+    )
 
 
-async def test_form_cannot_connect(
-    hass: HomeAssistant,
-    mock_stiebel_eltron_client: MagicMock,
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_stiebel_eltron_client),
 ) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    mock_stiebel_eltron_client.update.return_value = False
+    client.update.return_value = False
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -57,10 +76,10 @@ async def test_form_cannot_connect(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    mock_stiebel_eltron_client.update.return_value = True
+    client.update.return_value = True
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -70,19 +89,21 @@ async def test_form_cannot_connect(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_form_unknown_exception(
-    hass: HomeAssistant,
-    mock_stiebel_eltron_client: MagicMock,
+@test
+async def form_unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_stiebel_eltron_client),
 ) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    mock_stiebel_eltron_client.update.side_effect = Exception
+    client.update.side_effect = Exception
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -92,10 +113,10 @@ async def test_form_unknown_exception(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "unknown"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "unknown"})
 
-    mock_stiebel_eltron_client.update.side_effect = None
+    client.update.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -105,14 +126,17 @@ async def test_form_unknown_exception(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_already_configured(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we handle already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -125,12 +149,16 @@ async def test_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures("mock_stiebel_eltron_client")
-async def test_import(hass: HomeAssistant) -> None:
+@test
+async def import_(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: MagicMock = Depends(mock_stiebel_eltron_client),
+) -> None:
     """Test import step."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -141,20 +169,24 @@ async def test_import(hass: HomeAssistant) -> None:
             CONF_NAME: "Stiebel Eltron",
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Stiebel Eltron"
-    assert result["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: 502,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Stiebel Eltron")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_PORT: 502,
+        }
+    )
 
 
-async def test_import_cannot_connect(
-    hass: HomeAssistant,
-    mock_stiebel_eltron_client: MagicMock,
+@test
+async def import_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_stiebel_eltron_client),
 ) -> None:
     """Test we handle cannot connect error."""
-    mock_stiebel_eltron_client.update.return_value = False
+    client.update.return_value = False
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_IMPORT},
@@ -165,16 +197,18 @@ async def test_import_cannot_connect(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_import_unknown_exception(
-    hass: HomeAssistant,
-    mock_stiebel_eltron_client: MagicMock,
+@test
+async def import_unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_stiebel_eltron_client),
 ) -> None:
     """Test we handle cannot connect error."""
-    mock_stiebel_eltron_client.update.side_effect = Exception
+    client.update.side_effect = Exception
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -186,15 +220,18 @@ async def test_import_unknown_exception(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_import_already_configured(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def import_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we handle already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_IMPORT},
@@ -205,5 +242,5 @@ async def test_import_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
