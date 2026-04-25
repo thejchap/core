@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.aladdin_connect.const import (
@@ -16,44 +16,47 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
+from ._fixtures import (
+    access_token,
+    mock_aladdin_connect_api,
+    mock_config_entry,
+    mock_setup_entry,
+    setup_credentials,
+    use_cloud,
+)
 from .const import CLIENT_ID, USER_ID
 
 from tests.common import MockConfigEntry
-from tests.test_util.aiohttp import AiohttpClientMocker
-from tests.typing import ClientSessionGenerator
-
-
-@pytest.fixture
-def use_cloud(hass: HomeAssistant) -> None:
-    """Set up the cloud component."""
-    hass.config.components.add("cloud")
-
-
-@pytest.fixture
-async def access_token(hass: HomeAssistant) -> str:
-    """Return a valid access token with sub field for unique ID."""
-    return config_entry_oauth2_flow._encode_jwt(
-        hass,
-        {
-            "sub": USER_ID,
-            "aud": [],
-            "iat": 1234567890,
-            "exp": 1234567890 + 3600,
-        },
-    )
-
-
-@pytest.mark.usefixtures(
-    "current_request_with_host",
-    "use_cloud",
-    "mock_setup_entry",
-    "mock_aladdin_connect_api",
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    aioclient_mock as aioclient_mock_fx,
+    current_request_with_host,
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
 )
-async def test_full_flow(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    access_token,
+from tests.test_util.aiohttp import AiohttpClientMocker
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _request: None = Depends(current_request_with_host),
+    _credentials: None = Depends(setup_credentials),
+    _aladdin: AsyncMock = Depends(mock_aladdin_connect_api),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    _cloud: None = Depends(use_cloud),
+    _setup_entry: None = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    token: str = Depends(access_token),
 ) -> None:
     """Check full flow."""
     result = await hass.config_entries.flow.async_init(
@@ -67,22 +70,22 @@ async def test_full_flow(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{OAUTH2_AUTHORIZE}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}"
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
         json={
             "refresh_token": "mock-refresh-token",
-            "access_token": access_token,
+            "access_token": token,
             "type": "Bearer",
             "expires_in": 60,
         },
@@ -90,34 +93,34 @@ async def test_full_flow(
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Aladdin Connect"
-    assert result["data"] == {
-        "auth_implementation": DOMAIN,
-        "token": {
-            "access_token": access_token,
-            "refresh_token": "mock-refresh-token",
-            "expires_in": 60,
-            "expires_at": result["data"]["token"]["expires_at"],
-            "type": "Bearer",
-        },
-    }
-    assert result["result"].unique_id == USER_ID
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Aladdin Connect")
+    expect(result["data"]).to_equal(
+        {
+            "auth_implementation": DOMAIN,
+            "token": {
+                "access_token": token,
+                "refresh_token": "mock-refresh-token",
+                "expires_in": 60,
+                "expires_at": result["data"]["token"]["expires_at"],
+                "type": "Bearer",
+            },
+        }
+    )
+    expect(result["result"].unique_id).to_equal(USER_ID)
 
 
-@pytest.mark.usefixtures(
-    "current_request_with_host",
-    "use_cloud",
-    "mock_setup_entry",
-    "mock_aladdin_connect_api",
-)
-async def test_full_dhcp_flow(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    access_token,
+@test
+async def full_dhcp_flow(
+    _trigger: None = Depends(_trigger_executor),
+    _cloud: None = Depends(use_cloud),
+    _setup_entry: None = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    token: str = Depends(access_token),
 ) -> None:
-    """Check full flow."""
+    """Check full DHCP flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_DHCP},
@@ -126,9 +129,9 @@ async def test_full_dhcp_flow(
         ),
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "oauth_discovery"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("oauth_discovery")
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -142,22 +145,22 @@ async def test_full_dhcp_flow(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{OAUTH2_AUTHORIZE}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}"
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
         json={
             "refresh_token": "mock-refresh-token",
-            "access_token": access_token,
+            "access_token": token,
             "type": "Bearer",
             "expires_in": 60,
         },
@@ -165,33 +168,35 @@ async def test_full_dhcp_flow(
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Aladdin Connect"
-    assert result["data"] == {
-        "auth_implementation": DOMAIN,
-        "token": {
-            "access_token": access_token,
-            "refresh_token": "mock-refresh-token",
-            "expires_in": 60,
-            "expires_at": result["data"]["token"]["expires_at"],
-            "type": "Bearer",
-        },
-    }
-    assert result["result"].unique_id == USER_ID
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Aladdin Connect")
+    expect(result["data"]).to_equal(
+        {
+            "auth_implementation": DOMAIN,
+            "token": {
+                "access_token": token,
+                "refresh_token": "mock-refresh-token",
+                "expires_in": 60,
+                "expires_at": result["data"]["token"]["expires_at"],
+                "type": "Bearer",
+            },
+        }
+    )
+    expect(result["result"].unique_id).to_equal(USER_ID)
 
 
-@pytest.mark.usefixtures(
-    "current_request_with_host", "use_cloud", "mock_aladdin_connect_api"
-)
-async def test_duplicate_entry(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    access_token,
-    mock_config_entry: MockConfigEntry,
+@test
+async def duplicate_entry(
+    _trigger: None = Depends(_trigger_executor),
+    _cloud: None = Depends(use_cloud),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    token: str = Depends(access_token),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
-    """Check full flow."""
-    mock_config_entry.add_to_hass(hass)
+    """Check duplicate entry."""
+    config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -203,22 +208,22 @@ async def test_duplicate_entry(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{OAUTH2_AUTHORIZE}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}"
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
         json={
             "refresh_token": "mock-refresh-token",
-            "access_token": access_token,
+            "access_token": token,
             "type": "Bearer",
             "expires_in": 60,
         },
@@ -226,20 +231,19 @@ async def test_duplicate_entry(
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures("current_request_with_host", "use_cloud")
-async def test_duplicate_dhcp_entry(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    access_token,
-    mock_config_entry: MockConfigEntry,
+@test
+async def duplicate_dhcp_entry(
+    _trigger: None = Depends(_trigger_executor),
+    _cloud: None = Depends(use_cloud),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
-    """Check full flow."""
-    mock_config_entry.add_to_hass(hass)
+    """Check duplicate DHCP."""
+    config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_DHCP},
@@ -248,39 +252,33 @@ async def test_duplicate_dhcp_entry(
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures(
-    "current_request_with_host",
-    "use_cloud",
-    "mock_setup_entry",
-    "mock_aladdin_connect_api",
-)
-async def test_flow_reauth(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    access_token,
-    mock_config_entry: MockConfigEntry,
+@test
+async def flow_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    _cloud: None = Depends(use_cloud),
+    _setup_entry: None = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    token: str = Depends(access_token),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reauth flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    # Start reauth flow
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    # Should show reauth confirm form
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    # Confirm reauth
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    # Should now go to user step (OAuth)
     state = config_entry_oauth2_flow._encode_jwt(
         hass,
         {
@@ -289,21 +287,21 @@ async def test_flow_reauth(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{OAUTH2_AUTHORIZE}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}"
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
+    expect(resp.status).to_equal(200)
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
         json={
             "refresh_token": "new-refresh-token",
-            "access_token": access_token,
+            "access_token": token,
             "type": "Bearer",
             "expires_in": 60,
         },
@@ -311,32 +309,27 @@ async def test_flow_reauth(
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    # Verify the entry was updated, not a new one created
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
 
-@pytest.mark.usefixtures(
-    "current_request_with_host", "use_cloud", "mock_aladdin_connect_api"
-)
-async def test_flow_wrong_account_reauth(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_config_entry: MockConfigEntry,
+@test
+async def flow_wrong_account_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    _cloud: None = Depends(use_cloud),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reauth flow with wrong account."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    # Start reauth flow
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    # Should show reauth confirm form
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-
-    # Create access token for a different user
     different_user_token = config_entry_oauth2_flow._encode_jwt(
         hass,
         {
@@ -347,15 +340,12 @@ async def test_flow_wrong_account_reauth(
         },
     )
 
-    # Start reauth flow
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    # Confirm reauth
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    # Complete OAuth with different user
     state = config_entry_oauth2_flow._encode_jwt(
         hass,
         {
@@ -364,9 +354,9 @@ async def test_flow_wrong_account_reauth(
         },
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
+    expect(resp.status).to_equal(200)
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
@@ -380,54 +370,53 @@ async def test_flow_wrong_account_reauth(
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    # Should abort with wrong account
-    assert result["type"] == "abort"
-    assert result["reason"] == "wrong_account"
+    expect(result["type"]).to_equal("abort")
+    expect(result["reason"]).to_equal("wrong_account")
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_no_cloud(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
+@test
+async def no_cloud(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Check we abort when cloud is not enabled."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cloud_not_enabled"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cloud_not_enabled")
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_reauthentication_no_cloud(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauthentication_no_cloud(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
-    """Test Aladdin Connect reauthentication without cloud."""
-    mock_config_entry.add_to_hass(hass)
+    """Test reauth without cloud."""
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cloud_not_enabled"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cloud_not_enabled")
 
 
-@pytest.mark.usefixtures("current_request_with_host", "use_cloud")
-async def test_flow_connection_error(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    access_token: str,
-    mock_aladdin_connect_api: AsyncMock,
+@test
+async def flow_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    _cloud: None = Depends(use_cloud),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    token: str = Depends(access_token),
+    aladdin_api: AsyncMock = Depends(mock_aladdin_connect_api),
 ) -> None:
     """Test config flow aborts when API connection fails."""
     result = await hass.config_entries.flow.async_init(
@@ -441,32 +430,34 @@ async def test_flow_connection_error(
         },
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
+    expect(resp.status).to_equal(200)
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
         json={
             "refresh_token": "mock-refresh-token",
-            "access_token": access_token,
+            "access_token": token,
             "type": "Bearer",
             "expires_in": 60,
         },
     )
 
-    mock_aladdin_connect_api.get_doors.side_effect = Exception("Connection failed")
+    aladdin_api.get_doors.side_effect = Exception("Connection failed")
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-@pytest.mark.usefixtures("current_request_with_host", "use_cloud")
-async def test_flow_invalid_token(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
+@test
+async def flow_invalid_token(
+    _trigger: None = Depends(_trigger_executor),
+    _cloud: None = Depends(use_cloud),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test config flow aborts when JWT token is invalid."""
     result = await hass.config_entries.flow.async_init(
@@ -480,9 +471,9 @@ async def test_flow_invalid_token(
         },
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
+    expect(resp.status).to_equal(200)
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
@@ -496,5 +487,5 @@ async def test_flow_invalid_token(
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "oauth_error"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("oauth_error")
