@@ -1175,6 +1175,7 @@ dev = [
     "tessie-api==0.1.1",
     "tilt-pi==0.2.1",
     "tololib==1.2.2",
+    "transmission-rpc==7.0.3",
     "typedmonarchmoney==0.7.0",
     "ultraheat-api>=0.5.7",
     "url-normalize==2.2.1",
