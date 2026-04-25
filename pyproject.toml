@@ -1199,6 +1199,7 @@ dev = [
     "webio-api==0.1.12",
     "webmin-xmlrpc==0.0.2",
     "whois==0.9.27",
+    "wled==0.22.0",
     "wsdiscovery==2.1.2",
     "zeversolar==0.3.2",
 ]
