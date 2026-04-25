@@ -2,7 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from tplink_omada_client import OmadaSite
 from tplink_omada_client.exceptions import (
     ConnectionFailed,
@@ -10,6 +9,7 @@ from tplink_omada_client.exceptions import (
     OmadaClientException,
     UnsupportedControllerVersion,
 )
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.tplink_omada.config_flow import create_omada_client
 from homeassistant.components.tplink_omada.const import DOMAIN
@@ -18,7 +18,10 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_omada_client, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 MOCK_USER_DATA = {
     "host": "https://fake.omada.host",
@@ -36,44 +39,53 @@ MOCK_ENTRY_DATA = {
 }
 
 
-async def test_form_single_site(
-    hass: HomeAssistant,
-    mock_omada_client: MagicMock,
-    mock_setup_entry: MagicMock,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form_single_site(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _omada: MagicMock = Depends(mock_omada_client),
+    setup_entry: MagicMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         MOCK_USER_DATA,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OC200 (Display Name)"
-    assert result["data"] == MOCK_ENTRY_DATA
-    assert result["result"].unique_id == "12345"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OC200 (Display Name)")
+    expect(result["data"]).to_equal(MOCK_ENTRY_DATA)
+    expect(result["result"].unique_id).to_equal("12345")
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_multiple_sites(
-    hass: HomeAssistant,
-    mock_omada_client: MagicMock,
-    mock_setup_entry: MagicMock,
+@test
+async def form_multiple_sites(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    omada: MagicMock = Depends(mock_omada_client),
+    setup_entry: MagicMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
-    mock_omada_client.get_sites.return_value = [
+    omada.get_sites.return_value = [
         OmadaSite("Site 1", "first"),
         OmadaSite("Site 2", "second"),
     ]
@@ -83,8 +95,8 @@ async def test_form_multiple_sites(
         MOCK_USER_DATA,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "site"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("site")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -93,32 +105,51 @@ async def test_form_multiple_sites(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OC200 (Site 2)"
-    assert result["data"] == {
-        "host": "https://fake.omada.host",
-        "verify_ssl": True,
-        "site": "second",
-        "username": "test-username",
-        "password": "test-password",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OC200 (Site 2)")
+    expect(result["data"]).to_equal(
+        {
+            "host": "https://fake.omada.host",
+            "verify_ssl": True,
+            "site": "second",
+            "username": "test-username",
+            "password": "test-password",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (LoginFailed(-1000, "Invalid username/password"), "invalid_auth"),
-        (OmadaClientException(), "unknown"),
-        (Exception("Generic error"), "unknown"),
-        (UnsupportedControllerVersion("4.0.0"), "unsupported_controller"),
-        (ConnectionFailed(), "cannot_connect"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        side_effect=LoginFailed(-1000, "Invalid username/password"),
+        expected_error="invalid_auth",
+    ),
+    test.case(
+        "unknown_omada", side_effect=OmadaClientException(), expected_error="unknown"
+    ),
+    test.case(
+        "unknown_generic",
+        side_effect=Exception("Generic error"),
+        expected_error="unknown",
+    ),
+    test.case(
+        "unsupported_controller",
+        side_effect=UnsupportedControllerVersion("4.0.0"),
+        expected_error="unsupported_controller",
+    ),
+    test.case(
+        "cannot_connect",
+        side_effect=ConnectionFailed(),
+        expected_error="cannot_connect",
+    ),
 )
-async def test_form_errors_and_recovery(
-    hass: HomeAssistant,
-    mock_omada_client: MagicMock,
-    mock_setup_entry: MagicMock,
+async def form_errors_and_recovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    omada: MagicMock = Depends(mock_omada_client),
+    setup_entry: MagicMock = Depends(mock_setup_entry),
+    *,
     side_effect: Exception,
     expected_error: str,
 ) -> None:
@@ -128,136 +159,164 @@ async def test_form_errors_and_recovery(
     )
 
     # First attempt: trigger the error
-    mock_omada_client.login.side_effect = side_effect
+    omada.login.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         MOCK_USER_DATA,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": expected_error})
 
     # Second attempt: clear error and complete successfully
-    mock_omada_client.login.side_effect = None
+    omada.login.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         MOCK_USER_DATA,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OC200 (Display Name)"
-    assert result["data"] == MOCK_ENTRY_DATA
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OC200 (Display Name)")
+    expect(result["data"]).to_equal(MOCK_ENTRY_DATA)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_no_sites(hass: HomeAssistant, mock_omada_client: MagicMock) -> None:
+@test
+async def form_no_sites(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    omada: MagicMock = Depends(mock_omada_client),
+) -> None:
     """Test we handle the case when no sites are found."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    mock_omada_client.get_sites.return_value = []
+    omada.get_sites.return_value = []
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         MOCK_USER_DATA,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "no_sites_found"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "no_sites_found"})
 
-    mock_omada_client.get_sites.return_value = [OmadaSite("Display Name", "SiteId")]
+    omada.get_sites.return_value = [OmadaSite("Display Name", "SiteId")]
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         MOCK_USER_DATA,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.parametrize(
-    ("controller_id", "expected_reason"),
-    [
-        ("12345", "reauth_successful"),
-        ("different_controller_id", "device_mismatch"),
-    ],
+@test.cases(
+    test.case("matching", controller_id="12345", expected_reason="reauth_successful"),
+    test.case(
+        "mismatching",
+        controller_id="different_controller_id",
+        expected_reason="device_mismatch",
+    ),
 )
-async def test_async_step_reauth(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_omada_client: MagicMock,
+async def async_step_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    omada: MagicMock = Depends(mock_omada_client),
+    *,
     controller_id: str,
     expected_reason: str,
 ) -> None:
     """Test reauth flow with matching and mismatching controller IDs."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_omada_client.login.return_value = controller_id
+    omada.login.return_value = controller_id
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_USERNAME: "new_uname", CONF_PASSWORD: "new_passwd"}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == expected_reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(expected_reason)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (LoginFailed(-1000, "Invalid username/password"), "invalid_auth"),
-        (OmadaClientException(), "unknown"),
-        (Exception("Generic error"), "unknown"),
-        (UnsupportedControllerVersion("4.0.0"), "unsupported_controller"),
-        (ConnectionFailed(), "cannot_connect"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        side_effect=LoginFailed(-1000, "Invalid username/password"),
+        expected_error="invalid_auth",
+    ),
+    test.case(
+        "unknown_omada", side_effect=OmadaClientException(), expected_error="unknown"
+    ),
+    test.case(
+        "unknown_generic",
+        side_effect=Exception("Generic error"),
+        expected_error="unknown",
+    ),
+    test.case(
+        "unsupported_controller",
+        side_effect=UnsupportedControllerVersion("4.0.0"),
+        expected_error="unsupported_controller",
+    ),
+    test.case(
+        "cannot_connect",
+        side_effect=ConnectionFailed(),
+        expected_error="cannot_connect",
+    ),
 )
-async def test_async_step_reauth_invalid_auth(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_omada_client: MagicMock,
+async def async_step_reauth_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    omada: MagicMock = Depends(mock_omada_client),
+    *,
     side_effect: Exception,
     expected_error: str,
 ) -> None:
     """Test reauth handles various exceptions."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_omada_client.login.side_effect = side_effect
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {CONF_USERNAME: "new_uname", CONF_PASSWORD: "new_passwd"}
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {"base": expected_error}
-
-    mock_omada_client.login.side_effect = None
+    omada.login.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_USERNAME: "new_uname", CONF_PASSWORD: "new_passwd"}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({"base": expected_error})
+
+    omada.login.side_effect = None
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "new_uname", CONF_PASSWORD: "new_passwd"}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-async def test_create_omada_client_parses_args(hass: HomeAssistant) -> None:
+@test
+async def create_omada_client_parses_args(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config arguments are passed to Omada client."""
-
     with (
         patch(
             "homeassistant.components.tplink_omada.config_flow.OmadaClient",
@@ -270,16 +329,19 @@ async def test_create_omada_client_parses_args(hass: HomeAssistant) -> None:
     ):
         result = await create_omada_client(hass, MOCK_USER_DATA)
 
-    assert result is not None
+    expect(result is not None).to_be(True)
     mock_client.assert_called_once_with(
         "https://fake.omada.host", "test-username", "test-password", "ws"
     )
     mock_clientsession.assert_called_once_with(hass, verify_ssl=True)
 
 
-async def test_create_omada_client_adds_missing_scheme(hass: HomeAssistant) -> None:
+@test
+async def create_omada_client_adds_missing_scheme(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config arguments are passed to Omada client."""
-
     with (
         patch(
             "homeassistant.components.tplink_omada.config_flow.OmadaClient",
@@ -300,18 +362,19 @@ async def test_create_omada_client_adds_missing_scheme(hass: HomeAssistant) -> N
             },
         )
 
-    assert result is not None
+    expect(result is not None).to_be(True)
     mock_client.assert_called_once_with(
         "https://fake.omada.host", "test-username", "test-password", "ws"
     )
     mock_clientsession.assert_called_once_with(hass, verify_ssl=True)
 
 
-async def test_create_omada_client_with_ip_creates_clientsession(
-    hass: HomeAssistant,
+@test
+async def create_omada_client_with_ip_creates_clientsession(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test config arguments are passed to Omada client."""
-
     with (
         patch(
             "homeassistant.components.tplink_omada.config_flow.OmadaClient",
@@ -335,7 +398,7 @@ async def test_create_omada_client_with_ip_creates_clientsession(
             },
         )
 
-    assert result is not None
+    expect(result is not None).to_be(True)
     mock_client.assert_called_once_with(
         "https://10.10.10.10", "test-username", "test-password", "ws"
     )
