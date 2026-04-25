@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
 from pytrafikverket.exceptions import (
     InvalidAuthentication,
     MultipleWeatherStationsFound,
     NoWeatherStationFound,
 )
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY
@@ -17,19 +17,29 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 DOMAIN = "trafikverket_weatherstation"
 CONF_STATION = "station"
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -49,46 +59,37 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Vallby"
-    assert result2["data"] == {
-        "api_key": "1234567890",
-        "station": "Vallby",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Vallby")
+    expect(result2["data"]).to_equal(
+        {
+            "api_key": "1234567890",
+            "station": "Vallby",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "base_error"),
-    [
-        (
-            InvalidAuthentication,
-            "invalid_auth",
-        ),
-        (
-            NoWeatherStationFound,
-            "invalid_station",
-        ),
-        (
-            MultipleWeatherStationsFound,
-            "more_stations",
-        ),
-        (
-            Exception,
-            "cannot_connect",
-        ),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=InvalidAuthentication, base_error="invalid_auth"),
+    test.case("invalid_station", side_effect=NoWeatherStationFound, base_error="invalid_station"),
+    test.case("more_stations", side_effect=MultipleWeatherStationsFound, base_error="more_stations"),
+    test.case("cannot_connect", side_effect=Exception, base_error="cannot_connect"),
 )
-async def test_flow_fails(
-    hass: HomeAssistant, side_effect: Exception, base_error: str
+async def flow_fails(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    side_effect: type[Exception],
+    base_error: str,
 ) -> None:
     """Test config flow errors."""
     result4 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result4["type"] is FlowResultType.FORM
-    assert result4["step_id"] == config_entries.SOURCE_USER
+    expect(result4["type"]).to_be(FlowResultType.FORM)
+    expect(result4["step_id"]).to_equal(config_entries.SOURCE_USER)
 
     with patch(
         "homeassistant.components.trafikverket_weatherstation.config_flow.TrafikverketWeather.async_get_weather",
@@ -102,10 +103,14 @@ async def test_flow_fails(
             },
         )
 
-    assert result4["errors"] == {"base": base_error}
+    expect(result4["errors"]).to_equal({"base": base_error})
 
 
-async def test_reauth_flow(hass: HomeAssistant) -> None:
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a reauthentication flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -117,9 +122,9 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -136,34 +141,23 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.data == {"api_key": "1234567891", "station": "Vallby"}
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.data).to_equal({"api_key": "1234567891", "station": "Vallby"})
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "base_error"),
-    [
-        (
-            InvalidAuthentication,
-            "invalid_auth",
-        ),
-        (
-            NoWeatherStationFound,
-            "invalid_station",
-        ),
-        (
-            MultipleWeatherStationsFound,
-            "more_stations",
-        ),
-        (
-            Exception,
-            "cannot_connect",
-        ),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=InvalidAuthentication, base_error="invalid_auth"),
+    test.case("invalid_station", side_effect=NoWeatherStationFound, base_error="invalid_station"),
+    test.case("more_stations", side_effect=MultipleWeatherStationsFound, base_error="more_stations"),
+    test.case("cannot_connect", side_effect=Exception, base_error="cannot_connect"),
 )
-async def test_reauth_flow_fails(
-    hass: HomeAssistant, side_effect: Exception, base_error: str
+async def reauth_flow_fails(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    side_effect: type[Exception],
+    base_error: str,
 ) -> None:
     """Test a reauthentication flow."""
     entry = MockConfigEntry(
@@ -176,9 +170,9 @@ async def test_reauth_flow_fails(
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.trafikverket_weatherstation.config_flow.TrafikverketWeather.async_get_weather",
@@ -190,11 +184,15 @@ async def test_reauth_flow_fails(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": base_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": base_error})
 
 
-async def test_reconfigure_flow(hass: HomeAssistant) -> None:
+@test
+async def reconfigure_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a reconfigure flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -206,9 +204,9 @@ async def test_reconfigure_flow(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     result = await entry.start_reconfigure_flow(hass)
-    assert result["step_id"] == "reconfigure"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -225,34 +223,23 @@ async def test_reconfigure_flow(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert entry.data == {"api_key": "1234567891", "station": "Vallby_new"}
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(entry.data).to_equal({"api_key": "1234567891", "station": "Vallby_new"})
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "base_error"),
-    [
-        (
-            InvalidAuthentication,
-            "invalid_auth",
-        ),
-        (
-            NoWeatherStationFound,
-            "invalid_station",
-        ),
-        (
-            MultipleWeatherStationsFound,
-            "more_stations",
-        ),
-        (
-            Exception,
-            "cannot_connect",
-        ),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=InvalidAuthentication, base_error="invalid_auth"),
+    test.case("invalid_station", side_effect=NoWeatherStationFound, base_error="invalid_station"),
+    test.case("more_stations", side_effect=MultipleWeatherStationsFound, base_error="more_stations"),
+    test.case("cannot_connect", side_effect=Exception, base_error="cannot_connect"),
 )
-async def test_reconfigure_flow_fails(
-    hass: HomeAssistant, side_effect: Exception, base_error: str
+async def reconfigure_flow_fails(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    side_effect: type[Exception],
+    base_error: str,
 ) -> None:
     """Test a reauthentication flow."""
     entry = MockConfigEntry(
@@ -265,9 +252,9 @@ async def test_reconfigure_flow_fails(
     entry.add_to_hass(hass)
 
     result = await entry.start_reconfigure_flow(hass)
-    assert result["step_id"] == "reconfigure"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.trafikverket_weatherstation.config_flow.TrafikverketWeather.async_get_weather",
@@ -279,8 +266,8 @@ async def test_reconfigure_flow_fails(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": base_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": base_error})
 
     with (
         patch(
@@ -297,6 +284,6 @@ async def test_reconfigure_flow_fails(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert entry.data == {"api_key": "1234567891", "station": "Vallby_new"}
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(entry.data).to_equal({"api_key": "1234567891", "station": "Vallby_new"})
