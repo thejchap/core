@@ -1161,6 +1161,7 @@ dev = [
     "switchbot-api==2.11.0",
     "systembridgeconnector==5.4.3",
     "tailscale==0.7.0",
+    "tami4edgeapi==3.0",
     "tesla-powerwall==0.5.2",
     "typedmonarchmoney==0.7.0",
     "ultraheat-api>=0.5.7",
