@@ -953,6 +953,7 @@ dev = [
     "aio-geojson-geonetnz-volcano==0.9",
     "aio-georss-gdacs==0.10",
     "aio-ownet>=0.0.5",
+    "aioairzone-cloud==0.7.2",
     "aiobotocore==2.21.1",
     "aioeagle==1.1.0",
     "aiofiles==24.1.0",

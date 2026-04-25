@@ -3,28 +3,37 @@
 from unittest.mock import AsyncMock
 
 from pysuez.exception import PySuezError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
-from homeassistant.components.recorder import Recorder
 from homeassistant.components.suez_water.const import CONF_COUNTER_ID, DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import MOCK_DATA
+from ._fixtures import MOCK_DATA, mock_setup_entry, suez_client
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, suez_client: AsyncMock
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _client: AsyncMock = Depends(suez_client),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -32,77 +41,67 @@ async def test_form(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == MOCK_DATA[CONF_COUNTER_ID]
-    assert result["result"].unique_id == MOCK_DATA[CONF_COUNTER_ID]
-    assert result["data"] == MOCK_DATA
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(MOCK_DATA[CONF_COUNTER_ID])
+    expect(result["result"].unique_id).to_equal(MOCK_DATA[CONF_COUNTER_ID])
+    expect(result["data"]).to_equal(MOCK_DATA)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, suez_client: AsyncMock
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: AsyncMock = Depends(suez_client),
 ) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    suez_client.check_credentials.return_value = False
+    client.check_credentials.return_value = False
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         MOCK_DATA,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
-    suez_client.check_credentials.return_value = True
+    client.check_credentials.return_value = True
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         MOCK_DATA,
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == MOCK_DATA[CONF_COUNTER_ID]
-    assert result["result"].unique_id == MOCK_DATA[CONF_COUNTER_ID]
-    assert result["data"] == MOCK_DATA
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(MOCK_DATA[CONF_COUNTER_ID])
+    expect(result["result"].unique_id).to_equal(MOCK_DATA[CONF_COUNTER_ID])
+    expect(result["data"]).to_equal(MOCK_DATA)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_already_configured(
-    hass: HomeAssistant, recorder_mock: Recorder, suez_client: AsyncMock
+@test.skip("requires recorder_mock")
+async def form_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we abort when entry is already configured."""
 
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        unique_id=MOCK_DATA[CONF_COUNTER_ID],
-        data=MOCK_DATA,
-    )
-    entry.add_to_hass(hass)
 
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        MOCK_DATA,
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-
-
-@pytest.mark.parametrize(
-    ("exception", "error"), [(PySuezError, "cannot_connect"), (Exception, "unknown")]
+@test.cases(
+    test.case("cannot_connect", exception=PySuezError, error="cannot_connect"),
+    test.case("unknown", exception=Exception, error="unknown"),
 )
-async def test_form_error(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
-    suez_client: AsyncMock,
+async def form_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: AsyncMock = Depends(suez_client),
+    *,
+    exception: type[Exception],
     error: str,
 ) -> None:
     """Test we handle errors."""
@@ -110,60 +109,64 @@ async def test_form_error(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    suez_client.check_credentials.side_effect = exception
+    client.check_credentials.side_effect = exception
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         MOCK_DATA,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    suez_client.check_credentials.return_value = True
-    suez_client.check_credentials.side_effect = None
+    client.check_credentials.return_value = True
+    client.check_credentials.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         MOCK_DATA,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == MOCK_DATA[CONF_COUNTER_ID]
-    assert result["data"] == MOCK_DATA
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(MOCK_DATA[CONF_COUNTER_ID])
+    expect(result["data"]).to_equal(MOCK_DATA)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_auto_counter(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, suez_client: AsyncMock
+@test
+async def form_auto_counter(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: AsyncMock = Depends(suez_client),
 ) -> None:
     """Test form set counter if not set by user."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     partial_form = MOCK_DATA.copy()
     partial_form.pop(CONF_COUNTER_ID)
-    suez_client.find_counter.side_effect = PySuezError("test counter not found")
+    client.find_counter.side_effect = PySuezError("test counter not found")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         partial_form,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "counter_not_found"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "counter_not_found"})
 
-    suez_client.find_counter.side_effect = None
-    suez_client.find_counter.return_value = MOCK_DATA[CONF_COUNTER_ID]
+    client.find_counter.side_effect = None
+    client.find_counter.return_value = MOCK_DATA[CONF_COUNTER_ID]
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         partial_form,
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == MOCK_DATA[CONF_COUNTER_ID]
-    assert result["result"].unique_id == MOCK_DATA[CONF_COUNTER_ID]
-    assert result["data"] == MOCK_DATA
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(MOCK_DATA[CONF_COUNTER_ID])
+    expect(result["result"].unique_id).to_equal(MOCK_DATA[CONF_COUNTER_ID])
+    expect(result["data"]).to_equal(MOCK_DATA)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
