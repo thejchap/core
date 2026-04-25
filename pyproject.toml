@@ -1036,6 +1036,7 @@ dev = [
     "google-cloud-speech==2.31.1",
     "google-cloud-texttospeech==2.25.1",
     "gotailwind==0.3.0",
+    "govee-ble==1.2.0",
     "govee-local-api==2.4.0",
     "greeclimate==2.1.1",
     "greenplanet-energy-api==0.1.10",
