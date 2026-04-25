@@ -1397,4 +1397,6 @@ dev = [
     "waterfurnace==1.6.5",
     "blebox-uniapi==2.5.0",
     "google-air-quality-api==3.0.1",
+    "aiomusiccast==0.15.0",
+    "actron-neo-api==0.5.3",
 ]
