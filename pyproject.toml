@@ -1250,6 +1250,7 @@ dev = [
     "python-songpal==0.16.2",
     "python-tado==0.18.16",
     "python-technove==2.1.1",
+    "pyteleinfo==0.4.0",
     "pytile==2024.12.0",
     "pytomorrowio==0.3.6",
     "pytouchline-extended==0.4.5",
