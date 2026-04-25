@@ -1,11 +1,11 @@
 """Test the A. O. Smith config flow."""
 
 from datetime import timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from freezegun.api import FrozenDateTimeFactory
 from py_aosmith import AOSmithInvalidCredentialsException
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.aosmith.const import (
@@ -18,18 +18,38 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import FIXTURE_USER_INPUT
+from ._fixtures import (
+    FIXTURE_USER_INPUT,
+    init_integration,
+    mock_client,
+    mock_setup_entry,
+)
 
 from tests.common import MockConfigEntry, async_fire_time_changed
+from tests.hass_fixtures import (
+    freezer as freezer_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
 
 
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.aosmith.config_flow.AOSmithAPIClient.get_devices",
@@ -41,31 +61,34 @@ async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == FIXTURE_USER_INPUT[CONF_EMAIL]
-    assert result2["data"] == FIXTURE_USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(FIXTURE_USER_INPUT[CONF_EMAIL])
+    expect(result2["data"]).to_equal(FIXTURE_USER_INPUT)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_error_key"),
-    [
-        (AOSmithInvalidCredentialsException("Invalid credentials"), "invalid_auth"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        exception=AOSmithInvalidCredentialsException("Invalid credentials"),
+        expected_error_key="invalid_auth",
+    ),
+    test.case("unknown", exception=Exception, expected_error_key="unknown"),
 )
-async def test_form_exception(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def form_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    exception: Any,
     expected_error_key: str,
 ) -> None:
     """Test handling an exception and then recovering on the second attempt."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.aosmith.config_flow.AOSmithAPIClient.get_devices",
@@ -75,8 +98,8 @@ async def test_form_exception(
             result["flow_id"],
             FIXTURE_USER_INPUT,
         )
-        assert result2["type"] is FlowResultType.FORM
-        assert result2["errors"] == {"base": expected_error_key}
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["errors"]).to_equal({"base": expected_error_key})
 
     with patch(
         "homeassistant.components.aosmith.config_flow.AOSmithAPIClient.get_devices",
@@ -88,33 +111,38 @@ async def test_form_exception(
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == FIXTURE_USER_INPUT[CONF_EMAIL]
-    assert result3["data"] == FIXTURE_USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal(FIXTURE_USER_INPUT[CONF_EMAIL])
+    expect(result3["data"]).to_equal(FIXTURE_USER_INPUT)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("api_method", "wait_interval"),
-    [
-        ("get_devices", REGULAR_INTERVAL),
-        ("get_energy_use_data", ENERGY_USAGE_INTERVAL),
-    ],
+@test.cases(
+    test.case(
+        "get_devices", api_method="get_devices", wait_interval=REGULAR_INTERVAL
+    ),
+    test.case(
+        "get_energy_use_data",
+        api_method="get_energy_use_data",
+        wait_interval=ENERGY_USAGE_INTERVAL,
+    ),
 )
-async def test_reauth_flow(
-    freezer: FrozenDateTimeFactory,
-    hass: HomeAssistant,
-    init_integration: MockConfigEntry,
-    mock_client: MagicMock,
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    freezer: Any = Depends(freezer_fixture),
+    hass: HomeAssistant = Depends(hass_fixture),
+    integration: MockConfigEntry = Depends(init_integration),
+    client: MagicMock = Depends(mock_client),
+    *,
     api_method: str,
     wait_interval: timedelta,
 ) -> None:
     """Test reauth works."""
     entries = hass.config_entries.async_entries(DOMAIN)
-    assert len(entries) == 1
-    assert entries[0].state is ConfigEntryState.LOADED
+    expect(len(entries)).to_equal(1)
+    expect(entries[0].state).to_be(ConfigEntryState.LOADED)
 
-    getattr(mock_client, api_method).side_effect = AOSmithInvalidCredentialsException(
+    getattr(client, api_method).side_effect = AOSmithInvalidCredentialsException(
         "Authentication error"
     )
     freezer.tick(wait_interval)
@@ -122,8 +150,8 @@ async def test_reauth_flow(
     await hass.async_block_till_done()
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
-    assert flows[0]["step_id"] == "reauth_confirm"
+    expect(len(flows)).to_equal(1)
+    expect(flows[0]["step_id"]).to_equal("reauth_confirm")
 
     with (
         patch(
@@ -142,22 +170,24 @@ async def test_reauth_flow(
         )
         await hass.async_block_till_done()
 
-        assert result2["type"] is FlowResultType.ABORT
-        assert result2["reason"] == "reauth_successful"
+        expect(result2["type"]).to_be(FlowResultType.ABORT)
+        expect(result2["reason"]).to_equal("reauth_successful")
 
 
-async def test_reauth_flow_retry(
-    freezer: FrozenDateTimeFactory,
-    hass: HomeAssistant,
-    init_integration: MockConfigEntry,
-    mock_client: MagicMock,
+@test
+async def reauth_flow_retry(
+    _trigger: None = Depends(_trigger_executor),
+    freezer: Any = Depends(freezer_fixture),
+    hass: HomeAssistant = Depends(hass_fixture),
+    integration: MockConfigEntry = Depends(init_integration),
+    client: MagicMock = Depends(mock_client),
 ) -> None:
     """Test reauth works with retry."""
     entries = hass.config_entries.async_entries(DOMAIN)
-    assert len(entries) == 1
-    assert entries[0].state is ConfigEntryState.LOADED
+    expect(len(entries)).to_equal(1)
+    expect(entries[0].state).to_be(ConfigEntryState.LOADED)
 
-    mock_client.get_devices.side_effect = AOSmithInvalidCredentialsException(
+    client.get_devices.side_effect = AOSmithInvalidCredentialsException(
         "Authentication error"
     )
     freezer.tick(REGULAR_INTERVAL)
@@ -165,8 +195,8 @@ async def test_reauth_flow_retry(
     await hass.async_block_till_done()
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
-    assert flows[0]["step_id"] == "reauth_confirm"
+    expect(len(flows)).to_equal(1)
+    expect(flows[0]["step_id"]).to_equal("reauth_confirm")
 
     # First attempt at reauth - authentication fails again
     with patch(
@@ -179,8 +209,8 @@ async def test_reauth_flow_retry(
         )
         await hass.async_block_till_done()
 
-        assert result2["type"] is FlowResultType.FORM
-        assert result2["errors"] == {"base": "invalid_auth"}
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
     # Second attempt at reauth - authentication succeeds
     with (
@@ -196,5 +226,5 @@ async def test_reauth_flow_retry(
         )
         await hass.async_block_till_done()
 
-        assert result3["type"] is FlowResultType.ABORT
-        assert result3["reason"] == "reauth_successful"
+        expect(result3["type"]).to_be(FlowResultType.ABORT)
+        expect(result3["reason"]).to_equal("reauth_successful")
