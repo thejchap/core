@@ -1,9 +1,8 @@
 """Tests for the zimi config flow."""
 
-from collections.abc import Generator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 from zcc import (
     ControlPointCannotConnectError,
     ControlPointConnectionRefusedError,
@@ -20,7 +19,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.device_registry import format_mac
 
+from ._fixtures import discovery_mock, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 
 INPUT_MAC = "aa:bb:cc:dd:ee:ff"
 INPUT_MAC_EXTRA = "aa:bb:cc:dd:ee:ee"
@@ -28,43 +31,28 @@ INPUT_HOST = "192.168.1.100"
 INPUT_HOST_EXTRA = "192.168.1.101"
 INPUT_PORT = 5003
 INPUT_PORT_EXTRA = 5004
-
-INVALID_INPUT_MAC = "xyz"
-MISMATCHED_INPUT_MAC = "aa:bb:cc:dd:ee:ee"
 SELECTED_HOST_AND_PORT = "selected_host_and_port"
 
 
-@pytest.fixture
-def discovery_mock():
-    """Mock the ControlPointDiscoveryService."""
-    with patch(
-        "homeassistant.components.zimi.config_flow.ControlPointDiscoveryService",
-        autospec=True,
-    ) as mock:
-        mock.return_value = mock
-        yield mock
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
 
 
-@pytest.fixture(autouse=True)
-def mock_setup_entry() -> Generator[AsyncMock]:
-    """Override async_setup_entry."""
-    with patch(
-        "homeassistant.components.zimi.async_setup_entry", return_value=True
-    ) as mock_setup_entry:
-        yield mock_setup_entry
-
-
-async def test_user_discovery_success(
-    hass: HomeAssistant,
-    discovery_mock: MagicMock,
+@test
+async def user_discovery_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    discovery: MagicMock = Depends(discovery_mock),
 ) -> None:
     """Test user form transitions to creation if zcc discovery succeeds."""
-
-    discovery_mock.discovers.return_value = [
+    discovery.discovers.return_value = [
         ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT)
     ]
-
-    discovery_mock.return_value.validate_connection.return_value = (
+    discovery.return_value.validate_connection.return_value = (
         ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
     )
 
@@ -72,25 +60,23 @@ async def test_user_discovery_success(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["context"] == {
-        "source": config_entries.SOURCE_USER,
-        "unique_id": INPUT_MAC,
-    }
-    assert result["data"] == {
-        "host": INPUT_HOST,
-        "port": INPUT_PORT,
-        "mac": format_mac(INPUT_MAC),
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["context"]).to_equal(
+        {"source": config_entries.SOURCE_USER, "unique_id": INPUT_MAC}
+    )
+    expect(result["data"]).to_equal(
+        {"host": INPUT_HOST, "port": INPUT_PORT, "mac": format_mac(INPUT_MAC)}
+    )
 
 
-async def test_user_discovery_success_selection(
-    hass: HomeAssistant,
-    discovery_mock: MagicMock,
+@test
+async def user_discovery_success_selection(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    discovery: MagicMock = Depends(discovery_mock),
 ) -> None:
-    """Test user form transitions via selection to creation if zcc discovery succeeds has multiple hosts."""
-
-    discovery_mock.discovers.return_value = [
+    """Test user form transitions via selection to creation if discovery has multiple hosts."""
+    discovery.discovers.return_value = [
         ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT),
         ControlPointDescription(host=INPUT_HOST_EXTRA, port=INPUT_PORT_EXTRA),
     ]
@@ -99,11 +85,11 @@ async def test_user_discovery_success_selection(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "selection"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("selection")
+    expect(result["errors"]).to_equal({})
 
-    discovery_mock.return_value.validate_connection.return_value = (
+    discovery.return_value.validate_connection.return_value = (
         ControlPointDescription(
             host=INPUT_HOST_EXTRA, port=INPUT_PORT_EXTRA, mac=INPUT_MAC_EXTRA
         )
@@ -111,25 +97,22 @@ async def test_user_discovery_success_selection(
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            SELECTED_HOST_AND_PORT: f"{INPUT_HOST_EXTRA}:{INPUT_PORT_EXTRA!s}",
-        },
+        {SELECTED_HOST_AND_PORT: f"{INPUT_HOST_EXTRA}:{INPUT_PORT_EXTRA!s}"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        "host": INPUT_HOST_EXTRA,
-        "port": INPUT_PORT_EXTRA,
-        "mac": format_mac(INPUT_MAC_EXTRA),
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {"host": INPUT_HOST_EXTRA, "port": INPUT_PORT_EXTRA, "mac": format_mac(INPUT_MAC_EXTRA)}
+    )
 
 
-async def test_user_discovery_duplicates(
-    hass: HomeAssistant,
-    discovery_mock: MagicMock,
+@test
+async def user_discovery_duplicates(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    discovery: MagicMock = Depends(discovery_mock),
 ) -> None:
     """Test that flow is aborted if duplicates are added."""
-
     MockConfigEntry(
         domain=DOMAIN,
         unique_id=INPUT_MAC,
@@ -140,11 +123,10 @@ async def test_user_discovery_duplicates(
         },
     ).add_to_hass(hass)
 
-    discovery_mock.discovers.return_value = [
+    discovery.discovers.return_value = [
         ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT)
     ]
-
-    discovery_mock.return_value.validate_connection.return_value = (
+    discovery.return_value.validate_connection.return_value = (
         ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
     )
 
@@ -152,18 +134,19 @@ async def test_user_discovery_duplicates(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_finish_manual_success(
-    hass: HomeAssistant,
-    discovery_mock: MagicMock,
+@test
+async def finish_manual_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    discovery: MagicMock = Depends(discovery_mock),
 ) -> None:
     """Test manual form transitions to creation with valid data."""
-
-    discovery_mock.discovers.side_effect = ControlPointError("Discovery failed")
-    discovery_mock.return_value.validate_connection.return_value = (
+    discovery.discovers.side_effect = ControlPointError("Discovery failed")
+    discovery.return_value.validate_connection.return_value = (
         ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
     )
 
@@ -171,215 +154,165 @@ async def test_finish_manual_success(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_HOST: INPUT_HOST,
-            CONF_PORT: INPUT_PORT,
-        },
+        {CONF_HOST: INPUT_HOST, CONF_PORT: INPUT_PORT},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"ZIMI Controller ({INPUT_HOST}:{INPUT_PORT})"
-    assert result["data"] == {
-        "host": INPUT_HOST,
-        "port": INPUT_PORT,
-        "mac": format_mac(INPUT_MAC),
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"ZIMI Controller ({INPUT_HOST}:{INPUT_PORT})")
+    expect(result["data"]).to_equal(
+        {"host": INPUT_HOST, "port": INPUT_PORT, "mac": format_mac(INPUT_MAC)}
+    )
 
 
-async def test_manual_cannot_connect(
-    hass: HomeAssistant,
-    discovery_mock: MagicMock,
+@test
+async def manual_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    discovery: MagicMock = Depends(discovery_mock),
 ) -> None:
     """Test manual form transitions via cannot_connect to creation."""
-
-    discovery_mock.discovers.side_effect = ControlPointError("Discovery failed")
+    discovery.discovers.side_effect = ControlPointError("Discovery failed")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
+    expect(result["errors"]).to_equal({})
 
-    # First attempt fails with CANNOT_CONNECT when attempting to connect
-    discovery_mock.return_value.validate_connection.side_effect = (
+    discovery.return_value.validate_connection.side_effect = (
         ControlPointCannotConnectError
     )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_HOST: INPUT_HOST,
-            CONF_PORT: INPUT_PORT,
-        },
+        {CONF_HOST: INPUT_HOST, CONF_PORT: INPUT_PORT},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    # Second attempt succeeds
-    discovery_mock.return_value.validate_connection.side_effect = None
-    discovery_mock.return_value.validate_connection.return_value = (
+    discovery.return_value.validate_connection.side_effect = None
+    discovery.return_value.validate_connection.return_value = (
         ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
     )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_HOST: INPUT_HOST,
-            CONF_PORT: INPUT_PORT,
-        },
+        {CONF_HOST: INPUT_HOST, CONF_PORT: INPUT_PORT},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"ZIMI Controller ({INPUT_HOST}:{INPUT_PORT})"
-    assert result["data"] == {
-        "host": INPUT_HOST,
-        "port": INPUT_PORT,
-        "mac": format_mac(INPUT_MAC),
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"ZIMI Controller ({INPUT_HOST}:{INPUT_PORT})")
+    expect(result["data"]).to_equal(
+        {"host": INPUT_HOST, "port": INPUT_PORT, "mac": format_mac(INPUT_MAC)}
+    )
 
 
-async def test_manual_gethostbyname_error(
-    hass: HomeAssistant,
-    discovery_mock: MagicMock,
+@test
+async def manual_gethostbyname_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    discovery: MagicMock = Depends(discovery_mock),
 ) -> None:
     """Test manual form transitions via gethostbyname failure to creation."""
-
-    discovery_mock.discovers.side_effect = ControlPointError("Discovery failed")
+    discovery.discovers.side_effect = ControlPointError("Discovery failed")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
+    expect(result["errors"]).to_equal({})
 
-    # First attempt fails with name lookup failure when attempting to connect
-    discovery_mock.return_value.validate_connection.side_effect = (
+    discovery.return_value.validate_connection.side_effect = (
         ControlPointInvalidHostError
     )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_HOST: INPUT_HOST,
-            CONF_PORT: INPUT_PORT,
-        },
+        {CONF_HOST: INPUT_HOST, CONF_PORT: INPUT_PORT},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"]
-    assert result["errors"] == {"base": "invalid_host"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["step_id"])).to_be(True)
+    expect(result["errors"]).to_equal({"base": "invalid_host"})
 
-    # Second attempt succeeds
-    discovery_mock.return_value.validate_connection.side_effect = None
-    discovery_mock.return_value.validate_connection.return_value = (
+    discovery.return_value.validate_connection.side_effect = None
+    discovery.return_value.validate_connection.return_value = (
         ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
     )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_HOST: INPUT_HOST,
-            CONF_PORT: INPUT_PORT,
-        },
+        {CONF_HOST: INPUT_HOST, CONF_PORT: INPUT_PORT},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"ZIMI Controller ({INPUT_HOST}:{INPUT_PORT})"
-    assert result["data"] == {
-        "host": INPUT_HOST,
-        "port": INPUT_PORT,
-        "mac": format_mac(INPUT_MAC),
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"ZIMI Controller ({INPUT_HOST}:{INPUT_PORT})")
+    expect(result["data"]).to_equal(
+        {"host": INPUT_HOST, "port": INPUT_PORT, "mac": format_mac(INPUT_MAC)}
+    )
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_expected"),
-    [
-        (
-            ControlPointInvalidHostError,
-            {"base": "invalid_host"},
-        ),
-        (
-            ControlPointConnectionRefusedError,
-            {"base": "connection_refused"},
-        ),
-        (
-            ControlPointCannotConnectError,
-            {"base": "cannot_connect"},
-        ),
-        (
-            ControlPointTimeoutError,
-            {"base": "timeout"},
-        ),
-        (
-            Exception,
-            {"base": "unknown"},
-        ),
-    ],
+@test.cases(
+    test.case("invalid_host", side_effect=ControlPointInvalidHostError, error_expected={"base": "invalid_host"}),
+    test.case("connection_refused", side_effect=ControlPointConnectionRefusedError, error_expected={"base": "connection_refused"}),
+    test.case("cannot_connect", side_effect=ControlPointCannotConnectError, error_expected={"base": "cannot_connect"}),
+    test.case("timeout", side_effect=ControlPointTimeoutError, error_expected={"base": "timeout"}),
+    test.case("unknown", side_effect=Exception, error_expected={"base": "unknown"}),
 )
-async def test_manual_connection_errors(
-    hass: HomeAssistant,
-    discovery_mock: MagicMock,
-    side_effect: Exception,
+async def manual_connection_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    discovery: MagicMock = Depends(discovery_mock),
+    *,
+    side_effect: type[Exception],
     error_expected: dict,
 ) -> None:
     """Test manual form connection errors."""
-
-    discovery_mock.discovers.side_effect = ControlPointError("Discovery failed")
+    discovery.discovers.side_effect = ControlPointError("Discovery failed")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
+    expect(result["errors"]).to_equal({})
 
-    # First attempt fails with connection errors
-    discovery_mock.return_value.validate_connection.side_effect = side_effect
+    discovery.return_value.validate_connection.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_HOST: INPUT_HOST,
-            CONF_PORT: INPUT_PORT,
-        },
+        {CONF_HOST: INPUT_HOST, CONF_PORT: INPUT_PORT},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "manual"
-    assert result["errors"] == error_expected
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual")
+    expect(result["errors"]).to_equal(error_expected)
 
-    # Second attempt succeeds
-    discovery_mock.return_value.validate_connection.side_effect = None
-    discovery_mock.return_value.validate_connection.return_value = (
+    discovery.return_value.validate_connection.side_effect = None
+    discovery.return_value.validate_connection.return_value = (
         ControlPointDescription(host=INPUT_HOST, port=INPUT_PORT, mac=INPUT_MAC)
     )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_HOST: INPUT_HOST,
-            CONF_PORT: INPUT_PORT,
-        },
+        {CONF_HOST: INPUT_HOST, CONF_PORT: INPUT_PORT},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"ZIMI Controller ({INPUT_HOST}:{INPUT_PORT})"
-    assert result["data"] == {
-        "host": INPUT_HOST,
-        "port": INPUT_PORT,
-        "mac": format_mac(INPUT_MAC),
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"ZIMI Controller ({INPUT_HOST}:{INPUT_PORT})")
+    expect(result["data"]).to_equal(
+        {"host": INPUT_HOST, "port": INPUT_PORT, "mac": format_mac(INPUT_MAC)}
+    )
