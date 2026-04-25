@@ -1,14 +1,14 @@
 """Tests for the Abode config flow."""
 
 from http import HTTPStatus
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from jaraco.abode.exceptions import (
     AuthenticationException as AbodeAuthenticationException,
 )
 from jaraco.abode.helpers.errors import MFA_CODE_REQUIRED
-import pytest
 from requests.exceptions import ConnectTimeout
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.abode.const import CONF_POLLING, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -16,12 +16,25 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-async def test_one_config_allowed(hass: HomeAssistant) -> None:
+@test
+async def one_config_allowed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that only one Abode configuration is allowed."""
     MockConfigEntry(
         domain=DOMAIN,
@@ -32,19 +45,23 @@ async def test_one_config_allowed(hass: HomeAssistant) -> None:
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
 
 
-async def test_user_flow(hass: HomeAssistant) -> None:
+@test
+async def user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user flow, with various errors."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    # Test that invalid credentials throws an error.
+    # Invalid credentials throws an error.
     with patch(
         "homeassistant.components.abode.config_flow.Abode",
         side_effect=AbodeAuthenticationException(
@@ -55,11 +72,11 @@ async def test_user_flow(hass: HomeAssistant) -> None:
             result["flow_id"],
             user_input={CONF_USERNAME: "user@email.com", CONF_PASSWORD: "password"},
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
-    # Test other than invalid credentials throws an error.
+    # Other than invalid credentials throws an error.
     with patch(
         "homeassistant.components.abode.config_flow.Abode",
         side_effect=AbodeAuthenticationException(
@@ -70,11 +87,11 @@ async def test_user_flow(hass: HomeAssistant) -> None:
             result["flow_id"],
             user_input={CONF_USERNAME: "user@email.com", CONF_PASSWORD: "password"},
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    # Test login throws an error if connection times out.
+    # Login throws an error if connection times out.
     with patch(
         "homeassistant.components.abode.config_flow.Abode",
         side_effect=ConnectTimeout,
@@ -83,11 +100,11 @@ async def test_user_flow(hass: HomeAssistant) -> None:
             result["flow_id"],
             user_input={CONF_USERNAME: "user@email.com", CONF_PASSWORD: "password"},
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    # Test success
+    # Success.
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -98,18 +115,23 @@ async def test_user_flow(hass: HomeAssistant) -> None:
             user_input={CONF_USERNAME: "user@email.com", CONF_PASSWORD: "password"},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "user@email.com"
-    assert result["data"] == {
-        CONF_USERNAME: "user@email.com",
-        CONF_PASSWORD: "password",
-        CONF_POLLING: False,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("user@email.com")
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: "user@email.com",
+            CONF_PASSWORD: "password",
+            CONF_POLLING: False,
+        }
+    )
 
 
-async def test_step_mfa(hass: HomeAssistant) -> None:
+@test
+async def step_mfa(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the MFA step works."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -123,8 +145,8 @@ async def test_step_mfa(hass: HomeAssistant) -> None:
             user_input={CONF_USERNAME: "user@email.com", CONF_PASSWORD: "password"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "mfa"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("mfa")
 
     with patch(
         "homeassistant.components.abode.config_flow.Abode",
@@ -136,25 +158,31 @@ async def test_step_mfa(hass: HomeAssistant) -> None:
             result["flow_id"], user_input={"mfa_code": "123456"}
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "mfa"
-    assert result["errors"] == {"base": "invalid_mfa_code"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("mfa")
+    expect(result["errors"]).to_equal({"base": "invalid_mfa_code"})
 
     with patch("homeassistant.components.abode.config_flow.Abode"):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={"mfa_code": "123456"}
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "user@email.com"
-    assert result["data"] == {
-        CONF_USERNAME: "user@email.com",
-        CONF_PASSWORD: "password",
-        CONF_POLLING: False,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("user@email.com")
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: "user@email.com",
+            CONF_PASSWORD: "password",
+            CONF_POLLING: False,
+        }
+    )
 
 
-async def test_step_reauth(hass: HomeAssistant) -> None:
+@test
+async def step_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the reauth flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -165,12 +193,10 @@ async def test_step_reauth(hass: HomeAssistant) -> None:
 
     result = await entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    with (
-        patch("homeassistant.components.abode.config_flow.Abode"),
-    ):
+    with patch("homeassistant.components.abode.config_flow.Abode"):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={
@@ -179,8 +205,8 @@ async def test_step_reauth(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
-    assert len(hass.config_entries.async_entries()) == 1
-    assert entry.data[CONF_PASSWORD] == "new_password"
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+    expect(entry.data[CONF_PASSWORD]).to_equal("new_password")
