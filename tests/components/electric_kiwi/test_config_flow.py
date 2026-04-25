@@ -6,7 +6,7 @@ from http import HTTPStatus
 from unittest.mock import AsyncMock
 
 from electrickiwi_api.exceptions import ApiException
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.electric_kiwi.const import (
     DOMAIN,
@@ -19,22 +19,46 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_entry_oauth2_flow
 
-from .conftest import CLIENT_ID, REDIRECT_URI
+from ._fixtures import (
+    CLIENT_ID,
+    REDIRECT_URI,
+    electrickiwi_api,
+    migrated_config_entry,
+    mock_setup_entry,
+    setup_credentials,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    aioclient_mock as aioclient_mock_fx,
+    current_request_with_host,
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
-from tests.typing import ClientSessionGenerator
 
 
-@pytest.mark.usefixtures("current_request_with_host", "electrickiwi_api")
-async def test_full_flow(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _credentials: None = Depends(setup_credentials),
+    _request: None = Depends(current_request_with_host),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _api: AsyncMock = Depends(electrickiwi_api),
 ) -> None:
     """Check full flow."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -48,17 +72,17 @@ async def test_full_flow(
 
     url_scope = SCOPE_VALUES.replace(" ", "+")
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{OAUTH2_AUTHORIZE}?response_type=code&client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
         f"&state={state}"
         f"&scope={url_scope}"
     )
 
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == HTTPStatus.OK
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await client()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(HTTPStatus.OK)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.clear_requests()
     aioclient_mock.post(
@@ -73,19 +97,19 @@ async def test_full_flow(
 
     await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_flow_failure(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    electrickiwi_api: AsyncMock,
+@test
+async def flow_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    api: AsyncMock = Depends(electrickiwi_api),
 ) -> None:
     """Check failure on creation of entry."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -99,17 +123,17 @@ async def test_flow_failure(
 
     url_scope = SCOPE_VALUES.replace(" ", "+")
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{OAUTH2_AUTHORIZE}?response_type=code&client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
         f"&state={state}"
         f"&scope={url_scope}"
     )
 
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == HTTPStatus.OK
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await client()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(HTTPStatus.OK)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.clear_requests()
     aioclient_mock.post(
@@ -122,25 +146,27 @@ async def test_flow_failure(
         },
     )
 
-    electrickiwi_api.get_active_session.side_effect = ApiException()
+    api.get_active_session.side_effect = ApiException()
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 0
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "connection_error"
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(0)
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("connection_error")
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_existing_entry(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    migrated_config_entry: MockConfigEntry,
+@test
+async def existing_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    config_entry: MockConfigEntry = Depends(migrated_config_entry),
+    _api: AsyncMock = Depends(electrickiwi_api),
 ) -> None:
     """Check existing entry."""
-    migrated_config_entry.add_to_hass(hass)
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    config_entry.add_to_hass(hass)
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER, "entry_id": DOMAIN}
@@ -154,10 +180,10 @@ async def test_existing_entry(
         },
     )
 
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == HTTPStatus.OK
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await client()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(HTTPStatus.OK)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
@@ -170,25 +196,27 @@ async def test_existing_entry(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "already_configured"
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("already_configured")
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_reauthentication(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_setup_entry: AsyncMock,
-    migrated_config_entry: MockConfigEntry,
+@test
+async def reauthentication(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(migrated_config_entry),
+    _api: AsyncMock = Depends(electrickiwi_api),
 ) -> None:
     """Test Electric Kiwi reauthentication."""
-    migrated_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await migrated_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
@@ -200,10 +228,10 @@ async def test_reauthentication(
         },
     )
 
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == HTTPStatus.OK
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await client()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(HTTPStatus.OK)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
@@ -218,8 +246,8 @@ async def test_reauthentication(
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
     await hass.async_block_till_done()
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reauth_successful"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("reauth_successful")
