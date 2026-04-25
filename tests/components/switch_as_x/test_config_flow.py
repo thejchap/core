@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.switch_as_x.config_flow import SwitchAsXConfigFlowHandler
@@ -18,23 +18,46 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 
-from . import PLATFORMS_TO_TEST, STATE_MAP
+from . import STATE_MAP
+from ._fixtures import mock_setup_entry, setup_homeassistant
 
 from tests.common import MockConfigEntry, get_schema_suggested_value
+from tests.hass_fixtures import (
+    entity_registry as entity_registry_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
 
 
-@pytest.mark.parametrize("target_domain", PLATFORMS_TO_TEST)
-async def test_config_flow(
-    hass: HomeAssistant,
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _ha: None = Depends(setup_homeassistant),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test.cases(
+    test.case("cover", target_domain=Platform.COVER),
+    test.case("fan", target_domain=Platform.FAN),
+    test.case("light", target_domain=Platform.LIGHT),
+    test.case("lock", target_domain=Platform.LOCK),
+    test.case("siren", target_domain=Platform.SIREN),
+    test.case("valve", target_domain=Platform.VALVE),
+)
+async def config_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
     target_domain: Platform,
-    mock_setup_entry: AsyncMock,
 ) -> None:
     """Test the config flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -46,38 +69,110 @@ async def test_config_flow(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "ceiling"
-    assert result["data"] == {}
-    assert result["options"] == {
-        CONF_ENTITY_ID: "switch.ceiling",
-        CONF_INVERT: False,
-        CONF_TARGET_DOMAIN: target_domain,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("ceiling")
+    expect(result["data"]).to_equal({})
+    expect(result["options"]).to_equal(
+        {
+            CONF_ENTITY_ID: "switch.ceiling",
+            CONF_INVERT: False,
+            CONF_TARGET_DOMAIN: target_domain,
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
     config_entry = hass.config_entries.async_entries(DOMAIN)[0]
-    assert config_entry.data == {}
-    assert config_entry.options == {
-        CONF_ENTITY_ID: "switch.ceiling",
-        CONF_INVERT: False,
-        CONF_TARGET_DOMAIN: target_domain,
-    }
+    expect(config_entry.data).to_equal({})
+    expect(config_entry.options).to_equal(
+        {
+            CONF_ENTITY_ID: "switch.ceiling",
+            CONF_INVERT: False,
+            CONF_TARGET_DOMAIN: target_domain,
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    ("hidden_by_before", "hidden_by_after"),
-    [
-        (er.RegistryEntryHider.USER, er.RegistryEntryHider.USER),
-        (None, er.RegistryEntryHider.INTEGRATION),
-    ],
+@test.cases(
+    test.case(
+        "cover_user_user",
+        target_domain=Platform.COVER,
+        hidden_by_before=er.RegistryEntryHider.USER,
+        hidden_by_after=er.RegistryEntryHider.USER,
+    ),
+    test.case(
+        "fan_user_user",
+        target_domain=Platform.FAN,
+        hidden_by_before=er.RegistryEntryHider.USER,
+        hidden_by_after=er.RegistryEntryHider.USER,
+    ),
+    test.case(
+        "light_user_user",
+        target_domain=Platform.LIGHT,
+        hidden_by_before=er.RegistryEntryHider.USER,
+        hidden_by_after=er.RegistryEntryHider.USER,
+    ),
+    test.case(
+        "lock_user_user",
+        target_domain=Platform.LOCK,
+        hidden_by_before=er.RegistryEntryHider.USER,
+        hidden_by_after=er.RegistryEntryHider.USER,
+    ),
+    test.case(
+        "siren_user_user",
+        target_domain=Platform.SIREN,
+        hidden_by_before=er.RegistryEntryHider.USER,
+        hidden_by_after=er.RegistryEntryHider.USER,
+    ),
+    test.case(
+        "valve_user_user",
+        target_domain=Platform.VALVE,
+        hidden_by_before=er.RegistryEntryHider.USER,
+        hidden_by_after=er.RegistryEntryHider.USER,
+    ),
+    test.case(
+        "cover_none_integration",
+        target_domain=Platform.COVER,
+        hidden_by_before=None,
+        hidden_by_after=er.RegistryEntryHider.INTEGRATION,
+    ),
+    test.case(
+        "fan_none_integration",
+        target_domain=Platform.FAN,
+        hidden_by_before=None,
+        hidden_by_after=er.RegistryEntryHider.INTEGRATION,
+    ),
+    test.case(
+        "light_none_integration",
+        target_domain=Platform.LIGHT,
+        hidden_by_before=None,
+        hidden_by_after=er.RegistryEntryHider.INTEGRATION,
+    ),
+    test.case(
+        "lock_none_integration",
+        target_domain=Platform.LOCK,
+        hidden_by_before=None,
+        hidden_by_after=er.RegistryEntryHider.INTEGRATION,
+    ),
+    test.case(
+        "siren_none_integration",
+        target_domain=Platform.SIREN,
+        hidden_by_before=None,
+        hidden_by_after=er.RegistryEntryHider.INTEGRATION,
+    ),
+    test.case(
+        "valve_none_integration",
+        target_domain=Platform.VALVE,
+        hidden_by_before=None,
+        hidden_by_after=er.RegistryEntryHider.INTEGRATION,
+    ),
 )
-@pytest.mark.parametrize("target_domain", PLATFORMS_TO_TEST)
-async def test_config_flow_registered_entity(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+async def config_flow_registered_entity(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
     target_domain: Platform,
-    mock_setup_entry: AsyncMock,
     hidden_by_before: er.RegistryEntryHider | None,
     hidden_by_after: er.RegistryEntryHider,
 ) -> None:
@@ -85,14 +180,14 @@ async def test_config_flow_registered_entity(
     switch_entity_entry = entity_registry.async_get_or_create(
         "switch", "test", "unique", suggested_object_id="ceiling"
     )
-    assert switch_entity_entry.entity_id == "switch.ceiling"
+    expect(switch_entity_entry.entity_id).to_equal("switch.ceiling")
     entity_registry.async_update_entity("switch.ceiling", hidden_by=hidden_by_before)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -104,31 +199,44 @@ async def test_config_flow_registered_entity(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "ceiling"
-    assert result["data"] == {}
-    assert result["options"] == {
-        CONF_ENTITY_ID: "switch.ceiling",
-        CONF_INVERT: False,
-        CONF_TARGET_DOMAIN: target_domain,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("ceiling")
+    expect(result["data"]).to_equal({})
+    expect(result["options"]).to_equal(
+        {
+            CONF_ENTITY_ID: "switch.ceiling",
+            CONF_INVERT: False,
+            CONF_TARGET_DOMAIN: target_domain,
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
     config_entry = hass.config_entries.async_entries(DOMAIN)[0]
-    assert config_entry.data == {}
-    assert config_entry.options == {
-        CONF_ENTITY_ID: "switch.ceiling",
-        CONF_INVERT: False,
-        CONF_TARGET_DOMAIN: target_domain,
-    }
+    expect(config_entry.data).to_equal({})
+    expect(config_entry.options).to_equal(
+        {
+            CONF_ENTITY_ID: "switch.ceiling",
+            CONF_INVERT: False,
+            CONF_TARGET_DOMAIN: target_domain,
+        }
+    )
 
     switch_entity_entry = entity_registry.async_get("switch.ceiling")
-    assert switch_entity_entry.hidden_by == hidden_by_after
+    expect(switch_entity_entry.hidden_by).to_equal(hidden_by_after)
 
 
-@pytest.mark.parametrize("target_domain", PLATFORMS_TO_TEST)
-async def test_options(
-    hass: HomeAssistant,
+@test.cases(
+    test.case("cover", target_domain=Platform.COVER),
+    test.case("fan", target_domain=Platform.FAN),
+    test.case("light", target_domain=Platform.LIGHT),
+    test.case("lock", target_domain=Platform.LOCK),
+    test.case("siren", target_domain=Platform.SIREN),
+    test.case("valve", target_domain=Platform.VALVE),
+)
+async def options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
     target_domain: Platform,
 ) -> None:
     """Test reconfiguring."""
@@ -148,19 +256,23 @@ async def test_options(
     )
     switch_as_x_config_entry.add_to_hass(hass)
 
-    assert await hass.config_entries.async_setup(switch_as_x_config_entry.entry_id)
+    expect(
+        await hass.config_entries.async_setup(switch_as_x_config_entry.entry_id)
+    ).to_be(True)
     await hass.async_block_till_done()
 
     state = hass.states.get(f"{target_domain}.abc")
-    assert state.state == STATE_MAP[True][target_domain][switch_state]
+    expect(state.state).to_equal(STATE_MAP[True][target_domain][switch_state])
 
     config_entry = hass.config_entries.async_entries(DOMAIN)[0]
-    assert config_entry
+    expect(config_entry is not None).to_be(True)
 
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert get_schema_suggested_value(result["data_schema"].schema, CONF_INVERT) is True
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+    expect(get_schema_suggested_value(result["data_schema"].schema, CONF_INVERT)).to_be(
+        True
+    )
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -168,26 +280,30 @@ async def test_options(
             CONF_INVERT: False,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_ENTITY_ID: "switch.ceiling",
-        CONF_INVERT: False,
-        CONF_TARGET_DOMAIN: target_domain,
-    }
-    assert config_entry.data == {}
-    assert config_entry.options == {
-        CONF_ENTITY_ID: "switch.ceiling",
-        CONF_INVERT: False,
-        CONF_TARGET_DOMAIN: target_domain,
-    }
-    assert config_entry.title == "ABC"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_ENTITY_ID: "switch.ceiling",
+            CONF_INVERT: False,
+            CONF_TARGET_DOMAIN: target_domain,
+        }
+    )
+    expect(config_entry.data).to_equal({})
+    expect(config_entry.options).to_equal(
+        {
+            CONF_ENTITY_ID: "switch.ceiling",
+            CONF_INVERT: False,
+            CONF_TARGET_DOMAIN: target_domain,
+        }
+    )
+    expect(config_entry.title).to_equal("ABC")
 
     # Check config entry is reloaded with new options
     await hass.async_block_till_done()
 
     # Check the entity was updated, no new entity was created
-    assert len(hass.states.async_all()) == 2
+    expect(len(hass.states.async_all())).to_equal(2)
 
     # Check the state of the entity has changed as expected
     state = hass.states.get(f"{target_domain}.abc")
-    assert state.state == STATE_MAP[False][target_domain][switch_state]
+    expect(state.state).to_equal(STATE_MAP[False][target_domain][switch_state])
