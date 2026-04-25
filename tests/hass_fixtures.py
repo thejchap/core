@@ -16,10 +16,11 @@ and will be added back when subsequent slices need them.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Callable, Coroutine, Generator
 from dataclasses import dataclass
 import logging
 from pathlib import Path
+import ssl
 import sys
 import tempfile
 from typing import Any, Self
@@ -584,3 +585,100 @@ def mock_network() -> Generator[None]:
         ),
     ):
         yield
+
+
+# Aliased so consumer modules can `from tests.hass_fixtures import ClientSessionGenerator`
+# without pulling tests.typing's pytest hooks (which conflict with tryke discovery).
+type ClientSessionGenerator = Callable[..., Coroutine[Any, Any, Any]]
+
+
+@fixture
+async def aiohttp_client() -> AsyncGenerator[ClientSessionGenerator]:
+    """Test-client factory bound to the running event loop.
+
+    Mirror of the pytest ``aiohttp_client`` fixture used by HA tests, but
+    without the third-party ``pytest-aiohttp`` plugin: the fixture
+    creates aiohttp test clients/servers and tears them down on exit.
+    """
+    from aiohttp.test_utils import (  # noqa: PLC0415
+        BaseTestServer,
+        TestClient,
+        TestServer,
+    )
+    from aiohttp.web import Application  # noqa: PLC0415
+
+    loop = asyncio.get_running_loop()
+    clients: list[TestClient] = []
+
+    async def go(
+        param: Any,
+        /,
+        *args: Any,
+        server_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> TestClient:
+        client: TestClient
+        if isinstance(param, Application):
+            server_kwargs = server_kwargs or {}
+            server = TestServer(param, loop=loop, **server_kwargs)
+            server.app._router.freeze = lambda: None  # noqa: SLF001
+            client = TestClient(server, loop=loop, **kwargs)
+        elif isinstance(param, BaseTestServer):
+            client = TestClient(param, loop=loop, **kwargs)
+        else:
+            raise TypeError(f"Unknown argument type: {type(param)!r}")
+
+        await client.start_server()
+        clients.append(client)
+        return client
+
+    try:
+        yield go
+    finally:
+        while clients:
+            await clients.pop().close()
+
+
+@fixture
+def hass_client_no_auth(
+    hass: HomeAssistant = Depends(hass),
+    aiohttp_client: ClientSessionGenerator = Depends(aiohttp_client),
+) -> ClientSessionGenerator:
+    """Return an unauthenticated HTTP client for the hass test app."""
+
+    async def client():
+        return await aiohttp_client(hass.http.app)
+
+    return client
+
+
+@fixture
+def current_request() -> Generator[MagicMock]:
+    """Mock the helpers.http current_request context-var lookup."""
+    from aiohttp.test_utils import make_mocked_request  # noqa: PLC0415
+
+    with patch("homeassistant.helpers.http.current_request") as mock_request_context:
+        mocked_request = make_mocked_request(
+            "GET",
+            "/some/request",
+            headers={"Host": "example.com"},
+            sslcontext=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT),
+        )
+        mock_request_context.get.return_value = mocked_request
+        yield mock_request_context
+
+
+@fixture
+def current_request_with_host(
+    current_request: MagicMock = Depends(current_request),
+) -> None:
+    """Mock current request with a host header that OAuth2 flows expect."""
+    import multidict  # noqa: PLC0415
+
+    from homeassistant.helpers import config_entry_oauth2_flow  # noqa: PLC0415
+
+    new_headers = multidict.CIMultiDict(current_request.get.return_value.headers)
+    new_headers[config_entry_oauth2_flow.HEADER_FRONTEND_BASE] = "https://example.com"
+    current_request.get.return_value = current_request.get.return_value.clone(
+        headers=new_headers
+    )

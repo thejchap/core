@@ -1190,6 +1190,7 @@ dev = [
     "transmission-rpc==7.0.3",
     "ttls==1.8.3",
     "twentemilieu==3.0.0",
+    "twitchapi==4.2.1",
     "typedmonarchmoney==0.7.0",
     "uasiren==0.0.1",
     "ultraheat-api>=0.5.7",
