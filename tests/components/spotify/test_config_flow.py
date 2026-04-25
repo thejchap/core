@@ -3,8 +3,8 @@
 from http import HTTPStatus
 from unittest.mock import MagicMock, patch
 
-import pytest
 from spotifyaio import SpotifyConnectionError, SpotifyForbiddenError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.spotify.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -12,28 +12,56 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_entry_oauth2_flow
 
+from ._fixtures import (
+    mock_config_entry,
+    mock_spotify,
+    patch_sleep,
+    setup_credentials,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    aioclient_mock as aioclient_mock_fx,
+    current_request_with_host,
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
-from tests.typing import ClientSessionGenerator
 
 
-async def test_abort_if_no_configuration(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _sleep: None = Depends(patch_sleep),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def abort_if_no_configuration(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Check flow aborts when no configuration is present."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "missing_credentials"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("missing_credentials")
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-@pytest.mark.usefixtures("setup_credentials")
-async def test_full_flow(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_spotify: MagicMock,
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    _request: None = Depends(current_request_with_host),
+    _credentials: None = Depends(setup_credentials),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    _spotify: MagicMock = Depends(mock_spotify),
 ) -> None:
     """Check a full flow."""
     result = await hass.config_entries.flow.async_init(
@@ -48,8 +76,8 @@ async def test_full_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.EXTERNAL_STEP
-    assert result["url"] == (
+    expect(result["type"]).to_be(FlowResultType.EXTERNAL_STEP)
+    expect(result["url"]).to_equal(
         "https://accounts.spotify.com/authorize"
         "?response_type=code&client_id=CLIENT_ID"
         "&redirect_uri=https://example.com/auth/external/callback"
@@ -59,10 +87,10 @@ async def test_full_flow(
         "user-top-read,user-read-playback-position,user-read-recently-played,user-follow-read"
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == HTTPStatus.OK
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(HTTPStatus.OK)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.clear_requests()
     aioclient_mock.post(
@@ -75,41 +103,47 @@ async def test_full_flow(
         },
     )
 
-    with (
-        patch("homeassistant.components.spotify.async_setup_entry", return_value=True),
-    ):
+    with patch("homeassistant.components.spotify.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1, result
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
     result["data"]["token"].pop("expires_at")
-    assert result["data"]["name"] == "Henk"
-    assert result["data"]["token"] == {
-        "refresh_token": "mock-refresh-token",
-        "access_token": "mock-access-token",
-        "type": "Bearer",
-        "expires_in": 60,
-    }
-    assert result["result"].unique_id == "1112264111"
+    expect(result["data"]["name"]).to_equal("Henk")
+    expect(result["data"]["token"]).to_equal(
+        {
+            "refresh_token": "mock-refresh-token",
+            "access_token": "mock-access-token",
+            "type": "Bearer",
+            "expires_in": 60,
+        }
+    )
+    expect(result["result"].unique_id).to_equal("1112264111")
 
 
-@pytest.mark.parametrize(
-    ("exception", "reason"),
-    [
-        (SpotifyConnectionError, "connection_error"),
-        (SpotifyForbiddenError, "user_not_premium"),
-    ],
+@test.cases(
+    test.case(
+        "connection_error",
+        exception=SpotifyConnectionError,
+        reason="connection_error",
+    ),
+    test.case(
+        "user_not_premium",
+        exception=SpotifyForbiddenError,
+        reason="user_not_premium",
+    ),
 )
-@pytest.mark.usefixtures("current_request_with_host")
-@pytest.mark.usefixtures("setup_credentials")
-async def test_abort_if_spotify_error(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_spotify: MagicMock,
-    exception: Exception,
+async def abort_if_spotify_error(
+    _trigger: None = Depends(_trigger_executor),
+    _request: None = Depends(current_request_with_host),
+    _credentials: None = Depends(setup_credentials),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    spotify: MagicMock = Depends(mock_spotify),
+    *,
+    exception: type[Exception],
     reason: str,
 ) -> None:
     """Check Spotify errors causes flow to abort."""
@@ -124,7 +158,7 @@ async def test_abort_if_spotify_error(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    client = await hass_client_no_auth()
+    client = await client_gen()
     await client.get(f"/auth/external/callback?code=abcd&state={state}")
 
     aioclient_mock.post(
@@ -137,30 +171,32 @@ async def test_abort_if_spotify_error(
         },
     )
 
-    mock_spotify.return_value.get_current_user.side_effect = exception
+    spotify.return_value.get_current_user.side_effect = exception
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(reason)
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-@pytest.mark.usefixtures("setup_credentials")
-async def test_reauthentication(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_spotify: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauthentication(
+    _trigger: None = Depends(_trigger_executor),
+    _request: None = Depends(current_request_with_host),
+    _credentials: None = Depends(setup_credentials),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    _spotify: MagicMock = Depends(mock_spotify),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test Spotify reauthentication."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
@@ -171,7 +207,7 @@ async def test_reauthentication(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    client = await hass_client_no_auth()
+    client = await client_gen()
     await client.get(f"/auth/external/callback?code=abcd&state={state}")
 
     aioclient_mock.post(
@@ -184,35 +220,37 @@ async def test_reauthentication(
         },
     )
 
-    with (
-        patch("homeassistant.components.spotify.async_setup_entry", return_value=True),
-    ):
+    with patch("homeassistant.components.spotify.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    mock_config_entry.data["token"].pop("expires_at")
-    assert mock_config_entry.data["token"] == {
-        "refresh_token": "new-refresh-token",
-        "access_token": "new-access-token",
-        "type": "Bearer",
-        "expires_in": 60,
-    }
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    config_entry.data["token"].pop("expires_at")
+    expect(config_entry.data["token"]).to_equal(
+        {
+            "refresh_token": "new-refresh-token",
+            "access_token": "new-access-token",
+            "type": "Bearer",
+            "expires_in": 60,
+        }
+    )
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-@pytest.mark.usefixtures("setup_credentials")
-async def test_reauth_account_mismatch(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_spotify: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_account_mismatch(
+    _trigger: None = Depends(_trigger_executor),
+    _request: None = Depends(current_request_with_host),
+    _credentials: None = Depends(setup_credentials),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    spotify: MagicMock = Depends(mock_spotify),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test Spotify reauthentication with different account."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
@@ -223,7 +261,7 @@ async def test_reauth_account_mismatch(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    client = await hass_client_no_auth()
+    client = await client_gen()
     await client.get(f"/auth/external/callback?code=abcd&state={state}")
 
     aioclient_mock.post(
@@ -236,10 +274,8 @@ async def test_reauth_account_mismatch(
         },
     )
 
-    mock_spotify.return_value.get_current_user.return_value.user_id = (
-        "different_user_id"
-    )
+    spotify.return_value.get_current_user.return_value.user_id = "different_user_id"
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_account_mismatch"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_account_mismatch")
