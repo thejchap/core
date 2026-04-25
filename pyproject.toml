@@ -1206,6 +1206,7 @@ dev = [
     "twitchapi==4.2.1",
     "typedmonarchmoney==0.7.0",
     "uasiren==0.0.1",
+    "uiprotect==10.2.6",
     "ultraheat-api>=0.5.7",
     "unifi-discovery==1.4.0",
     "upb-lib==0.6.1",
@@ -1224,5 +1225,6 @@ dev = [
     "yalexs==9.2.0",
     "yalexs-ble==3.3.0",
     "yt-dlp[default]==2026.3.17",
+    "zamg==0.3.6",
     "zeversolar==0.3.2",
 ]
