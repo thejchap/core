@@ -1,10 +1,9 @@
 """Vera tests."""
 
-from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from requests.exceptions import RequestException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.vera.const import (
@@ -16,19 +15,25 @@ from homeassistant.const import CONF_EXCLUDE, CONF_LIGHTS, CONF_SOURCE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.fixture(autouse=True)
-def mock_setup_entry() -> Generator[AsyncMock]:
-    """Override async_setup_entry."""
-    with patch(
-        "homeassistant.components.vera.async_setup_entry", return_value=True
-    ) as mock_setup_entry:
-        yield mock_setup_entry
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-async def test_async_step_user_success(hass: HomeAssistant) -> None:
+@test
+async def async_step_user_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user step success."""
     with patch("pyvera.VeraController") as vera_controller_class_mock:
         controller = MagicMock()
@@ -39,8 +44,8 @@ async def test_async_step_user_success(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == config_entries.SOURCE_USER
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal(config_entries.SOURCE_USER)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -50,22 +55,28 @@ async def test_async_step_user_success(hass: HomeAssistant) -> None:
                 CONF_EXCLUDE: "14 15",
             },
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "http://127.0.0.1:123"
-        assert result["data"] == {
-            CONF_CONTROLLER: "http://127.0.0.1:123",
-            CONF_SOURCE: config_entries.SOURCE_USER,
-            CONF_LIGHTS: [12, 13],
-            CONF_EXCLUDE: [14, 15],
-            CONF_LEGACY_UNIQUE_ID: False,
-        }
-        assert result["result"].unique_id == controller.serial_number
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal("http://127.0.0.1:123")
+        expect(result["data"]).to_equal(
+            {
+                CONF_CONTROLLER: "http://127.0.0.1:123",
+                CONF_SOURCE: config_entries.SOURCE_USER,
+                CONF_LIGHTS: [12, 13],
+                CONF_EXCLUDE: [14, 15],
+                CONF_LEGACY_UNIQUE_ID: False,
+            }
+        )
+        expect(result["result"].unique_id).to_equal(controller.serial_number)
 
     entries = hass.config_entries.async_entries(DOMAIN)
-    assert entries
+    expect(bool(entries)).to_be(True)
 
 
-async def test_async_step_finish_error(hass: HomeAssistant) -> None:
+@test
+async def async_step_finish_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test finish step with error."""
     with patch("pyvera.VeraController") as vera_controller_class_mock:
         controller = MagicMock()
@@ -78,14 +89,18 @@ async def test_async_step_finish_error(hass: HomeAssistant) -> None:
             data={CONF_CONTROLLER: "http://127.0.0.1:123/"},
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "cannot_connect"
-        assert result["description_placeholders"] == {
-            "base_url": "http://127.0.0.1:123"
-        }
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("cannot_connect")
+        expect(result["description_placeholders"]).to_equal(
+            {"base_url": "http://127.0.0.1:123"}
+        )
 
 
-async def test_options(hass: HomeAssistant) -> None:
+@test
+async def options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test updating options."""
     base_url = "http://127.0.0.1/"
     entry = MockConfigEntry(
@@ -99,8 +114,8 @@ async def test_options(hass: HomeAssistant) -> None:
     result = await hass.config_entries.options.async_init(
         entry.entry_id, context={"source": "test"}, data=None
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -109,8 +124,10 @@ async def test_options(hass: HomeAssistant) -> None:
             CONF_EXCLUDE: "8,9;10  11 12_13bb14",
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_LIGHTS: [1, 2, 3, 4, 5, 6, 7],
-        CONF_EXCLUDE: [8, 9, 10, 11, 12, 13, 14],
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_LIGHTS: [1, 2, 3, 4, 5, 6, 7],
+            CONF_EXCLUDE: [8, 9, 10, 11, 12, 13, 14],
+        }
+    )
