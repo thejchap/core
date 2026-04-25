@@ -1392,6 +1392,7 @@ dev = [
     "wsdot==0.0.1",
     "yalexs==9.2.0",
     "yalexs-ble==3.3.0",
+    "youtubeaio==2.1.2",
     "yt-dlp[default]==2026.3.17",
     "zamg==0.3.6",
     "zeversolar==0.3.2",
