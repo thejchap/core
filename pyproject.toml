@@ -1279,6 +1279,7 @@ dev = [
     "pywebpush==2.3.0",
     "pywemo==1.4.0",
     "pywilight==0.0.74",
+    "pywmspro==0.3.3",
     "pyws66i==1.1",
     "pyyardian==1.1.1",
     "pyzerproc==0.4.8",
@@ -1448,4 +1449,5 @@ dev = [
     "homevolt==0.5.0",
     "pyxiaomigateway==0.14.3",
     "genie-partner-sdk==1.0.11",
+    "vsure==2.6.7",
 ]
