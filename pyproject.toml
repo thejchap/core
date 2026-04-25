@@ -1206,5 +1206,7 @@ dev = [
     "whois==0.9.27",
     "wled==0.22.0",
     "wsdiscovery==2.1.2",
+    "yalexs==9.2.0",
+    "yalexs-ble==3.3.0",
     "zeversolar==0.3.2",
 ]
