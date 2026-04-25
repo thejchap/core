@@ -23,7 +23,7 @@ from pathlib import Path
 import sys
 import tempfile
 from typing import Any, Self
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from tryke import Depends, fixture
 
@@ -45,7 +45,12 @@ from homeassistant.helpers import (
 from homeassistant.util import dt as dt_util  # noqa: F401  (side effects on import)
 from homeassistant.util.async_ import create_eager_task
 
-from .common import async_test_home_assistant, get_test_config_dir, mock_storage
+from .common import (
+    MockConfigEntry,
+    async_test_home_assistant,
+    get_test_config_dir,
+    mock_storage,
+)
 from .test_util.aiohttp import AiohttpClientMocker, mock_aiohttp_client
 
 
@@ -453,6 +458,78 @@ def capfd() -> Generator[CapFd]:
         yield cap
     finally:
         cap.stop()
+
+
+@fixture
+def mock_bluetooth_adapters() -> Generator[None]:
+    """Mock bluetooth adapters so the bluetooth integration can be set up."""
+    with (
+        patch("habluetooth.util.recover_adapter"),
+        patch("bluetooth_auto_recovery.recover_adapter"),
+        patch("bluetooth_adapters.systems.platform.system", return_value="Linux"),
+        patch("bluetooth_adapters.systems.linux.LinuxAdapters.refresh"),
+        patch(
+            "bluetooth_adapters.systems.linux.LinuxAdapters.adapters",
+            {
+                "hci0": {
+                    "address": "00:00:00:00:00:01",
+                    "hw_version": "usb:v1D6Bp0246d053F",
+                    "passive_scan": False,
+                    "sw_version": "homeassistant",
+                    "manufacturer": "ACME",
+                    "product": "Bluetooth Adapter 5.0",
+                    "product_id": "aa01",
+                    "vendor_id": "cc01",
+                },
+            },
+        ),
+    ):
+        yield
+
+
+@fixture
+def mock_bleak_scanner_start() -> Generator[MagicMock]:
+    """Mock starting the bleak scanner so the bluetooth manager can come up."""
+    from habluetooth import (  # noqa: PLC0415
+        manager as bluetooth_manager,
+        scanner as bluetooth_scanner,
+    )
+
+    # We patch out start so the scanner never actually opens an adapter.
+    # The fixture exits before EVENT_HOMEASSISTANT_STOP fires the stop call,
+    # so detach stop too.
+    bluetooth_scanner.OriginalBleakScanner.stop = AsyncMock()  # type: ignore[assignment]
+
+    mock_mgmt_bluetooth_ctl = Mock()
+    mock_mgmt_bluetooth_ctl.setup = AsyncMock(return_value=None)
+
+    with (
+        patch.object(
+            bluetooth_scanner.OriginalBleakScanner,
+            "start",
+        ) as mock_bleak_scanner_start,
+        patch.object(bluetooth_scanner, "HaScanner"),
+        patch.object(
+            bluetooth_manager, "MGMTBluetoothCtl", return_value=mock_mgmt_bluetooth_ctl
+        ),
+    ):
+        yield mock_bleak_scanner_start
+
+
+@fixture
+async def enable_bluetooth(
+    hass: HomeAssistant = Depends(hass),
+    _bleak: MagicMock = Depends(mock_bleak_scanner_start),
+    _adapters: None = Depends(mock_bluetooth_adapters),
+) -> AsyncGenerator[None]:
+    """Set up the bluetooth integration with adapters and scanner mocked."""
+    entry = MockConfigEntry(domain="bluetooth", unique_id="00:00:00:00:00:01")
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    yield
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
 
 
 @fixture
