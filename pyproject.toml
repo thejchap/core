@@ -1427,4 +1427,5 @@ dev = [
     "py-dormakaba-dkey==1.0.6",
     "visionpluspython==1.0.2",
     "python-fullykiosk==0.0.15",
+    "goslide-api==0.7.0",
 ]
