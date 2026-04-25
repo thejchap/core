@@ -987,6 +987,7 @@ dev = [
     "discovery30303==0.3.3",
     "eagle100==0.1.1",
     "eternalegypt==0.0.18",
+    "fjaraskupan==2.3.3",
     "freezegun>=1.5.5",
     "getmac==0.9.5",
     "go2rtc-client==0.4.0",
