@@ -1413,4 +1413,6 @@ dev = [
     "onedrive-personal-sdk==0.1.7",
     "whirlpool-sixth-sense==1.0.3",
     "teltasync==0.2.0",
+    "pyvlx==0.2.33",
+    "airthings-ble==1.2.0",
 ]
