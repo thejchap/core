@@ -5,7 +5,7 @@ from typing import Any
 from unittest.mock import patch
 
 from aioguardian.errors import GuardianError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.guardian import CONF_UID, DOMAIN
 from homeassistant.components.guardian.config_flow import (
@@ -19,22 +19,47 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
+from ._fixtures import (
+    config as config_fx,
+    config_entry as config_entry_fx,
+    mock_setup_entry,
+    setup_guardian as setup_guardian_fx,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: object = Depends(mock_setup_entry),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
 
 
-@pytest.mark.usefixtures("config_entry", "setup_guardian")
-async def test_duplicate_error(hass: HomeAssistant, config: dict[str, Any]) -> None:
+@test
+async def duplicate_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config: dict[str, Any] = Depends(config_fx),
+    _config_entry: MockConfigEntry = Depends(config_entry_fx),
+    _setup_guardian: None = Depends(setup_guardian_fx),
+) -> None:
     """Test that errors are shown when duplicate entries are added."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data=config
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_connect_error(hass: HomeAssistant, config: dict[str, Any]) -> None:
+@test
+async def connect_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config: dict[str, Any] = Depends(config_fx),
+) -> None:
     """Test that the config entry errors out if the device cannot connect."""
     with patch(
         "aioguardian.client.Client.connect",
@@ -43,45 +68,62 @@ async def test_connect_error(hass: HomeAssistant, config: dict[str, Any]) -> Non
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=config
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {CONF_IP_ADDRESS: "cannot_connect"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({CONF_IP_ADDRESS: "cannot_connect"})
 
 
-async def test_get_pin_from_discovery_hostname() -> None:
+@test
+async def get_pin_from_discovery_hostname(
+    _trigger: None = Depends(_trigger_executor),
+) -> None:
     """Test getting a device PIN from the zeroconf-discovered hostname."""
     pin = async_get_pin_from_discovery_hostname("GVC1-3456.local.")
-    assert pin == "3456"
+    expect(pin).to_equal("3456")
 
 
-async def test_get_pin_from_uid() -> None:
+@test
+async def get_pin_from_uid(
+    _trigger: None = Depends(_trigger_executor),
+) -> None:
     """Test getting a device PIN from its UID."""
     pin = async_get_pin_from_uid("ABCDEF123456")
-    assert pin == "3456"
+    expect(pin).to_equal("3456")
 
 
-@pytest.mark.usefixtures("setup_guardian")
-async def test_step_user(hass: HomeAssistant, config: dict[str, Any]) -> None:
+@test
+async def step_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config: dict[str, Any] = Depends(config_fx),
+    _setup_guardian: None = Depends(setup_guardian_fx),
+) -> None:
     """Test the user step."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data=config
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "ABCDEF123456"
-    assert result["data"] == {
-        CONF_IP_ADDRESS: "192.168.1.100",
-        CONF_PORT: 7777,
-        CONF_UID: "ABCDEF123456",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("ABCDEF123456")
+    expect(result["data"]).to_equal(
+        {
+            CONF_IP_ADDRESS: "192.168.1.100",
+            CONF_PORT: 7777,
+            CONF_UID: "ABCDEF123456",
+        }
+    )
 
 
-@pytest.mark.usefixtures("setup_guardian")
-async def test_step_zeroconf(hass: HomeAssistant) -> None:
+@test
+async def step_zeroconf(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_guardian: None = Depends(setup_guardian_fx),
+) -> None:
     """Test the zeroconf step."""
     zeroconf_data = ZeroconfServiceInfo(
         ip_address=ip_address("192.168.1.100"),
@@ -96,22 +138,28 @@ async def test_step_zeroconf(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=zeroconf_data
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "ABCDEF123456"
-    assert result["data"] == {
-        CONF_IP_ADDRESS: "192.168.1.100",
-        CONF_PORT: 7777,
-        CONF_UID: "ABCDEF123456",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("ABCDEF123456")
+    expect(result["data"]).to_equal(
+        {
+            CONF_IP_ADDRESS: "192.168.1.100",
+            CONF_PORT: 7777,
+            CONF_UID: "ABCDEF123456",
+        }
+    )
 
 
-async def test_step_zeroconf_already_in_progress(hass: HomeAssistant) -> None:
+@test
+async def step_zeroconf_already_in_progress(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the zeroconf step aborting because it's already in progress."""
     zeroconf_data = ZeroconfServiceInfo(
         ip_address=ip_address("192.168.1.100"),
@@ -126,18 +174,22 @@ async def test_step_zeroconf_already_in_progress(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=zeroconf_data
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=zeroconf_data
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_in_progress"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_in_progress")
 
 
-@pytest.mark.usefixtures("setup_guardian")
-async def test_step_dhcp(hass: HomeAssistant) -> None:
+@test
+async def step_dhcp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_guardian: None = Depends(setup_guardian_fx),
+) -> None:
     """Test the dhcp step."""
     dhcp_data = DhcpServiceInfo(
         ip="192.168.1.100",
@@ -148,22 +200,28 @@ async def test_step_dhcp(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_DHCP}, data=dhcp_data
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "ABCDEF123456"
-    assert result["data"] == {
-        CONF_IP_ADDRESS: "192.168.1.100",
-        CONF_PORT: 7777,
-        CONF_UID: "ABCDEF123456",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("ABCDEF123456")
+    expect(result["data"]).to_equal(
+        {
+            CONF_IP_ADDRESS: "192.168.1.100",
+            CONF_PORT: 7777,
+            CONF_UID: "ABCDEF123456",
+        }
+    )
 
 
-async def test_step_dhcp_already_in_progress(hass: HomeAssistant) -> None:
+@test
+async def step_dhcp_already_in_progress(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the zeroconf step aborting because it's already in progress."""
     dhcp_data = DhcpServiceInfo(
         ip="192.168.1.100",
@@ -174,17 +232,21 @@ async def test_step_dhcp_already_in_progress(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_DHCP}, data=dhcp_data
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_DHCP}, data=dhcp_data
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_in_progress"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_in_progress")
 
 
-async def test_step_dhcp_already_setup_match_mac(hass: HomeAssistant) -> None:
+@test
+async def step_dhcp_already_setup_match_mac(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we abort if the device is already setup with matching unique id and discovered via DHCP."""
     entry = MockConfigEntry(
         domain=DOMAIN, data={CONF_IP_ADDRESS: "1.2.3.4"}, unique_id="guardian_ABCD"
@@ -200,11 +262,15 @@ async def test_step_dhcp_already_setup_match_mac(hass: HomeAssistant) -> None:
             macaddress="aabbccddabcd",
         ),
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_step_dhcp_already_setup_match_ip(hass: HomeAssistant) -> None:
+@test
+async def step_dhcp_already_setup_match_ip(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we abort if the device is already setup with matching ip and discovered via DHCP."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -222,5 +288,5 @@ async def test_step_dhcp_already_setup_match_ip(hass: HomeAssistant) -> None:
             macaddress="aabbccddabcd",
         ),
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
