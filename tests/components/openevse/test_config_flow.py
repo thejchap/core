@@ -1,9 +1,10 @@
-"""Tests for the OpenEVSE sensor platform."""
+"""Tests for the OpenEVSE config flow."""
 
 from ipaddress import ip_address
 from unittest.mock import AsyncMock, MagicMock
 
 from openevsehttp.exceptions import AuthenticationError, MissingSerial
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.openevse.const import DOMAIN
 from homeassistant.config_entries import SOURCE_IMPORT, SOURCE_USER, SOURCE_ZEROCONF
@@ -12,126 +13,145 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
+from ._fixtures import mock_charger, mock_config_entry, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_user_flow(
-    hass: HomeAssistant,
-    mock_charger: MagicMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _charger: MagicMock = Depends(mock_charger),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user flow create entry with bad charger."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: "10.0.0.131"}
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OpenEVSE 10.0.0.131"
-    assert result["data"] == {CONF_HOST: "10.0.0.131"}
-    assert result["result"].unique_id == "deadbeeffeed"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OpenEVSE 10.0.0.131")
+    expect(result["data"]).to_equal({CONF_HOST: "10.0.0.131"})
+    expect(result["result"].unique_id).to_equal("deadbeeffeed")
 
 
-async def test_user_flow_flaky(
-    hass: HomeAssistant,
-    mock_charger: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def user_flow_flaky(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    charger: MagicMock = Depends(mock_charger),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user flow create entry with flaky charger."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    mock_charger.test_and_get.side_effect = TimeoutError
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    charger.test_and_get.side_effect = TimeoutError
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: "10.0.0.131"}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    mock_charger.test_and_get.side_effect = None
+    charger.test_and_get.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: "10.0.0.131"}
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OpenEVSE 10.0.0.131"
-    assert result["data"] == {CONF_HOST: "10.0.0.131"}
-    assert result["result"].unique_id == "deadbeeffeed"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OpenEVSE 10.0.0.131")
+    expect(result["data"]).to_equal({CONF_HOST: "10.0.0.131"})
+    expect(result["result"].unique_id).to_equal("deadbeeffeed")
 
 
-async def test_user_flow_duplicate(
-    hass: HomeAssistant,
-    mock_config_entry: MagicMock,
-    mock_charger: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def user_flow_duplicate(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _charger: MagicMock = Depends(mock_charger),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user flow aborts when config entry already exists."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: "192.168.1.100"}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_user_flow_no_serial(
-    hass: HomeAssistant,
-    mock_charger: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def user_flow_no_serial(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    charger: MagicMock = Depends(mock_charger),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user flow handles missing serial gracefully."""
-    mock_charger.test_and_get.side_effect = [{}, MissingSerial]
+    charger.test_and_get.side_effect = [{}, MissingSerial]
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: "10.0.0.131"}
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OpenEVSE 10.0.0.131"
-    assert result["result"].unique_id is None
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OpenEVSE 10.0.0.131")
+    expect(result["result"].unique_id).to_be(None)
 
 
-async def test_import_flow_no_serial(
-    hass: HomeAssistant,
-    mock_charger: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def import_flow_no_serial(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    charger: MagicMock = Depends(mock_charger),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test import flow handles missing serial gracefully."""
-    mock_charger.test_and_get.side_effect = [{}, MissingSerial]
+    charger.test_and_get.side_effect = [{}, MissingSerial]
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_IMPORT}, data={CONF_HOST: "10.0.0.131"}
     )
 
-    # Assert the flow continued to create the entry
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OpenEVSE 10.0.0.131"
-    assert result["result"].unique_id is None
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OpenEVSE 10.0.0.131")
+    expect(result["result"].unique_id).to_be(None)
 
 
-async def test_user_flow_with_auth(
-    hass: HomeAssistant,
-    mock_charger: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def user_flow_with_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    charger: MagicMock = Depends(mock_charger),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user flow create entry with authentication."""
-    mock_charger.test_and_get.side_effect = [
+    charger.test_and_get.side_effect = [
         AuthenticationError,
         {"serial": "deadbeeffeed"},
     ]
@@ -139,34 +159,39 @@ async def test_user_flow_with_auth(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: "10.0.0.131"}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "auth"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("auth")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "fakeuser", CONF_PASSWORD: "muchpassword"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OpenEVSE 10.0.0.131"
-    assert result["data"] == {
-        CONF_HOST: "10.0.0.131",
-        CONF_USERNAME: "fakeuser",
-        CONF_PASSWORD: "muchpassword",
-    }
-    assert result["result"].unique_id == "deadbeeffeed"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OpenEVSE 10.0.0.131")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "10.0.0.131",
+            CONF_USERNAME: "fakeuser",
+            CONF_PASSWORD: "muchpassword",
+        }
+    )
+    expect(result["result"].unique_id).to_equal("deadbeeffeed")
 
 
-async def test_user_flow_with_auth_error(
-    hass: HomeAssistant, mock_charger: MagicMock
+@test
+async def user_flow_with_auth_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    charger: MagicMock = Depends(mock_charger),
 ) -> None:
     """Test user flow create entry with authentication error."""
-    mock_charger.test_and_get.side_effect = [
+    charger.test_and_get.side_effect = [
         AuthenticationError,
         AuthenticationError,
         {},
@@ -174,110 +199,125 @@ async def test_user_flow_with_auth_error(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_HOST: "10.0.0.131"},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "auth"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("auth")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "fakeuser", CONF_PASSWORD: "muchpassword"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == "invalid_auth"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal("invalid_auth")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "fakeuser", CONF_PASSWORD: "muchpassword"},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_user_flow_with_missing_serial(
-    hass: HomeAssistant, mock_charger: MagicMock
+@test
+async def user_flow_with_missing_serial(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    charger: MagicMock = Depends(mock_charger),
 ) -> None:
     """Test user flow create entry with authentication error."""
-    mock_charger.test_and_get.side_effect = [AuthenticationError, MissingSerial]
+    charger.test_and_get.side_effect = [AuthenticationError, MissingSerial]
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_HOST: "10.0.0.131"}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "auth"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("auth")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "fakeuser", CONF_PASSWORD: "muchpassword"},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OpenEVSE 10.0.0.131"
-    assert result["data"] == {
-        CONF_HOST: "10.0.0.131",
-        CONF_USERNAME: "fakeuser",
-        CONF_PASSWORD: "muchpassword",
-    }
-    assert result["result"].unique_id is None
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OpenEVSE 10.0.0.131")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "10.0.0.131",
+            CONF_USERNAME: "fakeuser",
+            CONF_PASSWORD: "muchpassword",
+        }
+    )
+    expect(result["result"].unique_id).to_be(None)
 
 
-async def test_import_flow(
-    hass: HomeAssistant,
-    mock_charger: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def import_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _charger: MagicMock = Depends(mock_charger),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test import flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_IMPORT}, data={CONF_HOST: "10.0.0.131"}
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OpenEVSE 10.0.0.131"
-    assert result["data"] == {CONF_HOST: "10.0.0.131"}
-    assert result["result"].unique_id == "deadbeeffeed"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OpenEVSE 10.0.0.131")
+    expect(result["data"]).to_equal({CONF_HOST: "10.0.0.131"})
+    expect(result["result"].unique_id).to_equal("deadbeeffeed")
 
 
-async def test_import_flow_bad(
-    hass: HomeAssistant,
-    mock_charger: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def import_flow_bad(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    charger: MagicMock = Depends(mock_charger),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test import flow with bad charger."""
-    mock_charger.test_and_get.side_effect = TimeoutError
+    charger.test_and_get.side_effect = TimeoutError
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_IMPORT}, data={CONF_HOST: "10.0.0.131"}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unavailable_host"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unavailable_host")
 
 
-async def test_import_flow_duplicate(
-    hass: HomeAssistant,
-    mock_config_entry: MagicMock,
-    mock_charger: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def import_flow_duplicate(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _charger: MagicMock = Depends(mock_charger),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test import flow aborts when config entry already exists."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_IMPORT},
         data={CONF_HOST: "192.168.1.100"},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_zeroconf_discovery(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_charger: MagicMock
+@test
+async def zeroconf_discovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    _charger: MagicMock = Depends(mock_charger),
 ) -> None:
     """Test zeroconf discovery."""
     discovery_info = ZeroconfServiceInfo(
@@ -290,40 +330,38 @@ async def test_zeroconf_discovery(
         type="_openevse._tcp.local.",
     )
 
-    # Trigger the zeroconf step
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_ZEROCONF},
         data=discovery_info,
     )
 
-    # Should present a confirmation form
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
-    assert result["description_placeholders"] == {
-        "name": "OpenEVSE openevse-deadbeeffeed"
-    }
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
+    expect(result["description_placeholders"]).to_equal(
+        {"name": "OpenEVSE openevse-deadbeeffeed"}
+    )
 
-    # Confirm the discovery
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    # Should create the entry
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OpenEVSE openevse-deadbeeffeed"
-    assert result["data"] == {CONF_HOST: "192.168.1.123"}
-    assert result["result"].unique_id == "deadbeeffeed"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OpenEVSE openevse-deadbeeffeed")
+    expect(result["data"]).to_equal({CONF_HOST: "192.168.1.123"})
+    expect(result["result"].unique_id).to_equal("deadbeeffeed")
 
 
-async def test_zeroconf_already_configured_unique_id(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_charger: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def zeroconf_already_configured_unique_id(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    _charger: MagicMock = Depends(mock_charger),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test zeroconf discovery updates info if unique_id is already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     discovery_info = ZeroconfServiceInfo(
         ip_address=ip_address("192.168.1.124"),
@@ -341,19 +379,20 @@ async def test_zeroconf_already_configured_unique_id(
         data=discovery_info,
     )
 
-    # Should abort because unique_id matches, but it updates the config entry
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
-    # Verify the entry IP was updated to the new discovery IP
-    assert mock_config_entry.data["host"] == "192.168.1.124"
+    expect(config_entry.data["host"]).to_equal("192.168.1.124")
 
 
-async def test_zeroconf_connection_error(
-    hass: HomeAssistant, mock_charger: MagicMock
+@test
+async def zeroconf_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    charger: MagicMock = Depends(mock_charger),
 ) -> None:
     """Test zeroconf discovery with connection failure."""
-    mock_charger.test_and_get.side_effect = TimeoutError
+    charger.test_and_get.side_effect = TimeoutError
     discovery_info = ZeroconfServiceInfo(
         ip_address=ip_address("192.168.1.123"),
         ip_addresses=[ip_address("192.168.1.123"), ip_address("2001:db8::1")],
@@ -370,13 +409,18 @@ async def test_zeroconf_connection_error(
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unavailable_host"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unavailable_host")
 
 
-async def test_zeroconf_auth(hass: HomeAssistant, mock_charger: MagicMock) -> None:
+@test
+async def zeroconf_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    charger: MagicMock = Depends(mock_charger),
+) -> None:
     """Test zeroconf discovery with connection failure."""
-    mock_charger.test_and_get.side_effect = [AuthenticationError, {}]
+    charger.test_and_get.side_effect = [AuthenticationError, {}]
     discovery_info = ZeroconfServiceInfo(
         ip_address=ip_address("192.168.1.123"),
         ip_addresses=[ip_address("192.168.1.123"), ip_address("2001:db8::1")],
@@ -393,28 +437,33 @@ async def test_zeroconf_auth(hass: HomeAssistant, mock_charger: MagicMock) -> No
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "auth"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("auth")
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "fakeuser", CONF_PASSWORD: "muchpassword"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_HOST: "192.168.1.123",
-        CONF_USERNAME: "fakeuser",
-        CONF_PASSWORD: "muchpassword",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "192.168.1.123",
+            CONF_USERNAME: "fakeuser",
+            CONF_PASSWORD: "muchpassword",
+        }
+    )
 
 
-async def test_zeroconf_auth_failure(
-    hass: HomeAssistant, mock_charger: MagicMock
+@test
+async def zeroconf_auth_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    charger: MagicMock = Depends(mock_charger),
 ) -> None:
     """Test zeroconf discovery with connection failure."""
-    mock_charger.test_and_get.side_effect = [
+    charger.test_and_get.side_effect = [
         AuthenticationError,
         AuthenticationError,
         {},
@@ -435,37 +484,43 @@ async def test_zeroconf_auth_failure(
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "auth"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("auth")
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "fakeuser", CONF_PASSWORD: "muchpassword"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "auth"
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("auth")
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "fakeuser", CONF_PASSWORD: "muchpassword"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_HOST: "192.168.1.123",
-        CONF_USERNAME: "fakeuser",
-        CONF_PASSWORD: "muchpassword",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "192.168.1.123",
+            CONF_USERNAME: "fakeuser",
+            CONF_PASSWORD: "muchpassword",
+        }
+    )
 
 
-async def test_zeroconf_already_configured_host(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_config_entry: MockConfigEntry
+@test
+async def zeroconf_already_configured_host(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test zeroconf discovery aborts if host is already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     discovery_info = ZeroconfServiceInfo(
         ip_address=ip_address("192.168.1.100"),
@@ -483,6 +538,5 @@ async def test_zeroconf_already_configured_host(
         data=discovery_info,
     )
 
-    # Should abort because the host matches an existing entry
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
