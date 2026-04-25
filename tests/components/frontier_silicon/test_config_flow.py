@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 from afsapi import FSConnectionError, FSNotImplementedError, InvalidPinError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.frontier_silicon.const import (
@@ -16,9 +16,27 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo
 
-from tests.common import MockConfigEntry
+from ._fixtures import (
+    config_entry,
+    mock_radio_id,
+    mock_setup_entry,
+    mock_valid_device_url,
+    mock_valid_pin,
+)
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _device_url: None = Depends(mock_valid_device_url),
+    _pin: None = Depends(mock_valid_pin),
+    _radio_id: None = Depends(mock_radio_id),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
 MOCK_DISCOVERY = SsdpServiceInfo(
@@ -40,23 +58,27 @@ INVALID_MOCK_DISCOVERY = SsdpServiceInfo(
 )
 
 
-@pytest.mark.parametrize(
-    ("radio_id_return_value", "radio_id_side_effect"),
-    [("mock_radio_id", None), (None, FSNotImplementedError)],
+@test.cases(
+    test.case("with_id", radio_id_return_value="mock_radio_id", radio_id_side_effect=None),
+    test.case(
+        "no_id", radio_id_return_value=None, radio_id_side_effect=FSNotImplementedError
+    ),
 )
-async def test_form_default_pin(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+async def form_default_pin(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
     radio_id_return_value: str | None,
-    radio_id_side_effect: Exception | None,
+    radio_id_side_effect,
 ) -> None:
     """Test manual device add with default pin."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.frontier_silicon.config_flow.AFSAPI.get_radio_id",
@@ -69,32 +91,38 @@ async def test_form_default_pin(
         )
     await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Name of the device"
-    assert result2["data"] == {
-        CONF_WEBFSAPI_URL: "http://1.1.1.1:80/webfsapi",
-        CONF_PIN: "1234",
-    }
-    mock_setup_entry.assert_called_once()
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Name of the device")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_WEBFSAPI_URL: "http://1.1.1.1:80/webfsapi",
+            CONF_PIN: "1234",
+        }
+    )
+    setup_entry.assert_called_once()
 
 
-@pytest.mark.parametrize(
-    ("radio_id_return_value", "radio_id_side_effect"),
-    [("mock_radio_id", None), (None, FSNotImplementedError)],
+@test.cases(
+    test.case("with_id", radio_id_return_value="mock_radio_id", radio_id_side_effect=None),
+    test.case(
+        "no_id", radio_id_return_value=None, radio_id_side_effect=FSNotImplementedError
+    ),
 )
-async def test_form_nondefault_pin(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+async def form_nondefault_pin(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
     radio_id_return_value: str | None,
-    radio_id_side_effect: Exception | None,
+    radio_id_side_effect,
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.frontier_silicon.config_flow.AFSAPI.get_friendly_name",
@@ -106,9 +134,9 @@ async def test_form_nondefault_pin(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "device_config"
-    assert result2["errors"] is None
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("device_config")
+    expect(result2["errors"]).to_be(None)
 
     with patch(
         "homeassistant.components.frontier_silicon.config_flow.AFSAPI.get_radio_id",
@@ -121,36 +149,39 @@ async def test_form_nondefault_pin(
         )
     await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == "Name of the device"
-    assert result3["data"] == {
-        CONF_WEBFSAPI_URL: "http://1.1.1.1:80/webfsapi",
-        CONF_PIN: "4321",
-    }
-    mock_setup_entry.assert_called_once()
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Name of the device")
+    expect(result3["data"]).to_equal(
+        {
+            CONF_WEBFSAPI_URL: "http://1.1.1.1:80/webfsapi",
+            CONF_PIN: "4321",
+        }
+    )
+    setup_entry.assert_called_once()
 
 
-@pytest.mark.parametrize(
-    ("friendly_name_error", "result_error"),
-    [
-        (FSConnectionError, "cannot_connect"),
-        (InvalidPinError, "invalid_auth"),
-        (ValueError, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "cannot_connect", friendly_name_error=FSConnectionError, result_error="cannot_connect"
+    ),
+    test.case("invalid_auth", friendly_name_error=InvalidPinError, result_error="invalid_auth"),
+    test.case("unknown", friendly_name_error=ValueError, result_error="unknown"),
 )
-async def test_form_nondefault_pin_invalid(
-    hass: HomeAssistant,
-    friendly_name_error: Exception,
+async def form_nondefault_pin_invalid(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    friendly_name_error,
     result_error: str,
-    mock_setup_entry: AsyncMock,
 ) -> None:
     """Test we get the proper errors when trying to validate an user-provided PIN."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.frontier_silicon.config_flow.AFSAPI.get_friendly_name",
@@ -162,9 +193,9 @@ async def test_form_nondefault_pin_invalid(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "device_config"
-    assert result2["errors"] is None
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("device_config")
+    expect(result2["errors"]).to_be(None)
 
     with patch(
         "homeassistant.components.frontier_silicon.config_flow.AFSAPI.get_friendly_name",
@@ -176,9 +207,9 @@ async def test_form_nondefault_pin_invalid(
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "device_config"
-    assert result3["errors"] == {"base": result_error}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("device_config")
+    expect(result3["errors"]).to_equal({"base": result_error})
 
     result4 = await hass.config_entries.flow.async_configure(
         result3["flow_id"],
@@ -186,35 +217,40 @@ async def test_form_nondefault_pin_invalid(
     )
     await hass.async_block_till_done()
 
-    assert result4["type"] is FlowResultType.CREATE_ENTRY
-    assert result4["title"] == "Name of the device"
-    assert result4["data"] == {
-        CONF_WEBFSAPI_URL: "http://1.1.1.1:80/webfsapi",
-        CONF_PIN: "4321",
-    }
-    mock_setup_entry.assert_called_once()
+    expect(result4["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result4["title"]).to_equal("Name of the device")
+    expect(result4["data"]).to_equal(
+        {
+            CONF_WEBFSAPI_URL: "http://1.1.1.1:80/webfsapi",
+            CONF_PIN: "4321",
+        }
+    )
+    setup_entry.assert_called_once()
 
 
-@pytest.mark.parametrize(
-    ("webfsapi_endpoint_error", "result_error"),
-    [
-        (FSConnectionError, "cannot_connect"),
-        (ValueError, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "cannot_connect",
+        webfsapi_endpoint_error=FSConnectionError,
+        result_error="cannot_connect",
+    ),
+    test.case("unknown", webfsapi_endpoint_error=ValueError, result_error="unknown"),
 )
-async def test_invalid_device_url(
-    hass: HomeAssistant,
-    webfsapi_endpoint_error: Exception,
+async def invalid_device_url(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    webfsapi_endpoint_error,
     result_error: str,
-    mock_setup_entry: AsyncMock,
 ) -> None:
     """Test flow when the user provides an invalid device IP/hostname."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.frontier_silicon.config_flow.AFSAPI.get_webfsapi_endpoint",
@@ -226,9 +262,9 @@ async def test_invalid_device_url(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "user"
-    assert result2["errors"] == {"base": result_error}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("user")
+    expect(result2["errors"]).to_equal({"base": result_error})
 
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"],
@@ -236,24 +272,30 @@ async def test_invalid_device_url(
     )
     await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == "Name of the device"
-    assert result3["data"] == {
-        CONF_WEBFSAPI_URL: "http://1.1.1.1:80/webfsapi",
-        CONF_PIN: "1234",
-    }
-    mock_setup_entry.assert_called_once()
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Name of the device")
+    expect(result3["data"]).to_equal(
+        {
+            CONF_WEBFSAPI_URL: "http://1.1.1.1:80/webfsapi",
+            CONF_PIN: "1234",
+        }
+    )
+    setup_entry.assert_called_once()
 
 
-@pytest.mark.parametrize(
-    ("radio_id_return_value", "radio_id_side_effect"),
-    [("mock_radio_id", None), (None, FSNotImplementedError)],
+@test.cases(
+    test.case("with_id", radio_id_return_value="mock_radio_id", radio_id_side_effect=None),
+    test.case(
+        "no_id", radio_id_return_value=None, radio_id_side_effect=FSNotImplementedError
+    ),
 )
-async def test_ssdp(
-    hass: HomeAssistant,
-    mock_setup_entry: MockConfigEntry,
+async def ssdp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
     radio_id_return_value: str | None,
-    radio_id_side_effect: Exception | None,
+    radio_id_side_effect,
 ) -> None:
     """Test a device being discovered."""
     with patch(
@@ -267,47 +309,54 @@ async def test_ssdp(
             data=MOCK_DISCOVERY,
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
     flow = flows[0]
-    assert flow["context"]["title_placeholders"] == {"name": "Speaker Name"}
+    expect(flow["context"]["title_placeholders"]).to_equal({"name": "Speaker Name"})
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {},
     )
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Name of the device"
-    assert result2["data"] == {
-        CONF_WEBFSAPI_URL: "http://1.1.1.1:80/webfsapi",
-        CONF_PIN: DEFAULT_PIN,
-    }
-    mock_setup_entry.assert_called_once()
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Name of the device")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_WEBFSAPI_URL: "http://1.1.1.1:80/webfsapi",
+            CONF_PIN: DEFAULT_PIN,
+        }
+    )
+    setup_entry.assert_called_once()
 
 
-async def test_ssdp_invalid_location(hass: HomeAssistant) -> None:
+@test
+async def ssdp_invalid_location(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a device being discovered."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_SSDP},
         data=INVALID_MOCK_DISCOVERY,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_ssdp_already_configured(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+@test
+async def ssdp_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test an already known device being discovered."""
-
-    config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -315,16 +364,24 @@ async def test_ssdp_already_configured(
         data=MOCK_DISCOVERY,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("webfsapi_endpoint_error", "result_error"),
-    [(ValueError, "unknown"), (FSConnectionError, "cannot_connect")],
+@test.cases(
+    test.case("unknown", webfsapi_endpoint_error=ValueError, result_error="unknown"),
+    test.case(
+        "cannot_connect",
+        webfsapi_endpoint_error=FSConnectionError,
+        result_error="cannot_connect",
+    ),
 )
-async def test_ssdp_fail(
-    hass: HomeAssistant, webfsapi_endpoint_error: Exception, result_error: str
+async def ssdp_fail(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    webfsapi_endpoint_error,
+    result_error: str,
 ) -> None:
     """Test a device being discovered but failing to reply."""
     with patch(
@@ -337,13 +394,16 @@ async def test_ssdp_fail(
             data=MOCK_DISCOVERY,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == result_error
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(result_error)
 
 
-async def test_ssdp_nondefault_pin(hass: HomeAssistant) -> None:
+@test
+async def ssdp_nondefault_pin(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a device being discovered."""
-
     with patch(
         "homeassistant.components.frontier_silicon.config_flow.AFSAPI.get_friendly_name",
         side_effect=InvalidPinError,
@@ -354,49 +414,55 @@ async def test_ssdp_nondefault_pin(hass: HomeAssistant) -> None:
             data=MOCK_DISCOVERY,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "invalid_auth"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("invalid_auth")
 
 
-async def test_reauth_flow(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+) -> None:
     """Test reauth flow."""
-    config_entry.add_to_hass(hass)
-    assert config_entry.data[CONF_PIN] == "1234"
+    entry.add_to_hass(hass)
+    expect(entry.data[CONF_PIN]).to_equal("1234")
 
-    result = await config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "device_config"
+    result = await entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("device_config")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_PIN: "4242"},
     )
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
-    assert config_entry.data[CONF_PIN] == "4242"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
+    expect(entry.data[CONF_PIN]).to_equal("4242")
 
 
-@pytest.mark.parametrize(
-    ("exception", "reason"),
-    [
-        (FSConnectionError, "cannot_connect"),
-        (InvalidPinError, "invalid_auth"),
-        (ValueError, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "cannot_connect", exception=FSConnectionError, reason="cannot_connect"
+    ),
+    test.case("invalid_auth", exception=InvalidPinError, reason="invalid_auth"),
+    test.case("unknown", exception=ValueError, reason="unknown"),
 )
-async def test_reauth_flow_friendly_name_error(
-    hass: HomeAssistant,
-    exception: Exception,
+async def reauth_flow_friendly_name_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    *,
+    exception,
     reason: str,
-    config_entry: MockConfigEntry,
 ) -> None:
     """Test reauth flow with failures."""
-    config_entry.add_to_hass(hass)
-    assert config_entry.data[CONF_PIN] == "1234"
+    entry.add_to_hass(hass)
+    expect(entry.data[CONF_PIN]).to_equal("1234")
 
-    result = await config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "device_config"
+    result = await entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("device_config")
 
     with patch(
         "homeassistant.components.frontier_silicon.config_flow.AFSAPI.get_friendly_name",
@@ -408,14 +474,14 @@ async def test_reauth_flow_friendly_name_error(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "device_config"
-    assert result2["errors"] == {"base": reason}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("device_config")
+    expect(result2["errors"]).to_equal({"base": reason})
 
     result3 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_PIN: "4242"},
     )
-    assert result3["type"] is FlowResultType.ABORT
-    assert result3["reason"] == "reauth_successful"
-    assert config_entry.data[CONF_PIN] == "4242"
+    expect(result3["type"]).to_be(FlowResultType.ABORT)
+    expect(result3["reason"]).to_equal("reauth_successful")
+    expect(entry.data[CONF_PIN]).to_equal("4242")
