@@ -1,6 +1,7 @@
 """Tests for the AdGuard Home config flow."""
 
 import aiohttp
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.adguard.const import DOMAIN
@@ -19,6 +20,11 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    aioclient_mock as aioclient_mock_fx,
+    hass as hass_fixture,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
 
 FIXTURE_USER_INPUT = {
@@ -31,18 +37,30 @@ FIXTURE_USER_INPUT = {
 }
 
 
-async def test_show_authenticate_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def show_authenticate_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the setup form is served."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_connection_error(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we show user form on AdGuard Home connection error."""
     aioclient_mock.get(
@@ -58,14 +76,16 @@ async def test_connection_error(
         DOMAIN, context={"source": SOURCE_USER}, data=FIXTURE_USER_INPUT
     )
 
-    assert result
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_full_flow_implementation(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def full_flow_implementation(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test registering an integration and finishing flow works."""
     aioclient_mock.get(
@@ -82,31 +102,35 @@ async def test_full_flow_implementation(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result
-    assert result["flow_id"]
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(bool(result["flow_id"])).to_be(True)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=FIXTURE_USER_INPUT
     )
-    assert result
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.title == FIXTURE_USER_INPUT[CONF_HOST]
-    assert config_entry.data == {
-        CONF_HOST: FIXTURE_USER_INPUT[CONF_HOST],
-        CONF_PASSWORD: FIXTURE_USER_INPUT[CONF_PASSWORD],
-        CONF_PORT: FIXTURE_USER_INPUT[CONF_PORT],
-        CONF_SSL: FIXTURE_USER_INPUT[CONF_SSL],
-        CONF_USERNAME: FIXTURE_USER_INPUT[CONF_USERNAME],
-        CONF_VERIFY_SSL: FIXTURE_USER_INPUT[CONF_VERIFY_SSL],
-    }
-    assert not config_entry.options
+    expect(config_entry.title).to_equal(FIXTURE_USER_INPUT[CONF_HOST])
+    expect(dict(config_entry.data)).to_equal(
+        {
+            CONF_HOST: FIXTURE_USER_INPUT[CONF_HOST],
+            CONF_PASSWORD: FIXTURE_USER_INPUT[CONF_PASSWORD],
+            CONF_PORT: FIXTURE_USER_INPUT[CONF_PORT],
+            CONF_SSL: FIXTURE_USER_INPUT[CONF_SSL],
+            CONF_USERNAME: FIXTURE_USER_INPUT[CONF_USERNAME],
+            CONF_VERIFY_SSL: FIXTURE_USER_INPUT[CONF_VERIFY_SSL],
+        }
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
 
-async def test_integration_already_exists(hass: HomeAssistant) -> None:
+@test
+async def integration_already_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we only allow a single config flow."""
     MockConfigEntry(
         domain=DOMAIN, data={"host": "mock-adguard", "port": "3000"}
@@ -117,12 +141,15 @@ async def test_integration_already_exists(hass: HomeAssistant) -> None:
         data={"host": "mock-adguard", "port": "3000"},
         context={"source": config_entries.SOURCE_USER},
     )
-    assert result
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_hassio_already_configured(hass: HomeAssistant) -> None:
+@test
+async def hassio_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we only allow a single config flow."""
     MockConfigEntry(
         domain=DOMAIN, data={"host": "mock-adguard", "port": "3000"}
@@ -142,12 +169,15 @@ async def test_hassio_already_configured(hass: HomeAssistant) -> None:
         ),
         context={"source": config_entries.SOURCE_HASSIO},
     )
-    assert result
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_hassio_ignored(hass: HomeAssistant) -> None:
+@test
+async def hassio_ignored(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we supervisor discovered instance can be ignored."""
     MockConfigEntry(domain=DOMAIN, source=config_entries.SOURCE_IGNORE).add_to_hass(
         hass
@@ -167,13 +197,15 @@ async def test_hassio_ignored(hass: HomeAssistant) -> None:
         ),
         context={"source": config_entries.SOURCE_HASSIO},
     )
-    assert result
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_hassio_confirm(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def hassio_confirm(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we can finish a config flow."""
     aioclient_mock.get(
@@ -196,30 +228,33 @@ async def test_hassio_confirm(
         ),
         context={"source": config_entries.SOURCE_HASSIO},
     )
-    assert result
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "hassio_confirm"
-    assert result["description_placeholders"] == {"addon": "AdGuard Home Addon"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("hassio_confirm")
+    expect(result["description_placeholders"]).to_equal({"addon": "AdGuard Home Addon"})
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.title == "AdGuard Home Addon"
-    assert config_entry.data == {
-        CONF_HOST: "mock-adguard",
-        CONF_PASSWORD: None,
-        CONF_PORT: 3000,
-        CONF_SSL: False,
-        CONF_USERNAME: None,
-        CONF_VERIFY_SSL: True,
-    }
+    expect(config_entry.title).to_equal("AdGuard Home Addon")
+    expect(dict(config_entry.data)).to_equal(
+        {
+            CONF_HOST: "mock-adguard",
+            CONF_PASSWORD: None,
+            CONF_PORT: 3000,
+            CONF_SSL: False,
+            CONF_USERNAME: None,
+            CONF_VERIFY_SSL: True,
+        }
+    )
 
 
-async def test_hassio_connection_error(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+@test
+async def hassio_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
 ) -> None:
     """Test we show Hass.io confirm form on AdGuard Home connection error."""
     aioclient_mock.get(
@@ -243,7 +278,6 @@ async def test_hassio_connection_error(
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "hassio_confirm"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("hassio_confirm")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
