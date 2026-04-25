@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.infrared import (
     DATA_COMPONENT as INFRARED_DATA_COMPONENT,
@@ -20,34 +20,39 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 
-from .conftest import MOCK_INFRARED_ENTITY_ID, MockInfraredEntity
+from ._fixtures import (
+    MOCK_INFRARED_ENTITY_ID,
+    mock_config_entry,
+    mock_infrared_entity,
+    setup_infrared,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    entity_registry as entity_registry_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
 
 
-@pytest.fixture
-async def setup_infrared(
-    hass: HomeAssistant, mock_infrared_entity: MockInfraredEntity
-) -> None:
-    """Set up the infrared component with a mock entity."""
-    assert await async_setup_component(hass, INFRARED_DOMAIN, {})
-    await hass.async_block_till_done()
-
-    component = hass.data[INFRARED_DATA_COMPONENT]
-    await component.async_add_entities([mock_infrared_entity])
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-@pytest.mark.usefixtures("setup_infrared")
-async def test_user_flow_success(
-    hass: HomeAssistant,
+@test
+async def user_flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: None = Depends(setup_infrared),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test successful user config flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -57,27 +62,32 @@ async def test_user_flow_success(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "LG TV via Test IR transmitter"
-    assert result["data"] == {
-        CONF_DEVICE_TYPE: LGDeviceType.TV,
-        CONF_INFRARED_ENTITY_ID: MOCK_INFRARED_ENTITY_ID,
-    }
-    assert result["result"].unique_id == f"lg_ir_tv_{MOCK_INFRARED_ENTITY_ID}"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("LG TV via Test IR transmitter")
+    expect(result["data"]).to_equal(
+        {
+            CONF_DEVICE_TYPE: LGDeviceType.TV,
+            CONF_INFRARED_ENTITY_ID: MOCK_INFRARED_ENTITY_ID,
+        }
+    )
+    expect(result["result"].unique_id).to_equal(f"lg_ir_tv_{MOCK_INFRARED_ENTITY_ID}")
 
 
-@pytest.mark.usefixtures("setup_infrared")
-async def test_user_flow_already_configured(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def user_flow_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: None = Depends(setup_infrared),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test user flow aborts when entry is already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -87,34 +97,41 @@ async def test_user_flow_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_user_flow_no_emitters(hass: HomeAssistant) -> None:
+@test
+async def user_flow_no_emitters(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user flow aborts when no infrared emitters exist."""
-    assert await async_setup_component(hass, INFRARED_DOMAIN, {})
+    expect(await async_setup_component(hass, INFRARED_DOMAIN, {})).to_be(True)
     await hass.async_block_till_done()
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_emitters"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_emitters")
 
 
-@pytest.mark.usefixtures("setup_infrared")
-@pytest.mark.parametrize(
-    ("entity_name", "expected_title"),
-    [
-        (None, "LG TV via Test IR transmitter"),
-        ("AC IR emitter", "LG TV via AC IR emitter"),
-    ],
+@test.cases(
+    test.case(
+        "default_name", entity_name=None, expected_title="LG TV via Test IR transmitter"
+    ),
+    test.case(
+        "renamed", entity_name="AC IR emitter", expected_title="LG TV via AC IR emitter"
+    ),
 )
-async def test_user_flow_title_from_entity_name(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+async def user_flow_title_from_entity_name(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: None = Depends(setup_infrared),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fixture),
+    *,
     entity_name: str | None,
     expected_title: str,
 ) -> None:
@@ -132,5 +149,5 @@ async def test_user_flow_title_from_entity_name(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == expected_title
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(expected_title)
