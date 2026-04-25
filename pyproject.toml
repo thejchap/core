@@ -1031,6 +1031,7 @@ dev = [
     "ohme>=1.8.0",
     "ollama>=0.6.1",
     "omnilogic>=0.6.1",
+    "ondilo==0.5.0",
     "onvif-parsers==2.3.0",
     "onvif-zeep-async==4.0.4",
     "open-garage==0.2.0",

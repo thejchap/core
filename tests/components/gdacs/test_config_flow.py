@@ -1,8 +1,6 @@
 """Define tests for the GDACS config flow."""
 
-from unittest.mock import patch
-
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.gdacs.const import CONF_CATEGORIES, DOMAIN
@@ -15,36 +13,55 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import config_entry, gdacs_setup
 
-@pytest.fixture(name="gdacs_setup", autouse=True)
-def gdacs_setup_fixture():
-    """Mock gdacs entry setup."""
-    with patch("homeassistant.components.gdacs.async_setup_entry", return_value=True):
-        yield
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_duplicate_error(hass: HomeAssistant, config_entry) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: None = Depends(gdacs_setup),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def duplicate_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+) -> None:
     """Test that errors are shown when duplicates are added."""
     conf = {CONF_LATITUDE: -41.2, CONF_LONGITUDE: 174.7, CONF_RADIUS: 25}
-    config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}, data=conf
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_show_form(hass: HomeAssistant) -> None:
+@test
+async def show_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the form is served with no input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_step_user(hass: HomeAssistant) -> None:
+@test
+async def step_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the user step works."""
     hass.config.latitude = -41.2
     hass.config.longitude = 174.7
@@ -53,12 +70,14 @@ async def test_step_user(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}, data=conf
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "-41.2, 174.7"
-    assert result["data"] == {
-        CONF_LATITUDE: -41.2,
-        CONF_LONGITUDE: 174.7,
-        CONF_RADIUS: 25,
-        CONF_SCAN_INTERVAL: 300.0,
-        CONF_CATEGORIES: [],
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("-41.2, 174.7")
+    expect(result["data"]).to_equal(
+        {
+            CONF_LATITUDE: -41.2,
+            CONF_LONGITUDE: 174.7,
+            CONF_RADIUS: 25,
+            CONF_SCAN_INTERVAL: 300.0,
+            CONF_CATEGORIES: [],
+        }
+    )
