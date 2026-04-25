@@ -1381,4 +1381,5 @@ dev = [
     "zeversolar==0.3.2",
     "zinvolt==0.4.3",
     "zwave-me-ws==0.4.3",
+    "devolo-plc-api==1.5.1",
 ]
