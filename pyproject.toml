@@ -1121,6 +1121,7 @@ dev = [
     "pyhaversion==22.8.0",
     "pykmtronic>=0.3.0",
     "pykrakenapi>=0.3.2",
+    "pykulersky==0.5.8",
     "pylast>=7.0.2",
     "pylgnetcast==0.3.9",
     "pyliebherrhomeapi==0.4.1",
