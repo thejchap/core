@@ -975,6 +975,7 @@ dev = [
     "aiosolaredge==1.0.2",
     "aiosteamist==1.0.1",
     "aiosyncthing==0.7.1",
+    "aiotedee==0.3.0",
     "asyncsleepiq==1.7.1",
     "discovery30303==0.3.3",
     "eagle100==0.1.1",
