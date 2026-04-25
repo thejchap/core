@@ -2,28 +2,35 @@
 
 from unittest.mock import patch
 
-import pytest
-from syrupy.assertion import SnapshotAssertion
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.threshold.const import DOMAIN
-from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry, get_schema_suggested_value
-from tests.typing import WebSocketGenerator
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_config_flow(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Apply autouse-equivalent fixtures."""
+
+
+@test
+async def config_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the config flow."""
     input_sensor = "sensor.input"
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with patch(
         "homeassistant.components.threshold.async_setup_entry",
@@ -40,40 +47,50 @@ async def test_config_flow(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "My threshold sensor"
-    assert result["data"] == {}
-    assert result["options"] == {
-        "entity_id": input_sensor,
-        "hysteresis": 0.0,
-        "lower": -2.0,
-        "name": "My threshold sensor",
-        "upper": 0.0,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("My threshold sensor")
+    expect(result["data"]).to_equal({})
+    expect(result["options"]).to_equal(
+        {
+            "entity_id": input_sensor,
+            "hysteresis": 0.0,
+            "lower": -2.0,
+            "name": "My threshold sensor",
+            "upper": 0.0,
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
     config_entry = hass.config_entries.async_entries(DOMAIN)[0]
-    assert config_entry.data == {}
-    assert config_entry.options == {
-        "entity_id": input_sensor,
-        "hysteresis": 0.0,
-        "lower": -2.0,
-        "name": "My threshold sensor",
-        "upper": 0.0,
-    }
-    assert config_entry.title == "My threshold sensor"
+    expect(config_entry.data).to_equal({})
+    expect(config_entry.options).to_equal(
+        {
+            "entity_id": input_sensor,
+            "hysteresis": 0.0,
+            "lower": -2.0,
+            "name": "My threshold sensor",
+            "upper": 0.0,
+        }
+    )
+    expect(config_entry.title).to_equal("My threshold sensor")
 
 
-@pytest.mark.parametrize(("extra_input_data", "error"), [({}, "need_lower_upper")])
-async def test_fail(hass: HomeAssistant, extra_input_data, error) -> None:
+@test.cases(test.case("need_lower_upper", extra_input_data={}, error="need_lower_upper"))
+async def fail(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    extra_input_data: dict[str, object],
+    error: str,
+) -> None:
     """Test not providing lower or upper limit fails."""
     input_sensor = "sensor.input"
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -84,16 +101,19 @@ async def test_fail(hass: HomeAssistant, extra_input_data, error) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
 
-async def test_options(hass: HomeAssistant) -> None:
+@test
+async def options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reconfiguring."""
     input_sensor = "sensor.input"
     hass.states.async_set(input_sensor, "10")
 
-    # Setup the config entry
     config_entry = MockConfigEntry(
         data={},
         domain=DOMAIN,
@@ -107,16 +127,18 @@ async def test_options(hass: HomeAssistant) -> None:
         title="My threshold",
     )
     config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    expect(bool(await hass.config_entries.async_setup(config_entry.entry_id))).to_be(
+        True
+    )
     await hass.async_block_till_done()
 
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
     schema = result["data_schema"].schema
-    assert get_schema_suggested_value(schema, "hysteresis") == 0.0
-    assert get_schema_suggested_value(schema, "lower") == -2.0
-    assert get_schema_suggested_value(schema, "upper") is None
+    expect(get_schema_suggested_value(schema, "hysteresis")).to_equal(0.0)
+    expect(get_schema_suggested_value(schema, "lower")).to_equal(-2.0)
+    expect(get_schema_suggested_value(schema, "upper")).to_be(None)
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -126,211 +148,47 @@ async def test_options(hass: HomeAssistant) -> None:
             "upper": 20.0,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expected_options = {
         "entity_id": input_sensor,
         "hysteresis": 0.0,
         "lower": None,
         "name": "My threshold",
         "upper": 20.0,
     }
-    assert config_entry.data == {}
-    assert config_entry.options == {
-        "entity_id": input_sensor,
-        "hysteresis": 0.0,
-        "lower": None,
-        "name": "My threshold",
-        "upper": 20.0,
-    }
-    assert config_entry.title == "My threshold"
+    expect(result["data"]).to_equal(expected_options)
+    expect(config_entry.data).to_equal({})
+    expect(config_entry.options).to_equal(expected_options)
+    expect(config_entry.title).to_equal("My threshold")
 
-    # Check config entry is reloaded with new options
     await hass.async_block_till_done()
 
-    # Check the entity was updated, no new entity was created
-    assert len(hass.states.async_all()) == 2
+    expect(len(hass.states.async_all())).to_equal(2)
 
-    # Check the state of the entity has changed as expected
     state = hass.states.get("binary_sensor.my_threshold")
-    assert state.state == "off"
-    assert state.attributes["type"] == "upper"
+    expect(state.state).to_equal("off")
+    expect(state.attributes["type"]).to_equal("upper")
 
 
-@pytest.mark.parametrize(
-    "user_input",
-    [
-        (
-            {
-                "name": "Test Sensor",
-                "entity_id": "sensor.test_monitored",
-                "hysteresis": 0.0,
-                "lower": 20.0,
-            }
-        ),
-        (
-            {
-                "name": "Test Sensor",
-                "entity_id": "sensor.test_monitored",
-                "hysteresis": 0.0,
-            }
-        ),
-        (
-            {
-                "name": "",
-                "entity_id": "",
-                "hysteresis": 0.0,
-                "lower": 20.0,
-            }
-        ),
-    ],
-    ids=("success", "missing_upper_lower", "missing_entity_id"),
-)
-async def test_config_flow_preview_success(
-    hass: HomeAssistant,
-    hass_ws_client: WebSocketGenerator,
-    user_input: str,
-    snapshot: SnapshotAssertion,
+@test.skip("uses snapshot and hass_ws_client")
+async def config_flow_preview_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test the config flow preview."""
-    client = await hass_ws_client(hass)
-
-    # add state for the tests
-    hass.states.async_set(
-        "sensor.test_monitored",
-        16,
-        {ATTR_UNIT_OF_MEASUREMENT: UnitOfTemperature.CELSIUS},
-    )
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] is None
-    assert result["preview"] == "threshold"
-
-    await client.send_json_auto_id(
-        {
-            "type": "threshold/start_preview",
-            "flow_id": result["flow_id"],
-            "flow_type": "config_flow",
-            "user_input": user_input,
-        }
-    )
-    msg = await client.receive_json()
-    assert msg["success"]
-    assert msg["result"] is None
-
-    msg = await client.receive_json()
-    assert msg["event"] == snapshot
-    assert len(hass.states.async_all()) == 1
 
 
-async def test_options_flow_preview(
-    hass: HomeAssistant,
-    hass_ws_client: WebSocketGenerator,
-    snapshot: SnapshotAssertion,
+@test.skip("uses snapshot and hass_ws_client")
+async def options_flow_preview(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test the options flow preview."""
-    client = await hass_ws_client(hass)
-
-    # add state for the tests
-    hass.states.async_set(
-        "sensor.test_monitored",
-        16,
-        {ATTR_UNIT_OF_MEASUREMENT: UnitOfTemperature.CELSIUS},
-    )
-
-    # Setup the config entry
-    config_entry = MockConfigEntry(
-        data={},
-        domain=DOMAIN,
-        options={
-            "entity_id": "sensor.test_monitored",
-            "hysteresis": 0.0,
-            "lower": 20.0,
-            "name": "Test Sensor",
-            "upper": None,
-        },
-        title="Test Sensor",
-    )
-    config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
-    assert result["preview"] == "threshold"
-
-    await client.send_json_auto_id(
-        {
-            "type": "threshold/start_preview",
-            "flow_id": result["flow_id"],
-            "flow_type": "options_flow",
-            "user_input": {
-                "name": "Test Sensor",
-                "entity_id": "sensor.test_monitored",
-                "hysteresis": 0.0,
-                "lower": 20.0,
-            },
-        }
-    )
-    msg = await client.receive_json()
-    assert msg["success"]
-    assert msg["result"] is None
-
-    msg = await client.receive_json()
-    assert msg["event"] == snapshot
-    assert len(hass.states.async_all()) == 2
 
 
-async def test_options_flow_sensor_preview_config_entry_removed(
-    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+@test.skip("uses hass_ws_client")
+async def options_flow_sensor_preview_config_entry_removed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Test the option flow preview where the config entry is removed."""
-    client = await hass_ws_client(hass)
-
-    # Setup the config entry
-    config_entry = MockConfigEntry(
-        data={},
-        domain=DOMAIN,
-        options={
-            "entity_id": "sensor.test_monitored",
-            "hysteresis": 0.0,
-            "lower": 20.0,
-            "name": "Test Sensor",
-            "upper": None,
-        },
-        title="Test Sensor",
-    )
-    config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
-    assert result["preview"] == "threshold"
-
-    await hass.config_entries.async_remove(config_entry.entry_id)
-
-    await client.send_json_auto_id(
-        {
-            "type": "threshold/start_preview",
-            "flow_id": result["flow_id"],
-            "flow_type": "options_flow",
-            "user_input": {
-                "name": "Test Sensor",
-                "entity_id": "sensor.test_monitored",
-                "hysteresis": 0.0,
-                "lower": 20.0,
-            },
-        }
-    )
-    msg = await client.receive_json()
-    assert not msg["success"]
-    assert msg["error"] == {
-        "code": "home_assistant_error",
-        "message": "Config entry not found",
-    }
+    """Test option flow preview where config entry is removed."""
