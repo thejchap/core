@@ -18,12 +18,7 @@ from homeassistant.const import CONF_ACCESS_TOKEN, CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from ._fixtures import (
-    auth_client,
-    cync_client,
-    mock_config_entry,
-    mock_setup_entry,
-)
+from ._fixtures import auth_client, cync_client, mock_config_entry, mock_setup_entry
 from .const import MOCKED_EMAIL, MOCKED_USER, SECOND_MOCKED_USER
 
 from tests.common import MockConfigEntry
@@ -222,9 +217,7 @@ async def form_unique_id_already_exists(
 
 @test.cases(
     test.case("invalid_auth", error_type=AuthFailedError, error_string="invalid_auth"),
-    test.case(
-        "cannot_connect", error_type=CyncError, error_string="cannot_connect"
-    ),
+    test.case("cannot_connect", error_type=CyncError, error_string="cannot_connect"),
     test.case("unknown", error_type=Exception, error_string="unknown"),
 )
 async def form_two_factor_errors(
@@ -296,9 +289,7 @@ async def form_two_factor_errors(
 
 @test.cases(
     test.case("invalid_auth", error_type=AuthFailedError, error_string="invalid_auth"),
-    test.case(
-        "cannot_connect", error_type=CyncError, error_string="cannot_connect"
-    ),
+    test.case("cannot_connect", error_type=CyncError, error_string="cannot_connect"),
     test.case("unknown", error_type=Exception, error_string="unknown"),
 )
 async def form_errors(
@@ -354,9 +345,7 @@ async def form_errors(
 
 @test.cases(
     test.case("invalid_auth", error_type=AuthFailedError, error_string="invalid_auth"),
-    test.case(
-        "cannot_connect", error_type=CyncError, error_string="cannot_connect"
-    ),
+    test.case("cannot_connect", error_type=CyncError, error_string="cannot_connect"),
     test.case("unknown", error_type=Exception, error_string="unknown"),
 )
 async def form_reauth_errors(
