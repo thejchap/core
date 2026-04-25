@@ -1179,6 +1179,7 @@ dev = [
     "ttls==1.8.3",
     "twentemilieu==3.0.0",
     "typedmonarchmoney==0.7.0",
+    "uasiren==0.0.1",
     "ultraheat-api>=0.5.7",
     "upb-lib==0.6.1",
     "url-normalize==2.2.1",
