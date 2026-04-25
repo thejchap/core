@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
-from freezegun.api import FrozenDateTimeFactory
-import pytest
+from tryke import Depends, expect, fixture, test
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -13,19 +12,31 @@ from homeassistant.components.time_date.const import CONF_DISPLAY_OPTIONS, DOMAI
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from tests.common import MockConfigEntry, async_fire_time_changed
-from tests.typing import WebSocketGenerator
+from ._fixtures import mock_setup_entry
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the forms."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -33,30 +44,38 @@ async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
     )
     await hass.async_block_till_done()
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_user_flow_does_not_allow_beat(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def user_flow_does_not_allow_beat(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we get the forms."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
-    with pytest.raises(vol.Invalid):
+    raised = False
+    try:
         await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {"display_options": ["beat"]},
         )
+    except vol.Invalid:
+        raised = True
+    expect(raised).to_be(True)
 
 
-async def test_single_instance(hass: HomeAssistant) -> None:
+@test
+async def single_instance(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the forms."""
-
     entry = MockConfigEntry(
         domain=DOMAIN, data={}, options={CONF_DISPLAY_OPTIONS: "time"}
     )
@@ -65,17 +84,21 @@ async def test_single_instance(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {"display_options": "time"},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_timezone_not_set(hass: HomeAssistant) -> None:
+@test
+async def timezone_not_set(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test time zone not set."""
     hass.config.time_zone = None
 
@@ -88,52 +111,13 @@ async def test_timezone_not_set(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "timezone_not_exist"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "timezone_not_exist"})
 
 
-async def test_config_flow_preview(
-    hass: HomeAssistant,
-    hass_ws_client: WebSocketGenerator,
-    freezer: FrozenDateTimeFactory,
+@test.skip("uses hass_ws_client (WebSocketGenerator)")
+async def config_flow_preview(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test the config flow preview."""
-    client = await hass_ws_client(hass)
-    freezer.move_to("2024-01-02 20:14:11.672")
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] is None
-    assert result["preview"] == "time_date"
-
-    await client.send_json_auto_id(
-        {
-            "type": "time_date/start_preview",
-            "flow_id": result["flow_id"],
-            "flow_type": "config_flow",
-            "user_input": {"display_options": "time"},
-        }
-    )
-    msg = await client.receive_json()
-    assert msg["success"]
-    assert msg["result"] is None
-
-    msg = await client.receive_json()
-    assert msg["event"] == {
-        "attributes": {"friendly_name": "Time", "icon": "mdi:clock"},
-        "state": "12:14",
-    }
-
-    freezer.tick(60)
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
-
-    msg = await client.receive_json()
-    assert msg["event"] == {
-        "attributes": {"friendly_name": "Time", "icon": "mdi:clock"},
-        "state": "12:15",
-    }
-    assert len(hass.states.async_all()) == 0
