@@ -1127,6 +1127,7 @@ dev = [
     "pypjlink2==1.2.1",
     "pyplaato==0.0.19",
     "pyportainer==1.0.38",
+    "pyprobeplus==1.1.2",
     "pyprosegur==0.0.14",
     "pyprusalink==2.1.1",
     "pyrail==0.4.1",
