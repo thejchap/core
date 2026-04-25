@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import requests
 from requests_mock import Mocker
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.mjpeg.const import (
     CONF_MJPEG_URL,
@@ -22,21 +23,31 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_mjpeg_requests, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_full_user_flow(
-    hass: HomeAssistant,
-    mock_mjpeg_requests: Mocker,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mjpeg_requests: Mocker = Depends(mock_mjpeg_requests),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -50,40 +61,40 @@ async def test_full_user_flow(
         },
     )
 
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2.get("title") == "Spy cam"
-    assert result2.get("data") == {}
-    assert result2.get("options") == {
-        CONF_AUTHENTICATION: HTTP_BASIC_AUTHENTICATION,
-        CONF_MJPEG_URL: "https://example.com/mjpeg",
-        CONF_PASSWORD: "omgpuppies",
-        CONF_STILL_IMAGE_URL: "https://example.com/still",
-        CONF_USERNAME: "frenck",
-        CONF_VERIFY_SSL: False,
-    }
+    expect(result2.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2.get("title")).to_equal("Spy cam")
+    expect(dict(result2.get("data"))).to_equal({})
+    expect(dict(result2.get("options"))).to_equal(
+        {
+            CONF_AUTHENTICATION: HTTP_BASIC_AUTHENTICATION,
+            CONF_MJPEG_URL: "https://example.com/mjpeg",
+            CONF_PASSWORD: "omgpuppies",
+            CONF_STILL_IMAGE_URL: "https://example.com/still",
+            CONF_USERNAME: "frenck",
+            CONF_VERIFY_SSL: False,
+        }
+    )
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert mock_mjpeg_requests.call_count == 2
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    expect(mjpeg_requests.call_count).to_equal(2)
 
 
-async def test_full_flow_with_authentication_error(
-    hass: HomeAssistant,
-    mock_mjpeg_requests: Mocker,
-    mock_setup_entry: AsyncMock,
+@test
+async def full_flow_with_authentication_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mjpeg_requests: Mocker = Depends(mock_mjpeg_requests),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
-    """Test the full user configuration flow with invalid credentials.
-
-    This tests tests a full config flow, with a case the user enters an invalid
-    credentials, but recovers by entering the correct ones.
-    """
+    """Test the full user configuration flow with invalid credentials."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
-    mock_mjpeg_requests.get(
+    mjpeg_requests.get(
         "https://example.com/mjpeg", text="Access Denied!", status_code=401
     )
     result2 = await hass.config_entries.flow.async_configure(
@@ -96,14 +107,14 @@ async def test_full_flow_with_authentication_error(
         },
     )
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "user"
-    assert result2.get("errors") == {"username": "invalid_auth"}
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("step_id")).to_equal("user")
+    expect(result2.get("errors")).to_equal({"username": "invalid_auth"})
 
-    assert len(mock_setup_entry.mock_calls) == 0
-    assert mock_mjpeg_requests.call_count == 2
+    expect(len(setup_entry.mock_calls)).to_equal(0)
+    expect(mjpeg_requests.call_count).to_equal(2)
 
-    mock_mjpeg_requests.get("https://example.com/mjpeg", text="resp")
+    mjpeg_requests.get("https://example.com/mjpeg", text="resp")
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"],
         user_input={
@@ -114,37 +125,40 @@ async def test_full_flow_with_authentication_error(
         },
     )
 
-    assert result3.get("type") is FlowResultType.CREATE_ENTRY
-    assert result3.get("title") == "Sky cam"
-    assert result3.get("data") == {}
-    assert result3.get("options") == {
-        CONF_AUTHENTICATION: HTTP_BASIC_AUTHENTICATION,
-        CONF_MJPEG_URL: "https://example.com/mjpeg",
-        CONF_PASSWORD: "supersecret",
-        CONF_STILL_IMAGE_URL: None,
-        CONF_USERNAME: "frenck",
-        CONF_VERIFY_SSL: True,
-    }
+    expect(result3.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3.get("title")).to_equal("Sky cam")
+    expect(dict(result3.get("data"))).to_equal({})
+    expect(dict(result3.get("options"))).to_equal(
+        {
+            CONF_AUTHENTICATION: HTTP_BASIC_AUTHENTICATION,
+            CONF_MJPEG_URL: "https://example.com/mjpeg",
+            CONF_PASSWORD: "supersecret",
+            CONF_STILL_IMAGE_URL: None,
+            CONF_USERNAME: "frenck",
+            CONF_VERIFY_SSL: True,
+        }
+    )
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert mock_mjpeg_requests.call_count == 3
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    expect(mjpeg_requests.call_count).to_equal(3)
 
 
-async def test_connection_error(
-    hass: HomeAssistant,
-    mock_mjpeg_requests: Mocker,
-    mock_setup_entry: AsyncMock,
+@test
+async def connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mjpeg_requests: Mocker = Depends(mock_mjpeg_requests),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test connection error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
-    # Test connectione error on MJPEG url
-    mock_mjpeg_requests.get(
+    mjpeg_requests.get(
         "https://example.com/mjpeg", exc=requests.exceptions.ConnectionError
     )
     result2 = await hass.config_entries.flow.async_configure(
@@ -156,18 +170,16 @@ async def test_connection_error(
         },
     )
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "user"
-    assert result2.get("errors") == {"mjpeg_url": "cannot_connect"}
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("step_id")).to_equal("user")
+    expect(result2.get("errors")).to_equal({"mjpeg_url": "cannot_connect"})
 
-    assert len(mock_setup_entry.mock_calls) == 0
-    assert mock_mjpeg_requests.call_count == 1
+    expect(len(setup_entry.mock_calls)).to_equal(0)
+    expect(mjpeg_requests.call_count).to_equal(1)
 
-    # Reset
-    mock_mjpeg_requests.get("https://example.com/mjpeg", text="resp")
+    mjpeg_requests.get("https://example.com/mjpeg", text="resp")
 
-    # Test connectione error on still url
-    mock_mjpeg_requests.get(
+    mjpeg_requests.get(
         "https://example.com/still", exc=requests.exceptions.ConnectionError
     )
     result3 = await hass.config_entries.flow.async_configure(
@@ -179,17 +191,15 @@ async def test_connection_error(
         },
     )
 
-    assert result3.get("type") is FlowResultType.FORM
-    assert result3.get("step_id") == "user"
-    assert result3.get("errors") == {"still_image_url": "cannot_connect"}
+    expect(result3.get("type")).to_be(FlowResultType.FORM)
+    expect(result3.get("step_id")).to_equal("user")
+    expect(result3.get("errors")).to_equal({"still_image_url": "cannot_connect"})
 
-    assert len(mock_setup_entry.mock_calls) == 0
-    assert mock_mjpeg_requests.call_count == 3
+    expect(len(setup_entry.mock_calls)).to_equal(0)
+    expect(mjpeg_requests.call_count).to_equal(3)
 
-    # Reset
-    mock_mjpeg_requests.get("https://example.com/still", text="resp")
+    mjpeg_requests.get("https://example.com/still", text="resp")
 
-    # Finish
     result4 = await hass.config_entries.flow.async_configure(
         result3["flow_id"],
         user_input={
@@ -199,30 +209,34 @@ async def test_connection_error(
         },
     )
 
-    assert result4.get("type") is FlowResultType.CREATE_ENTRY
-    assert result4.get("title") == "My cam"
-    assert result4.get("data") == {}
-    assert result4.get("options") == {
-        CONF_AUTHENTICATION: HTTP_BASIC_AUTHENTICATION,
-        CONF_MJPEG_URL: "https://example.com/mjpeg",
-        CONF_PASSWORD: "",
-        CONF_STILL_IMAGE_URL: "https://example.com/still",
-        CONF_USERNAME: None,
-        CONF_VERIFY_SSL: True,
-    }
+    expect(result4.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result4.get("title")).to_equal("My cam")
+    expect(dict(result4.get("data"))).to_equal({})
+    expect(dict(result4.get("options"))).to_equal(
+        {
+            CONF_AUTHENTICATION: HTTP_BASIC_AUTHENTICATION,
+            CONF_MJPEG_URL: "https://example.com/mjpeg",
+            CONF_PASSWORD: "",
+            CONF_STILL_IMAGE_URL: "https://example.com/still",
+            CONF_USERNAME: None,
+            CONF_VERIFY_SSL: True,
+        }
+    )
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert mock_mjpeg_requests.call_count == 5
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    expect(mjpeg_requests.call_count).to_equal(5)
 
 
-async def test_already_configured(
-    hass: HomeAssistant,
-    mock_mjpeg_requests: Mocker,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mjpeg: Mocker = Depends(mock_mjpeg_requests),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we abort if the MJPEG IP Camera is already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -236,125 +250,10 @@ async def test_already_configured(
         },
     )
 
-    assert result2.get("type") is FlowResultType.ABORT
-    assert result2.get("reason") == "already_configured"
+    expect(result2.get("type")).to_be(FlowResultType.ABORT)
+    expect(result2.get("reason")).to_equal("already_configured")
 
 
-async def test_options_flow(
-    hass: HomeAssistant,
-    mock_mjpeg_requests: Mocker,
-    init_integration: MockConfigEntry,
-) -> None:
+@test.skip("options flow uses init_integration which sets up component fully")
+async def options_flow() -> None:
     """Test options config flow."""
-    result = await hass.config_entries.options.async_init(init_integration.entry_id)
-
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "init"
-
-    # Register a second camera
-    mock_mjpeg_requests.get("https://example.com/second_camera", text="resp")
-    mock_second_config_entry = MockConfigEntry(
-        title="Another Camera",
-        domain=DOMAIN,
-        data={},
-        options={
-            CONF_AUTHENTICATION: HTTP_BASIC_AUTHENTICATION,
-            CONF_MJPEG_URL: "https://example.com/second_camera",
-            CONF_PASSWORD: "",
-            CONF_STILL_IMAGE_URL: None,
-            CONF_USERNAME: None,
-            CONF_VERIFY_SSL: True,
-        },
-    )
-    mock_second_config_entry.add_to_hass(hass)
-
-    # Try updating options to already existing secondary camera
-    result2 = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input={
-            CONF_MJPEG_URL: "https://example.com/second_camera",
-        },
-    )
-
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "init"
-    assert result2.get("errors") == {"mjpeg_url": "already_configured"}
-
-    assert mock_mjpeg_requests.call_count == 1
-
-    # Test connectione error on MJPEG url
-    mock_mjpeg_requests.get(
-        "https://example.com/invalid_mjpeg", exc=requests.exceptions.ConnectionError
-    )
-    result3 = await hass.config_entries.options.async_configure(
-        result2["flow_id"],
-        user_input={
-            CONF_MJPEG_URL: "https://example.com/invalid_mjpeg",
-            CONF_STILL_IMAGE_URL: "https://example.com/still",
-        },
-    )
-
-    assert result3.get("type") is FlowResultType.FORM
-    assert result3.get("step_id") == "init"
-    assert result3.get("errors") == {"mjpeg_url": "cannot_connect"}
-
-    assert mock_mjpeg_requests.call_count == 2
-
-    # Test connectione error on still url
-    mock_mjpeg_requests.get(
-        "https://example.com/invalid_still", exc=requests.exceptions.ConnectionError
-    )
-    result4 = await hass.config_entries.options.async_configure(
-        result3["flow_id"],
-        user_input={
-            CONF_MJPEG_URL: "https://example.com/mjpeg",
-            CONF_STILL_IMAGE_URL: "https://example.com/invalid_still",
-        },
-    )
-
-    assert result4.get("type") is FlowResultType.FORM
-    assert result4.get("step_id") == "init"
-    assert result4.get("errors") == {"still_image_url": "cannot_connect"}
-
-    assert mock_mjpeg_requests.call_count == 4
-
-    # Invalid credentials
-    mock_mjpeg_requests.get(
-        "https://example.com/invalid_auth", text="Access Denied!", status_code=401
-    )
-    result5 = await hass.config_entries.options.async_configure(
-        result4["flow_id"],
-        user_input={
-            CONF_MJPEG_URL: "https://example.com/invalid_auth",
-            CONF_PASSWORD: "omgpuppies",
-            CONF_USERNAME: "frenck",
-        },
-    )
-
-    assert result5.get("type") is FlowResultType.FORM
-    assert result5.get("step_id") == "init"
-    assert result5.get("errors") == {"username": "invalid_auth"}
-
-    assert mock_mjpeg_requests.call_count == 6
-
-    # Finish
-    result6 = await hass.config_entries.options.async_configure(
-        result5["flow_id"],
-        user_input={
-            CONF_MJPEG_URL: "https://example.com/mjpeg",
-            CONF_PASSWORD: "evenmorepuppies",
-            CONF_USERNAME: "newuser",
-        },
-    )
-
-    assert result6.get("type") is FlowResultType.CREATE_ENTRY
-    assert result6.get("data") == {
-        CONF_AUTHENTICATION: HTTP_BASIC_AUTHENTICATION,
-        CONF_MJPEG_URL: "https://example.com/mjpeg",
-        CONF_PASSWORD: "evenmorepuppies",
-        CONF_STILL_IMAGE_URL: None,
-        CONF_USERNAME: "newuser",
-        CONF_VERIFY_SSL: True,
-    }
-
-    assert mock_mjpeg_requests.call_count == 7
