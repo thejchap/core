@@ -1007,6 +1007,7 @@ dev = [
     "knocki>=0.4.2",
     "krakenex>=2.2.2",
     "lacrosse-view>=1.1.1",
+    "laundrify-aio==1.2.2",
     "lektricowifi==0.1",
     "letpot==0.6.4",
     "librehardwaremonitor-api==1.11.1",
