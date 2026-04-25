@@ -2,12 +2,15 @@
 
 from unittest.mock import MagicMock
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.devolo_home_control.const import DOMAIN
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_async_zeroconf, mydevolo
 from .const import (
     DISCOVERY_INFO,
     DISCOVERY_INFO_WRONG_DEVICE,
@@ -15,34 +18,53 @@ from .const import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _zeroconf: MagicMock = Depends(mock_async_zeroconf),
+    _mydevolo: MagicMock = Depends(mydevolo),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test-username", CONF_PASSWORD: "test-password"},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "devolo Home Control"
-    assert result["data"] == {
-        CONF_USERNAME: "test-username",
-        CONF_PASSWORD: "test-password",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("devolo Home Control")
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: "test-username",
+            CONF_PASSWORD: "test-password",
+        }
+    )
 
 
-async def test_form_invalid_credentials_user(
-    hass: HomeAssistant, mydevolo: MagicMock
+@test
+async def form_invalid_credentials_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mydevolo_mock: MagicMock = Depends(mydevolo),
 ) -> None:
     """Test if we get the error message on invalid credentials."""
-    mydevolo.credentials_valid.return_value = False
+    mydevolo_mock.credentials_valid.return_value = False
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -51,22 +73,28 @@ async def test_form_invalid_credentials_user(
         result["flow_id"],
         {CONF_USERNAME: "test-username", CONF_PASSWORD: "wrong-password"},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
-    mydevolo.credentials_valid.return_value = True
+    mydevolo_mock.credentials_valid.return_value = True
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test-username", CONF_PASSWORD: "correct-password"},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_USERNAME: "test-username",
-        CONF_PASSWORD: "correct-password",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: "test-username",
+            CONF_PASSWORD: "correct-password",
+        }
+    )
 
 
-async def test_form_already_configured(hass: HomeAssistant) -> None:
+@test
+async def form_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test if we get the error message on already configured."""
     MockConfigEntry(domain=DOMAIN, unique_id="123456", data={}).add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
@@ -74,37 +102,46 @@ async def test_form_already_configured(hass: HomeAssistant) -> None:
         context={"source": config_entries.SOURCE_USER},
         data={CONF_USERNAME: "test-username", CONF_PASSWORD: "test-password"},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_form_zeroconf(hass: HomeAssistant) -> None:
+@test
+async def form_zeroconf(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the zeroconf confirmation form is served."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_ZEROCONF},
         data=DISCOVERY_INFO,
     )
-    assert result["step_id"] == "zeroconf_confirm"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test-username", CONF_PASSWORD: "test-password"},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "devolo Home Control"
-    assert result["data"] == {
-        CONF_USERNAME: "test-username",
-        CONF_PASSWORD: "test-password",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("devolo Home Control")
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: "test-username",
+            CONF_PASSWORD: "test-password",
+        }
+    )
 
 
-async def test_form_invalid_credentials_zeroconf(
-    hass: HomeAssistant, mydevolo: MagicMock
+@test
+async def form_invalid_credentials_zeroconf(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mydevolo_mock: MagicMock = Depends(mydevolo),
 ) -> None:
     """Test if we get the error message on invalid credentials."""
-    mydevolo.credentials_valid.return_value = False
+    mydevolo_mock.credentials_valid.return_value = False
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_ZEROCONF},
@@ -115,26 +152,30 @@ async def test_form_invalid_credentials_zeroconf(
         result["flow_id"],
         {CONF_USERNAME: "test-username", CONF_PASSWORD: "test-password"},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
-    mydevolo.credentials_valid.return_value = True
+    mydevolo_mock.credentials_valid.return_value = True
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test-username", CONF_PASSWORD: "correct-password"},
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_zeroconf_wrong_device(hass: HomeAssistant) -> None:
+@test
+async def zeroconf_wrong_device(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the zeroconf ignores wrong devices."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_ZEROCONF},
         data=DISCOVERY_INFO_WRONG_DEVOLO_DEVICE,
     )
-    assert result["reason"] == "Not a devolo Home Control gateway."
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["reason"]).to_equal("Not a devolo Home Control gateway.")
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -142,11 +183,15 @@ async def test_zeroconf_wrong_device(hass: HomeAssistant) -> None:
         data=DISCOVERY_INFO_WRONG_DEVICE,
     )
 
-    assert result["reason"] == "Not a devolo Home Control gateway."
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["reason"]).to_equal("Not a devolo Home Control gateway.")
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-async def test_form_reauth(hass: HomeAssistant) -> None:
+@test
+async def form_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the reauth confirmation form is served."""
     mock_config = MockConfigEntry(
         domain=DOMAIN,
@@ -158,22 +203,25 @@ async def test_form_reauth(hass: HomeAssistant) -> None:
     )
     mock_config.add_to_hass(hass)
     result = await mock_config.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test-username-new", CONF_PASSWORD: "test-password-new"},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-async def test_form_invalid_credentials_reauth(
-    hass: HomeAssistant, mydevolo: MagicMock
+@test
+async def form_invalid_credentials_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mydevolo_mock: MagicMock = Depends(mydevolo),
 ) -> None:
     """Test if we get the error message on invalid credentials."""
-    mydevolo.credentials_valid.return_value = False
+    mydevolo_mock.credentials_valid.return_value = False
     mock_config = MockConfigEntry(
         domain=DOMAIN,
         unique_id="123456",
@@ -189,19 +237,23 @@ async def test_form_invalid_credentials_reauth(
         result["flow_id"],
         {CONF_USERNAME: "test-username", CONF_PASSWORD: "wrong-password"},
     )
-    assert result["errors"] == {"base": "invalid_auth"}
-    assert result["type"] is FlowResultType.FORM
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
-    mydevolo.credentials_valid.return_value = True
+    mydevolo_mock.credentials_valid.return_value = True
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test-username-new", CONF_PASSWORD: "correct-password"},
     )
-    assert result["reason"] == "reauth_successful"
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-async def test_form_uuid_change_reauth(hass: HomeAssistant) -> None:
+@test
+async def form_uuid_change_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the reauth confirmation form is served."""
     mock_config = MockConfigEntry(
         domain=DOMAIN,
@@ -213,12 +265,12 @@ async def test_form_uuid_change_reauth(hass: HomeAssistant) -> None:
     )
     mock_config.add_to_hass(hass)
     result = await mock_config.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_USERNAME: "test-username-new", CONF_PASSWORD: "test-password-new"},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "reauth_failed"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "reauth_failed"})
