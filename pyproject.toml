@@ -1360,6 +1360,7 @@ dev = [
     "upb-lib==0.6.1",
     "upcloud-api==2.9.0",
     "url-normalize==2.2.1",
+    "vegehub==0.1.26",
     "vehicle==2.2.2",
     "venstarcolortouch==0.21",
     "vilfo-api-client==0.5.0",
@@ -1409,4 +1410,6 @@ dev = [
     "aioimmich==0.14.0",
     "aioghost==0.4.0",
     "onedrive-personal-sdk==0.1.7",
+    "whirlpool-sixth-sense==1.0.3",
+    "teltasync==0.2.0",
 ]
