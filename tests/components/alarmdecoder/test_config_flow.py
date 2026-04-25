@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from alarmdecoder.util import NoDeviceError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.alarmdecoder import config_flow
@@ -34,46 +34,57 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.parametrize(
-    ("protocol", "connection", "title"),
-    [
-        (
-            PROTOCOL_SOCKET,
-            {
-                CONF_HOST: "alarmdecoder123",
-                CONF_PORT: 10001,
-            },
-            "alarmdecoder123:10001",
-        ),
-        (
-            PROTOCOL_SERIAL,
-            {
-                CONF_DEVICE_PATH: "/dev/ttyUSB123",
-                CONF_DEVICE_BAUD: 115000,
-            },
-            "/dev/ttyUSB123",
-        ),
-    ],
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test.cases(
+    test.case(
+        "socket",
+        protocol=PROTOCOL_SOCKET,
+        connection={
+            CONF_HOST: "alarmdecoder123",
+            CONF_PORT: 10001,
+        },
+        title="alarmdecoder123:10001",
+    ),
+    test.case(
+        "serial",
+        protocol=PROTOCOL_SERIAL,
+        connection={
+            CONF_DEVICE_PATH: "/dev/ttyUSB123",
+            CONF_DEVICE_BAUD: 115000,
+        },
+        title="/dev/ttyUSB123",
+    ),
 )
-async def test_setups(hass: HomeAssistant, protocol, connection, title) -> None:
+async def setups(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    protocol: str,
+    connection: dict,
+    title: str,
+) -> None:
     """Test flow for setting up the available AlarmDecoder protocols."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PROTOCOL: protocol},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "protocol"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("protocol")
 
     with (
         patch("homeassistant.components.alarmdecoder.config_flow.AdExt.open"),
@@ -86,20 +97,25 @@ async def test_setups(hass: HomeAssistant, protocol, connection, title) -> None:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], connection
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == title
-        assert result["data"] == {
-            **connection,
-            CONF_PROTOCOL: protocol,
-        }
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(title)
+        expect(result["data"]).to_equal(
+            {
+                **connection,
+                CONF_PROTOCOL: protocol,
+            }
+        )
         await hass.async_block_till_done()
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_setup_connection_error(hass: HomeAssistant) -> None:
+@test
+async def setup_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test flow for setup with a connection error."""
-
     port = 1001
     host = "alarmdecoder"
     protocol = PROTOCOL_SOCKET
@@ -109,16 +125,16 @@ async def test_setup_connection_error(hass: HomeAssistant) -> None:
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PROTOCOL: protocol},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "protocol"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("protocol")
 
     with (
         patch(
@@ -130,8 +146,8 @@ async def test_setup_connection_error(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], connection_settings
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": "cannot_connect"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     with (
         patch(
@@ -143,11 +159,15 @@ async def test_setup_connection_error(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], connection_settings
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": "unknown"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_options_arm_flow(hass: HomeAssistant) -> None:
+@test
+async def options_arm_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test arm options flow."""
     user_input = {
         CONF_ALT_NIGHT_MODE: True,
@@ -162,16 +182,16 @@ async def test_options_arm_flow(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={"edit_selection": "Arming Settings"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "arm_settings"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("arm_settings")
 
     with patch(
         "homeassistant.components.alarmdecoder.async_setup_entry", return_value=True
@@ -181,14 +201,20 @@ async def test_options_arm_flow(hass: HomeAssistant) -> None:
             user_input=user_input,
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {
-        OPTIONS_ARM: user_input,
-        OPTIONS_ZONES: DEFAULT_ZONE_OPTIONS,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options).to_equal(
+        {
+            OPTIONS_ARM: user_input,
+            OPTIONS_ZONES: DEFAULT_ZONE_OPTIONS,
+        }
+    )
 
 
-async def test_options_zone_flow(hass: HomeAssistant) -> None:
+@test
+async def options_zone_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test options flow for adding/deleting zones."""
     zone_number = "2"
     zone_settings = {
@@ -203,16 +229,16 @@ async def test_options_zone_flow(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={"edit_selection": "Zones"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zone_select"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zone_select")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -227,25 +253,26 @@ async def test_options_zone_flow(hass: HomeAssistant) -> None:
             user_input=zone_settings,
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {
-        OPTIONS_ARM: DEFAULT_ARM_OPTIONS,
-        OPTIONS_ZONES: {zone_number: zone_settings},
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options).to_equal(
+        {
+            OPTIONS_ARM: DEFAULT_ARM_OPTIONS,
+            OPTIONS_ZONES: {zone_number: zone_settings},
+        }
+    )
 
-    # Make sure zone can be removed...
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={"edit_selection": "Zones"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zone_select"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zone_select")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -260,14 +287,20 @@ async def test_options_zone_flow(hass: HomeAssistant) -> None:
             user_input={},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {
-        OPTIONS_ARM: DEFAULT_ARM_OPTIONS,
-        OPTIONS_ZONES: {},
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options).to_equal(
+        {
+            OPTIONS_ARM: DEFAULT_ARM_OPTIONS,
+            OPTIONS_ZONES: {},
+        }
+    )
 
 
-async def test_options_zone_flow_validation(hass: HomeAssistant) -> None:
+@test
+async def options_zone_flow_validation(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test input validation for zone options flow."""
     zone_number = "2"
     zone_settings = {
@@ -282,98 +315,93 @@ async def test_options_zone_flow_validation(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={"edit_selection": "Zones"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zone_select"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zone_select")
 
-    # Zone Number must be int
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_ZONE_NUMBER: "asd"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zone_select"
-    assert result["errors"] == {CONF_ZONE_NUMBER: "int"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zone_select")
+    expect(result["errors"]).to_equal({CONF_ZONE_NUMBER: "int"})
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_ZONE_NUMBER: zone_number},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zone_details"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zone_details")
 
-    # CONF_RELAY_ADDR & CONF_RELAY_CHAN are inclusive
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={**zone_settings, CONF_RELAY_ADDR: "1"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zone_details"
-    assert result["errors"] == {"base": "relay_inclusive"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zone_details")
+    expect(result["errors"]).to_equal({"base": "relay_inclusive"})
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={**zone_settings, CONF_RELAY_CHAN: "1"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zone_details"
-    assert result["errors"] == {"base": "relay_inclusive"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zone_details")
+    expect(result["errors"]).to_equal({"base": "relay_inclusive"})
 
-    # CONF_RELAY_ADDR, CONF_RELAY_CHAN must be int
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={**zone_settings, CONF_RELAY_ADDR: "abc", CONF_RELAY_CHAN: "abc"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zone_details"
-    assert result["errors"] == {
-        CONF_RELAY_ADDR: "int",
-        CONF_RELAY_CHAN: "int",
-    }
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zone_details")
+    expect(result["errors"]).to_equal(
+        {
+            CONF_RELAY_ADDR: "int",
+            CONF_RELAY_CHAN: "int",
+        }
+    )
 
-    # CONF_ZONE_LOOP depends on CONF_ZONE_RFID
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={**zone_settings, CONF_ZONE_LOOP: "1"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zone_details"
-    assert result["errors"] == {CONF_ZONE_LOOP: "loop_rfid"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zone_details")
+    expect(result["errors"]).to_equal({CONF_ZONE_LOOP: "loop_rfid"})
 
-    # CONF_ZONE_LOOP must be int
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={**zone_settings, CONF_ZONE_RFID: "rfid123", CONF_ZONE_LOOP: "ab"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zone_details"
-    assert result["errors"] == {CONF_ZONE_LOOP: "int"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zone_details")
+    expect(result["errors"]).to_equal({CONF_ZONE_LOOP: "int"})
 
-    # CONF_ZONE_LOOP must be between [1,4]
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={**zone_settings, CONF_ZONE_RFID: "rfid123", CONF_ZONE_LOOP: "5"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zone_details"
-    assert result["errors"] == {CONF_ZONE_LOOP: "loop_range"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zone_details")
+    expect(result["errors"]).to_equal({CONF_ZONE_LOOP: "loop_range"})
 
-    # All valid settings
     with patch(
         "homeassistant.components.alarmdecoder.async_setup_entry", return_value=True
     ):
@@ -388,41 +416,48 @@ async def test_options_zone_flow_validation(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {
-        OPTIONS_ARM: DEFAULT_ARM_OPTIONS,
-        OPTIONS_ZONES: {
-            zone_number: {
-                **zone_settings,
-                CONF_ZONE_RFID: "rfid123",
-                CONF_ZONE_LOOP: 2,
-                CONF_RELAY_ADDR: 12,
-                CONF_RELAY_CHAN: 1,
-            }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options).to_equal(
+        {
+            OPTIONS_ARM: DEFAULT_ARM_OPTIONS,
+            OPTIONS_ZONES: {
+                zone_number: {
+                    **zone_settings,
+                    CONF_ZONE_RFID: "rfid123",
+                    CONF_ZONE_LOOP: 2,
+                    CONF_RELAY_ADDR: 12,
+                    CONF_RELAY_CHAN: 1,
+                }
+            },
+        }
+    )
+
+
+@test.cases(
+    test.case(
+        "socket",
+        protocol=PROTOCOL_SOCKET,
+        connection={
+            CONF_HOST: "alarmdecoder123",
+            CONF_PORT: 10001,
         },
-    }
-
-
-@pytest.mark.parametrize(
-    ("protocol", "connection"),
-    [
-        (
-            PROTOCOL_SOCKET,
-            {
-                CONF_HOST: "alarmdecoder123",
-                CONF_PORT: 10001,
-            },
-        ),
-        (
-            PROTOCOL_SERIAL,
-            {
-                CONF_DEVICE_PATH: "/dev/ttyUSB123",
-                CONF_DEVICE_BAUD: 115000,
-            },
-        ),
-    ],
+    ),
+    test.case(
+        "serial",
+        protocol=PROTOCOL_SERIAL,
+        connection={
+            CONF_DEVICE_PATH: "/dev/ttyUSB123",
+            CONF_DEVICE_BAUD: 115000,
+        },
+    ),
 )
-async def test_one_device_allowed(hass: HomeAssistant, protocol, connection) -> None:
+async def one_device_allowed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    protocol: str,
+    connection: dict,
+) -> None:
     """Test that only one AlarmDecoder device is allowed."""
     flow = config_flow.AlarmDecoderFlowHandler()
     flow.hass = hass
@@ -436,19 +471,19 @@ async def test_one_device_allowed(hass: HomeAssistant, protocol, connection) -> 
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PROTOCOL: protocol},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "protocol"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("protocol")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], connection
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
