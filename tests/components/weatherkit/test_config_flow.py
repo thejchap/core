@@ -8,7 +8,7 @@ from apple_weatherkit.client import (
     WeatherKitApiClientCommunicationError,
     WeatherKitApiClientError,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.weatherkit.config_flow import (
@@ -26,8 +26,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import EXAMPLE_CONFIG_DATA
+from ._fixtures import mock_setup_entry
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 
 EXAMPLE_USER_INPUT = {
     CONF_LOCATION: {
@@ -41,13 +43,26 @@ EXAMPLE_USER_INPUT = {
 }
 
 
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form and create an entry."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.weatherkit.WeatherKitApiClient.get_availability",
@@ -59,26 +74,43 @@ async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     location = EXAMPLE_USER_INPUT[CONF_LOCATION]
-    assert result["title"] == f"{location[CONF_LATITUDE]}, {location[CONF_LONGITUDE]}"
+    expect(result["title"]).to_equal(
+        f"{location[CONF_LATITUDE]}, {location[CONF_LONGITUDE]}"
+    )
 
-    assert result["data"] == EXAMPLE_CONFIG_DATA
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["data"]).to_equal(EXAMPLE_CONFIG_DATA)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_error"),
-    [
-        (WeatherKitApiClientAuthenticationError, "invalid_auth"),
-        (WeatherKitApiClientCommunicationError, "cannot_connect"),
-        (WeatherKitUnsupportedLocationError, "unsupported_location"),
-        (WeatherKitApiClientError, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "auth",
+        exception=WeatherKitApiClientAuthenticationError,
+        expected_error="invalid_auth",
+    ),
+    test.case(
+        "comms",
+        exception=WeatherKitApiClientCommunicationError,
+        expected_error="cannot_connect",
+    ),
+    test.case(
+        "unsupported",
+        exception=WeatherKitUnsupportedLocationError,
+        expected_error="unsupported_location",
+    ),
+    test.case(
+        "unknown", exception=WeatherKitApiClientError, expected_error="unknown"
+    ),
 )
-async def test_error_handling(
-    hass: HomeAssistant, exception: Exception, expected_error: str
+async def error_handling(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    exception: type[Exception],
+    expected_error: str,
 ) -> None:
     """Test that we handle various exceptions and generate appropriate errors."""
     result = await hass.config_entries.flow.async_init(
@@ -94,11 +126,15 @@ async def test_error_handling(
             EXAMPLE_USER_INPUT,
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": expected_error})
 
 
-async def test_form_unsupported_location(hass: HomeAssistant) -> None:
+@test
+async def form_unsupported_location(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle when WeatherKit does not support the location."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -113,10 +149,9 @@ async def test_form_unsupported_location(hass: HomeAssistant) -> None:
             EXAMPLE_USER_INPUT,
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "unsupported_location"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "unsupported_location"})
 
-    # Test that we can recover from this error by changing the location
     with patch(
         "homeassistant.components.weatherkit.WeatherKitApiClient.get_availability",
         return_value=[DataSetType.CURRENT_WEATHER],
@@ -126,32 +161,31 @@ async def test_form_unsupported_location(hass: HomeAssistant) -> None:
             EXAMPLE_USER_INPUT,
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.parametrize(
-    ("input_header"),
-    [
-        "-----BEGIN PRIVATE KEY-----\n",
-        "",
-        "  \n\n-----BEGIN PRIVATE KEY-----\n",
-        "—---BEGIN PRIVATE KEY-----\n",
-    ],
-    ids=["Correct header", "No header", "Leading characters", "Em dash in header"],
+@test.cases(
+    test.case("correct_header_correct_footer", input_header="-----BEGIN PRIVATE KEY-----\n", input_footer="\n-----END PRIVATE KEY-----"),
+    test.case("correct_header_no_footer", input_header="-----BEGIN PRIVATE KEY-----\n", input_footer=""),
+    test.case("correct_header_trailing_chars", input_header="-----BEGIN PRIVATE KEY-----\n", input_footer="\n-----END PRIVATE KEY-----\n\n  "),
+    test.case("correct_header_em_dash_footer", input_header="-----BEGIN PRIVATE KEY-----\n", input_footer="\n—---END PRIVATE KEY-----"),
+    test.case("no_header_correct_footer", input_header="", input_footer="\n-----END PRIVATE KEY-----"),
+    test.case("no_header_no_footer", input_header="", input_footer=""),
+    test.case("no_header_trailing_chars", input_header="", input_footer="\n-----END PRIVATE KEY-----\n\n  "),
+    test.case("no_header_em_dash_footer", input_header="", input_footer="\n—---END PRIVATE KEY-----"),
+    test.case("leading_chars_correct_footer", input_header="  \n\n-----BEGIN PRIVATE KEY-----\n", input_footer="\n-----END PRIVATE KEY-----"),
+    test.case("leading_chars_no_footer", input_header="  \n\n-----BEGIN PRIVATE KEY-----\n", input_footer=""),
+    test.case("leading_chars_trailing_chars", input_header="  \n\n-----BEGIN PRIVATE KEY-----\n", input_footer="\n-----END PRIVATE KEY-----\n\n  "),
+    test.case("leading_chars_em_dash_footer", input_header="  \n\n-----BEGIN PRIVATE KEY-----\n", input_footer="\n—---END PRIVATE KEY-----"),
+    test.case("em_dash_header_correct_footer", input_header="—---BEGIN PRIVATE KEY-----\n", input_footer="\n-----END PRIVATE KEY-----"),
+    test.case("em_dash_header_no_footer", input_header="—---BEGIN PRIVATE KEY-----\n", input_footer=""),
+    test.case("em_dash_header_trailing_chars", input_header="—---BEGIN PRIVATE KEY-----\n", input_footer="\n-----END PRIVATE KEY-----\n\n  "),
+    test.case("em_dash_header_em_dash_footer", input_header="—---BEGIN PRIVATE KEY-----\n", input_footer="\n—---END PRIVATE KEY-----"),
 )
-@pytest.mark.parametrize(
-    ("input_footer"),
-    [
-        "\n-----END PRIVATE KEY-----",
-        "",
-        "\n-----END PRIVATE KEY-----\n\n  ",
-        "\n—---END PRIVATE KEY-----",
-    ],
-    ids=["Correct footer", "No footer", "Trailing characters", "Em dash in footer"],
-)
-async def test_auto_fix_key_input(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+async def auto_fix_key_input(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
     input_header: str,
     input_footer: str,
 ) -> None:
@@ -159,8 +193,8 @@ async def test_auto_fix_key_input(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.weatherkit.WeatherKitApiClient.get_availability",
@@ -174,7 +208,6 @@ async def test_auto_fix_key_input(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
-    assert result["data"][CONF_KEY_PEM] == EXAMPLE_CONFIG_DATA[CONF_KEY_PEM]
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["data"][CONF_KEY_PEM]).to_equal(EXAMPLE_CONFIG_DATA[CONF_KEY_PEM])
