@@ -1194,4 +1194,5 @@ dev = [
     "webio-api==0.1.12",
     "whois==0.9.27",
     "wsdiscovery==2.1.2",
+    "zeversolar==0.3.2",
 ]
