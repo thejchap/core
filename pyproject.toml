@@ -1026,6 +1026,7 @@ dev = [
     "igloohome-api==0.1.1",
     "infrared-protocols==1.3.0",
     "iottycloud==0.3.0",
+    "jaraco-abode==6.4.0",
     "kiosker-python-api>=1.2.9",
     "knocki>=0.4.2",
     "krakenex>=2.2.2",
@@ -1288,8 +1289,10 @@ dev = [
     "wsdiscovery==2.1.2",
     "yalexs==9.2.0",
     "yalexs-ble==3.3.0",
+    "yolink-api==0.6.3",
     "yt-dlp[default]==2026.3.17",
     "zamg==0.3.6",
     "zeversolar==0.3.2",
     "zinvolt==0.4.3",
+    "zwave-me-ws==0.4.3",
 ]
