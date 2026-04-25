@@ -2,8 +2,8 @@
 
 from unittest.mock import patch
 
-import pytest
 from triggercmd import TRIGGERcmdConnectionError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.triggercmd.const import CONF_TOKEN, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -11,14 +11,22 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 invalid_token_with_length_100_or_more = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjEyMzQ1Njc4OTBxd2VydHl1aW9wYXNkZiIsImlhdCI6MTcxOTg4MTU4M30.E4T2S4RQfuI2ww74sUkkT-wyTGrV5_VDkgUdae5yo4E"
 invalid_token_id = "1234567890qwertyuiopasdf"
 invalid_token_with_length_100_or_more_and_no_id = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub2lkIjoiMTIzNDU2Nzg5MHF3ZXJ0eXVpb3Bhc2RmIiwiaWF0IjoxNzE5ODgxNTgzfQ.MaJLNWPGCE51Zibhbq-Yz7h3GkUxLurR2eoM2frnO6Y"
 
 
-async def test_full_flow(
-    hass: HomeAssistant,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test config flow happy path."""
     result = await hass.config_entries.flow.async_init(
@@ -26,9 +34,9 @@ async def test_full_flow(
         context={"source": SOURCE_USER},
     )
 
-    assert result["errors"] == {}
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["errors"]).to_equal({})
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with (
         patch(
@@ -44,22 +52,28 @@ async def test_full_flow(
             {CONF_TOKEN: invalid_token_with_length_100_or_more},
         )
 
-    assert result["data"] == {CONF_TOKEN: invalid_token_with_length_100_or_more}
-    assert result["result"].unique_id == invalid_token_id
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["data"]).to_equal({CONF_TOKEN: invalid_token_with_length_100_or_more})
+    expect(result["result"].unique_id).to_equal(invalid_token_id)
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.parametrize(
-    ("test_input", "expected"),
-    [
-        (invalid_token_with_length_100_or_more_and_no_id, {"base": "unknown"}),
-        ("not-a-token", {CONF_TOKEN: "invalid_token"}),
-    ],
+@test.cases(
+    test.case(
+        "no_id",
+        test_input=invalid_token_with_length_100_or_more_and_no_id,
+        expected={"base": "unknown"},
+    ),
+    test.case(
+        "not_a_token",
+        test_input="not-a-token",
+        expected={CONF_TOKEN: "invalid_token"},
+    ),
 )
-async def test_config_flow_user_invalid_token(
-    hass: HomeAssistant,
+async def config_flow_user_invalid_token(
     test_input: str,
     expected: dict,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test the initial step of the config flow."""
     result = await hass.config_entries.flow.async_init(
@@ -81,19 +95,23 @@ async def test_config_flow_user_invalid_token(
             {CONF_TOKEN: test_input},
         )
 
-        assert result["errors"] == expected
-        assert result["step_id"] == "user"
-        assert result["type"] is FlowResultType.FORM
+        expect(result["errors"]).to_equal(expected)
+        expect(result["step_id"]).to_equal("user")
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {CONF_TOKEN: invalid_token_with_length_100_or_more},
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_config_flow_entry_already_configured(hass: HomeAssistant) -> None:
+@test
+async def config_flow_entry_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user input for config_entry that already exists."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -117,11 +135,15 @@ async def test_config_flow_entry_already_configured(hass: HomeAssistant) -> None
             {CONF_TOKEN: invalid_token_with_length_100_or_more},
         )
 
-    assert result["reason"] == "already_configured"
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["reason"]).to_equal("already_configured")
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-async def test_config_flow_connection_error(hass: HomeAssistant) -> None:
+@test
+async def config_flow_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a connection error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -139,10 +161,12 @@ async def test_config_flow_connection_error(hass: HomeAssistant) -> None:
             {CONF_TOKEN: invalid_token_with_length_100_or_more},
         )
 
-    assert result["errors"] == {
-        "base": "cannot_connect",
-    }
-    assert result["type"] is FlowResultType.FORM
+    expect(result["errors"]).to_equal(
+        {
+            "base": "cannot_connect",
+        }
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with (
         patch(
@@ -158,4 +182,4 @@ async def test_config_flow_connection_error(hass: HomeAssistant) -> None:
             {CONF_TOKEN: invalid_token_with_length_100_or_more},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
