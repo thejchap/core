@@ -1063,6 +1063,7 @@ dev = [
     "leaone-ble==0.3.0",
     "lektricowifi==0.1",
     "letpot==0.6.4",
+    "libpyvivotek==0.6.1",
     "librehardwaremonitor-api==1.11.1",
     "librouteros==3.2.0",
     "libsoundtouch==0.8",
