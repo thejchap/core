@@ -3,68 +3,82 @@
 import asyncio
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import data_entry_flow
 from homeassistant.auth import auth_manager_from_config, models as auth_models
 from homeassistant.auth.mfa_modules import auth_mfa_module_from_config
 from homeassistant.core import HomeAssistant
 
 from tests.common import MockUser
+from tests.hass_fixtures import hass
 
 MOCK_CODE = "123456"
 
 
-async def test_validating_mfa(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def validating_mfa(hass: HomeAssistant = Depends(hass)) -> None:
     """Test validating mfa code."""
     totp_auth_module = await auth_mfa_module_from_config(hass, {"type": "totp"})
     await totp_auth_module.async_setup_user("test-user", {})
 
     with patch("pyotp.TOTP.verify", return_value=True):
-        assert await totp_auth_module.async_validate("test-user", {"code": MOCK_CODE})
+        expect(
+            await totp_auth_module.async_validate("test-user", {"code": MOCK_CODE})
+        ).to_be(True)
 
 
-async def test_validating_mfa_invalid_code(hass: HomeAssistant) -> None:
+@test
+async def validating_mfa_invalid_code(hass: HomeAssistant = Depends(hass)) -> None:
     """Test validating an invalid mfa code."""
     totp_auth_module = await auth_mfa_module_from_config(hass, {"type": "totp"})
     await totp_auth_module.async_setup_user("test-user", {})
 
     with patch("pyotp.TOTP.verify", return_value=False):
-        assert (
+        expect(
             await totp_auth_module.async_validate("test-user", {"code": MOCK_CODE})
-            is False
-        )
+        ).to_be(False)
 
 
-async def test_validating_mfa_invalid_user(hass: HomeAssistant) -> None:
+@test
+async def validating_mfa_invalid_user(hass: HomeAssistant = Depends(hass)) -> None:
     """Test validating an mfa code with invalid user."""
     totp_auth_module = await auth_mfa_module_from_config(hass, {"type": "totp"})
     await totp_auth_module.async_setup_user("test-user", {})
 
-    assert (
+    expect(
         await totp_auth_module.async_validate("invalid-user", {"code": MOCK_CODE})
-        is False
-    )
+    ).to_be(False)
 
 
-async def test_setup_depose_user(hass: HomeAssistant) -> None:
+@test
+async def setup_depose_user(hass: HomeAssistant = Depends(hass)) -> None:
     """Test despose user."""
     totp_auth_module = await auth_mfa_module_from_config(hass, {"type": "totp"})
     result = await totp_auth_module.async_setup_user("test-user", {})
-    assert len(totp_auth_module._users) == 1
+    expect(len(totp_auth_module._users)).to_equal(1)
     result2 = await totp_auth_module.async_setup_user("test-user", {})
-    assert len(totp_auth_module._users) == 1
-    assert result != result2
+    expect(len(totp_auth_module._users)).to_equal(1)
+    expect(result != result2).to_be(True)
 
     await totp_auth_module.async_depose_user("test-user")
-    assert len(totp_auth_module._users) == 0
+    expect(len(totp_auth_module._users)).to_equal(0)
 
     result = await totp_auth_module.async_setup_user(
         "test-user2", {"secret": "secret-code"}
     )
-    assert result == "secret-code"
-    assert len(totp_auth_module._users) == 1
+    expect(result).to_equal("secret-code")
+    expect(len(totp_auth_module._users)).to_equal(1)
 
 
-async def test_login_flow_validates_mfa(hass: HomeAssistant) -> None:
+@test
+async def login_flow_validates_mfa(hass: HomeAssistant = Depends(hass)) -> None:
     """Test login flow with mfa enabled."""
     hass.auth = await auth_manager_from_config(
         hass,
@@ -95,44 +109,45 @@ async def test_login_flow_validates_mfa(hass: HomeAssistant) -> None:
     provider = hass.auth.auth_providers[0]
 
     result = await hass.auth.login_flow.async_init((provider.type, provider.id))
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
 
     result = await hass.auth.login_flow.async_configure(
         result["flow_id"], {"username": "incorrect-user", "password": "test-pass"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["errors"]["base"] == "invalid_auth"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal("invalid_auth")
 
     result = await hass.auth.login_flow.async_configure(
         result["flow_id"], {"username": "test-user", "password": "incorrect-pass"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["errors"]["base"] == "invalid_auth"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal("invalid_auth")
 
     result = await hass.auth.login_flow.async_configure(
         result["flow_id"], {"username": "test-user", "password": "test-pass"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "mfa"
-    assert result["data_schema"].schema.get("code") is str
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("mfa")
+    expect(result["data_schema"].schema.get("code") is str).to_be(True)
 
     with patch("pyotp.TOTP.verify", return_value=False):
         result = await hass.auth.login_flow.async_configure(
             result["flow_id"], {"code": "invalid-code"}
         )
-        assert result["type"] == data_entry_flow.FlowResultType.FORM
-        assert result["step_id"] == "mfa"
-        assert result["errors"]["base"] == "invalid_code"
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("mfa")
+        expect(result["errors"]["base"]).to_equal("invalid_code")
 
     with patch("pyotp.TOTP.verify", return_value=True):
         result = await hass.auth.login_flow.async_configure(
             result["flow_id"], {"code": MOCK_CODE}
         )
-        assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-        assert result["data"].id == "mock-id"
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+        expect(result["data"].id).to_equal("mock-id")
 
 
-async def test_race_condition_in_data_loading(hass: HomeAssistant) -> None:
+@test
+async def race_condition_in_data_loading(hass: HomeAssistant = Depends(hass)) -> None:
     """Test race condition in the data loading."""
     counter = 0
 
@@ -147,6 +162,6 @@ async def test_race_condition_in_data_loading(hass: HomeAssistant) -> None:
         task1 = totp_auth_module.async_validate("user", {"code": "value"})
         task2 = totp_auth_module.async_validate("user", {"code": "value"})
         results = await asyncio.gather(task1, task2, return_exceptions=True)
-        assert counter == 1
-        assert results[0] is False
-        assert results[1] is False
+        expect(counter).to_equal(1)
+        expect(results[0]).to_be(False)
+        expect(results[1]).to_be(False)

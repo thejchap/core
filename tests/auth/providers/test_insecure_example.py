@@ -3,24 +3,27 @@
 from unittest.mock import AsyncMock
 import uuid
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.auth import AuthManager, auth_store, models as auth_models
 from homeassistant.auth.providers import insecure_example
 from homeassistant.core import HomeAssistant
 
+from tests.hass_fixtures import hass
 
-@pytest.fixture
-async def store(hass: HomeAssistant) -> auth_store.AuthStore:
+
+@fixture
+async def store(hass: HomeAssistant = Depends(hass)) -> auth_store.AuthStore:
     """Mock store."""
     store = auth_store.AuthStore(hass)
     await store.async_load()
     return store
 
 
-@pytest.fixture
+@fixture
 def provider(
-    hass: HomeAssistant, store: auth_store.AuthStore
+    hass: HomeAssistant = Depends(hass),
+    store: auth_store.AuthStore = Depends(store),
 ) -> insecure_example.ExampleAuthProvider:
     """Mock provider."""
     return insecure_example.ExampleAuthProvider(
@@ -40,32 +43,35 @@ def provider(
     )
 
 
-@pytest.fixture
+@fixture
 def manager(
-    hass: HomeAssistant,
-    store: auth_store.AuthStore,
-    provider: insecure_example.ExampleAuthProvider,
+    hass: HomeAssistant = Depends(hass),
+    store: auth_store.AuthStore = Depends(store),
+    provider: insecure_example.ExampleAuthProvider = Depends(provider),
 ) -> AuthManager:
     """Mock manager."""
     return AuthManager(hass, store, {(provider.type, provider.id): provider}, {})
 
 
-async def test_create_new_credential(
-    manager: AuthManager, provider: insecure_example.ExampleAuthProvider
+@test
+async def create_new_credential(
+    manager: AuthManager = Depends(manager),
+    provider: insecure_example.ExampleAuthProvider = Depends(provider),
 ) -> None:
     """Test that we create a new credential."""
     credentials = await provider.async_get_or_create_credentials(
         {"username": "user-test", "password": "password-test"}
     )
-    assert credentials.is_new is True
+    expect(credentials.is_new).to_be(True)
 
     user = await manager.async_get_or_create_user(credentials)
-    assert user.name == "Test Name"
-    assert user.is_active
+    expect(user.name).to_equal("Test Name")
+    expect(user.is_active).to_be(True)
 
 
-async def test_match_existing_credentials(
-    provider: insecure_example.ExampleAuthProvider,
+@test
+async def match_existing_credentials(
+    provider: insecure_example.ExampleAuthProvider = Depends(provider),
 ) -> None:
     """See if we match existing users."""
     existing = auth_models.Credentials(
@@ -79,26 +85,39 @@ async def test_match_existing_credentials(
     credentials = await provider.async_get_or_create_credentials(
         {"username": "user-test", "password": "password-test"}
     )
-    assert credentials is existing
+    expect(credentials is existing).to_be(True)
 
 
-async def test_verify_username(provider: insecure_example.ExampleAuthProvider) -> None:
+@test
+async def verify_username(
+    provider: insecure_example.ExampleAuthProvider = Depends(provider),
+) -> None:
     """Test we raise if incorrect user specified."""
-    with pytest.raises(insecure_example.InvalidAuthError):
+    try:
         await provider.async_validate_login("non-existing-user", "password-test")
+    except insecure_example.InvalidAuthError:
+        return
+    raise AssertionError("Expected InvalidAuthError to be raised")
 
 
-async def test_verify_password(provider: insecure_example.ExampleAuthProvider) -> None:
+@test
+async def verify_password(
+    provider: insecure_example.ExampleAuthProvider = Depends(provider),
+) -> None:
     """Test we raise if incorrect user specified."""
-    with pytest.raises(insecure_example.InvalidAuthError):
+    try:
         await provider.async_validate_login("user-test", "incorrect-password")
+    except insecure_example.InvalidAuthError:
+        return
+    raise AssertionError("Expected InvalidAuthError to be raised")
 
 
-async def test_utf_8_username_password(
-    provider: insecure_example.ExampleAuthProvider,
+@test
+async def utf_8_username_password(
+    provider: insecure_example.ExampleAuthProvider = Depends(provider),
 ) -> None:
     """Test that we create a new credential."""
     credentials = await provider.async_get_or_create_credentials(
         {"username": "🎉", "password": "😎"}
     )
-    assert credentials.is_new is True
+    expect(credentials.is_new).to_be(True)

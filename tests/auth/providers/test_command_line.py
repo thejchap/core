@@ -4,7 +4,7 @@ import os
 from unittest.mock import AsyncMock
 import uuid
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import data_entry_flow
 from homeassistant.auth import AuthManager, auth_store, models as auth_models
@@ -12,18 +12,21 @@ from homeassistant.auth.providers import command_line
 from homeassistant.const import CONF_TYPE
 from homeassistant.core import HomeAssistant
 
+from tests.hass_fixtures import hass
 
-@pytest.fixture
-async def store(hass: HomeAssistant) -> auth_store.AuthStore:
+
+@fixture
+async def store(hass: HomeAssistant = Depends(hass)) -> auth_store.AuthStore:
     """Mock store."""
     store = auth_store.AuthStore(hass)
     await store.async_load()
     return store
 
 
-@pytest.fixture
+@fixture
 def provider(
-    hass: HomeAssistant, store: auth_store.AuthStore
+    hass: HomeAssistant = Depends(hass),
+    store: auth_store.AuthStore = Depends(store),
 ) -> command_line.CommandLineAuthProvider:
     """Mock provider."""
     return command_line.CommandLineAuthProvider(
@@ -40,34 +43,37 @@ def provider(
     )
 
 
-@pytest.fixture
+@fixture
 def manager(
-    hass: HomeAssistant,
-    store: auth_store.AuthStore,
-    provider: command_line.CommandLineAuthProvider,
+    hass: HomeAssistant = Depends(hass),
+    store: auth_store.AuthStore = Depends(store),
+    provider: command_line.CommandLineAuthProvider = Depends(provider),
 ) -> AuthManager:
     """Mock manager."""
     return AuthManager(hass, store, {(provider.type, provider.id): provider}, {})
 
 
-async def test_create_new_credential(
-    manager: AuthManager, provider: command_line.CommandLineAuthProvider
+@test
+async def create_new_credential(
+    manager: AuthManager = Depends(manager),
+    provider: command_line.CommandLineAuthProvider = Depends(provider),
 ) -> None:
     """Test that we create a new credential."""
     credentials = await provider.async_get_or_create_credentials(
         {"username": "good-user", "password": "good-pass"}
     )
-    assert credentials.is_new is True
+    expect(credentials.is_new).to_be(True)
 
     user = await manager.async_get_or_create_user(credentials)
-    assert user.is_active
-    assert len(user.groups) == 1
-    assert user.groups[0].id == "system-admin"
-    assert not user.local_only
+    expect(user.is_active).to_be(True)
+    expect(len(user.groups)).to_equal(1)
+    expect(user.groups[0].id).to_equal("system-admin")
+    expect(user.local_only).to_be(False)
 
 
-async def test_match_existing_credentials(
-    provider: command_line.CommandLineAuthProvider,
+@test
+async def match_existing_credentials(
+    provider: command_line.CommandLineAuthProvider = Depends(provider),
 ) -> None:
     """See if we match existing users."""
     existing = auth_models.Credentials(
@@ -81,28 +87,45 @@ async def test_match_existing_credentials(
     credentials = await provider.async_get_or_create_credentials(
         {"username": "good-user", "password": "irrelevant"}
     )
-    assert credentials is existing
+    expect(credentials is existing).to_be(True)
 
 
-async def test_invalid_username(provider: command_line.CommandLineAuthProvider) -> None:
+@test
+async def invalid_username(
+    provider: command_line.CommandLineAuthProvider = Depends(provider),
+) -> None:
     """Test we raise if incorrect user specified."""
-    with pytest.raises(command_line.InvalidAuthError):
+    try:
         await provider.async_validate_login("bad-user", "good-pass")
+    except command_line.InvalidAuthError:
+        return
+    raise AssertionError("Expected InvalidAuthError to be raised")
 
 
-async def test_invalid_password(provider: command_line.CommandLineAuthProvider) -> None:
+@test
+async def invalid_password(
+    provider: command_line.CommandLineAuthProvider = Depends(provider),
+) -> None:
     """Test we raise if incorrect password specified."""
-    with pytest.raises(command_line.InvalidAuthError):
+    try:
         await provider.async_validate_login("good-user", "bad-pass")
+    except command_line.InvalidAuthError:
+        return
+    raise AssertionError("Expected InvalidAuthError to be raised")
 
 
-async def test_good_auth(provider: command_line.CommandLineAuthProvider) -> None:
+@test
+async def good_auth(
+    provider: command_line.CommandLineAuthProvider = Depends(provider),
+) -> None:
     """Test nothing is raised with good credentials."""
     await provider.async_validate_login("good-user", "good-pass")
 
 
-async def test_good_auth_with_meta(
-    manager: AuthManager, provider: command_line.CommandLineAuthProvider
+@test
+async def good_auth_with_meta(
+    manager: AuthManager = Depends(manager),
+    provider: command_line.CommandLineAuthProvider = Depends(provider),
 ) -> None:
     """Test metadata is added upon successful authentication."""
     provider.config[command_line.CONF_ARGS] = ["--with-meta"]
@@ -113,52 +136,57 @@ async def test_good_auth_with_meta(
     credentials = await provider.async_get_or_create_credentials(
         {"username": "good-user", "password": "good-pass"}
     )
-    assert credentials.is_new is True
+    expect(credentials.is_new).to_be(True)
 
     user = await manager.async_get_or_create_user(credentials)
-    assert user.name == "Bob"
-    assert user.is_active
-    assert len(user.groups) == 1
-    assert user.groups[0].id == "system-users"
-    assert user.local_only
+    expect(user.name).to_equal("Bob")
+    expect(user.is_active).to_be(True)
+    expect(len(user.groups)).to_equal(1)
+    expect(user.groups[0].id).to_equal("system-users")
+    expect(user.local_only).to_be(True)
 
 
-async def test_utf_8_username_password(
-    provider: command_line.CommandLineAuthProvider,
+@test
+async def utf_8_username_password(
+    provider: command_line.CommandLineAuthProvider = Depends(provider),
 ) -> None:
     """Test that we create a new credential."""
     credentials = await provider.async_get_or_create_credentials(
         {"username": "ßßß", "password": "äöü"}
     )
-    assert credentials.is_new is True
+    expect(credentials.is_new).to_be(True)
 
 
-async def test_login_flow_validates(
-    provider: command_line.CommandLineAuthProvider,
+@test
+async def login_flow_validates(
+    provider: command_line.CommandLineAuthProvider = Depends(provider),
 ) -> None:
     """Test login flow."""
     flow = await provider.async_login_flow({})
     result = await flow.async_step_init()
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
 
     result = await flow.async_step_init(
         {"username": "bad-user", "password": "bad-pass"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["errors"]["base"] == "invalid_auth"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal("invalid_auth")
 
     result = await flow.async_step_init(
         {"username": "good-user", "password": "good-pass"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"]["username"] == "good-user"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"]["username"]).to_equal("good-user")
 
 
-async def test_strip_username(provider: command_line.CommandLineAuthProvider) -> None:
+@test
+async def strip_username(
+    provider: command_line.CommandLineAuthProvider = Depends(provider),
+) -> None:
     """Test authentication works with username with whitespace around."""
     flow = await provider.async_login_flow({})
     result = await flow.async_step_init(
         {"username": "\t\ngood-user ", "password": "good-pass"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"]["username"] == "good-user"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["data"]["username"]).to_equal("good-user")

@@ -1,5 +1,7 @@
 """Test system policies."""
 
+from tryke import expect, test
+
 from homeassistant.auth.permissions import (
     POLICY_SCHEMA,
     PolicyPermissions,
@@ -7,34 +9,34 @@ from homeassistant.auth.permissions import (
 )
 
 
-def test_admin_policy() -> None:
+@test
+def admin_policy() -> None:
     """Test admin policy works."""
-    # Make sure it's valid
     POLICY_SCHEMA(system_policies.ADMIN_POLICY)
 
     perms = PolicyPermissions(system_policies.ADMIN_POLICY, None)
-    assert perms.check_entity("light.kitchen", "read")
-    assert perms.check_entity("light.kitchen", "control")
-    assert perms.check_entity("light.kitchen", "edit")
+    expect(perms.check_entity("light.kitchen", "read")).to_be(True)
+    expect(perms.check_entity("light.kitchen", "control")).to_be(True)
+    expect(perms.check_entity("light.kitchen", "edit")).to_be(True)
 
 
-def test_user_policy() -> None:
+@test
+def user_policy() -> None:
     """Test user policy works."""
-    # Make sure it's valid
     POLICY_SCHEMA(system_policies.USER_POLICY)
 
     perms = PolicyPermissions(system_policies.USER_POLICY, None)
-    assert perms.check_entity("light.kitchen", "read")
-    assert perms.check_entity("light.kitchen", "control")
-    assert perms.check_entity("light.kitchen", "edit")
+    expect(perms.check_entity("light.kitchen", "read")).to_be(True)
+    expect(perms.check_entity("light.kitchen", "control")).to_be(True)
+    expect(perms.check_entity("light.kitchen", "edit")).to_be(True)
 
 
-def test_read_only_policy() -> None:
+@test
+def read_only_policy() -> None:
     """Test read only policy works."""
-    # Make sure it's valid
     POLICY_SCHEMA(system_policies.READ_ONLY_POLICY)
 
     perms = PolicyPermissions(system_policies.READ_ONLY_POLICY, None)
-    assert perms.check_entity("light.kitchen", "read")
-    assert not perms.check_entity("light.kitchen", "control")
-    assert not perms.check_entity("light.kitchen", "edit")
+    expect(perms.check_entity("light.kitchen", "read")).to_be(True)
+    expect(perms.check_entity("light.kitchen", "control")).to_be(False)
+    expect(perms.check_entity("light.kitchen", "edit")).to_be(False)
