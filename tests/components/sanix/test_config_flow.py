@@ -1,9 +1,11 @@
 """Define tests for the Sanix config flow."""
 
-from unittest.mock import MagicMock
+from __future__ import annotations
 
-import pytest
+from unittest.mock import AsyncMock, MagicMock
+
 from sanix.exceptions import SanixException, SanixInvalidAuthException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.sanix.const import (
     CONF_SERIAL_NUMBER,
@@ -15,16 +17,27 @@ from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_sanix, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
 
 CONFIG = {CONF_SERIAL_NUMBER: "1810088", CONF_TOKEN: "75868dcf8ea4c64e2063f6c4e70132d2"}
 
 
-async def test_create_entry(
-    hass: HomeAssistant, mock_sanix: MagicMock, mock_setup_entry
+@fixture
+def _trigger_executor() -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def create_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    sanix: MagicMock = Depends(mock_sanix),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test that the user step works."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -35,46 +48,53 @@ async def test_create_entry(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == MANUFACTURER
-    assert result["data"] == {
-        CONF_SERIAL_NUMBER: "1810088",
-        CONF_TOKEN: "75868dcf8ea4c64e2063f6c4e70132d2",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(MANUFACTURER)
+    expect(result["data"]).to_equal(
+        {
+            CONF_SERIAL_NUMBER: "1810088",
+            CONF_TOKEN: "75868dcf8ea4c64e2063f6c4e70132d2",
+        }
+    )
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (SanixInvalidAuthException("Invalid auth"), "invalid_auth"),
-        (SanixException("Something went wrong"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        exception=SanixInvalidAuthException("Invalid auth"),
+        error="invalid_auth",
+    ),
+    test.case(
+        "unknown",
+        exception=SanixException("Something went wrong"),
+        error="unknown",
+    ),
 )
-async def test_form_exceptions(
-    hass: HomeAssistant,
+async def form_exceptions(
     exception: Exception,
     error: str,
-    mock_sanix: MagicMock,
-    mock_setup_entry,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    sanix: MagicMock = Depends(mock_sanix),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test Form exceptions."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    mock_sanix.return_value.fetch_data.side_effect = exception
+    sanix.return_value.fetch_data.side_effect = exception
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         CONFIG,
     )
 
-    mock_sanix.return_value.fetch_data.side_effect = None
+    sanix.return_value.fetch_data.side_effect = None
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -82,21 +102,26 @@ async def test_form_exceptions(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Sanix"
-    assert result["data"] == {
-        CONF_SERIAL_NUMBER: "1810088",
-        CONF_TOKEN: "75868dcf8ea4c64e2063f6c4e70132d2",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Sanix")
+    expect(result["data"]).to_equal(
+        {
+            CONF_SERIAL_NUMBER: "1810088",
+            CONF_TOKEN: "75868dcf8ea4c64e2063f6c4e70132d2",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_duplicate_error(
-    hass: HomeAssistant, mock_sanix: MagicMock, mock_config_entry: MockConfigEntry
+@test
+async def duplicate_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    sanix: MagicMock = Depends(mock_sanix),
+    entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that errors are shown when duplicates are added."""
-
-    mock_config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -108,5 +133,5 @@ async def test_duplicate_error(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
