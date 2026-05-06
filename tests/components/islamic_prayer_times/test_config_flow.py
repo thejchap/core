@@ -1,6 +1,8 @@
 """Tests for Islamic Prayer Times config flow."""
 
-import pytest
+from unittest.mock import AsyncMock
+
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.islamic_prayer_times.const import (
@@ -13,31 +15,48 @@ from homeassistant.components.islamic_prayer_times.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_setup_entry
+
 from . import MOCK_CONFIG, MOCK_USER_INPUT
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-async def test_flow_works(hass: HomeAssistant) -> None:
+@test
+async def flow_works(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user config."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=MOCK_USER_INPUT
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Home"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Home")
 
 
-async def test_options(hass: HomeAssistant) -> None:
+@test
+async def options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test updating options."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -49,8 +68,8 @@ async def test_options(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -61,14 +80,18 @@ async def test_options(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_CALC_METHOD] == "makkah"
-    assert result["data"][CONF_LAT_ADJ_METHOD] == "one_seventh"
-    assert result["data"][CONF_MIDNIGHT_MODE] == "standard"
-    assert result["data"][CONF_SCHOOL] == "hanafi"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_CALC_METHOD]).to_equal("makkah")
+    expect(result["data"][CONF_LAT_ADJ_METHOD]).to_equal("one_seventh")
+    expect(result["data"][CONF_MIDNIGHT_MODE]).to_equal("standard")
+    expect(result["data"][CONF_SCHOOL]).to_equal("hanafi")
 
 
-async def test_integration_already_configured(hass: HomeAssistant) -> None:
+@test
+async def integration_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test integration is already configured."""
     entry = MockConfigEntry(
         domain=DOMAIN, data=MOCK_CONFIG, options={}, unique_id="12.34-23.45"
@@ -77,13 +100,13 @@ async def test_integration_already_configured(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=MOCK_USER_INPUT
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

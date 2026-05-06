@@ -1,9 +1,12 @@
 """Test the Pure Energie config flow."""
 
+from __future__ import annotations
+
 from ipaddress import ip_address
 from unittest.mock import MagicMock
 
 from gridnet import GridNetConnectionError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.pure_energie.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF
@@ -12,11 +15,28 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
+from ._fixtures import (
+    mock_async_zeroconf as mock_async_zeroconf_fx,
+    mock_pure_energie_config_flow as mock_pure_energie_config_flow_fx,
+    mock_setup_entry as mock_setup_entry_fx,
+)
 
-async def test_full_user_flow_implementation(
-    hass: HomeAssistant,
-    mock_pure_energie_config_flow: MagicMock,
-    mock_setup_entry: None,
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _zc: MagicMock = Depends(mock_async_zeroconf_fx),
+) -> None:
+    """Wire mock_network + zeroconf for every test."""
+
+
+@test
+async def full_user_flow_implementation(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_client: MagicMock = Depends(mock_pure_energie_config_flow_fx),
+    _setup: None = Depends(mock_setup_entry_fx),
 ) -> None:
     """Test the full manual user flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
@@ -24,27 +44,28 @@ async def test_full_user_flow_implementation(
         context={"source": SOURCE_USER},
     )
 
-    assert result.get("step_id") == "user"
-    assert result.get("type") is FlowResultType.FORM
+    expect(result.get("step_id")).to_equal("user")
+    expect(result.get("type")).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_HOST: "192.168.1.123"}
     )
 
-    assert result.get("title") == "Pure Energie Meter"
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert "data" in result
-    assert result["data"][CONF_HOST] == "192.168.1.123"
-    assert "result" in result
-    assert result["result"].unique_id == "aabbccddeeff"
+    expect(result.get("title")).to_equal("Pure Energie Meter")
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect("data" in result).to_be(True)
+    expect(result["data"][CONF_HOST]).to_equal("192.168.1.123")
+    expect("result" in result).to_be(True)
+    expect(result["result"].unique_id).to_equal("aabbccddeeff")
 
 
-async def test_full_zeroconf_flow_implementationn(
-    hass: HomeAssistant,
-    mock_pure_energie_config_flow: MagicMock,
-    mock_setup_entry: None,
+@test
+async def full_zeroconf_flow_implementation(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_client: MagicMock = Depends(mock_pure_energie_config_flow_fx),
+    _setup: None = Depends(mock_setup_entry_fx),
 ) -> None:
-    """Test the full manual user flow from start to finish."""
+    """Test the full zeroconf flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_ZEROCONF},
@@ -59,28 +80,33 @@ async def test_full_zeroconf_flow_implementationn(
         ),
     )
 
-    assert result.get("description_placeholders") == {
-        "model": "SBWF3102",
-        CONF_NAME: "Pure Energie Meter",
-    }
-    assert result.get("step_id") == "zeroconf_confirm"
-    assert result.get("type") is FlowResultType.FORM
+    expect(result.get("description_placeholders")).to_equal(
+        {
+            "model": "SBWF3102",
+            CONF_NAME: "Pure Energie Meter",
+        }
+    )
+    expect(result.get("step_id")).to_equal("zeroconf_confirm")
+    expect(result.get("type")).to_be(FlowResultType.FORM)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result2.get("title") == "Pure Energie Meter"
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
+    expect(result2.get("title")).to_equal("Pure Energie Meter")
+    expect(result2.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect("data" in result2).to_be(True)
+    expect(result2["data"][CONF_HOST]).to_equal("192.168.1.123")
+    expect("result" in result2).to_be(True)
+    expect(result2["result"].unique_id).to_equal("aabbccddeeff")
 
-    assert "data" in result2
-    assert result2["data"][CONF_HOST] == "192.168.1.123"
-    assert "result" in result2
-    assert result2["result"].unique_id == "aabbccddeeff"
 
-
-async def test_connection_error(
-    hass: HomeAssistant, mock_pure_energie_config_flow: MagicMock
+@test
+async def connection_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_pure_energie_config_flow: MagicMock = Depends(
+        mock_pure_energie_config_flow_fx
+    ),
 ) -> None:
     """Test we show user form on Pure Energie connection error."""
     mock_pure_energie_config_flow.device.side_effect = GridNetConnectionError
@@ -90,13 +116,17 @@ async def test_connection_error(
         data={CONF_HOST: "example.com"},
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
-    assert result.get("errors") == {"base": "cannot_connect"}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
+    expect(result.get("errors")).to_equal({"base": "cannot_connect"})
 
 
-async def test_zeroconf_connection_error(
-    hass: HomeAssistant, mock_pure_energie_config_flow: MagicMock
+@test
+async def zeroconf_connection_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_pure_energie_config_flow: MagicMock = Depends(
+        mock_pure_energie_config_flow_fx
+    ),
 ) -> None:
     """Test we abort zeroconf flow on Pure Energie connection error."""
     mock_pure_energie_config_flow.device.side_effect = GridNetConnectionError
@@ -115,5 +145,5 @@ async def test_zeroconf_connection_error(
         ),
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "cannot_connect"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("cannot_connect")
