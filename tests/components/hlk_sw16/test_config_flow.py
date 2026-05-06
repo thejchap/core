@@ -3,10 +3,14 @@
 import asyncio
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.hlk_sw16.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
 class MockSW16Client:
@@ -49,14 +53,22 @@ async def create_mock_hlk_sw16_connection(fail):
     return client
 
 
-async def test_form(hass: HomeAssistant) -> None:
-    """Test we get the form."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     conf = {
         "host": "127.0.0.1",
@@ -84,14 +96,16 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "127.0.0.1:8080"
-    assert result2["data"] == {
-        "host": "127.0.0.1",
-        "port": 8080,
-    }
-    assert len(mock_setup.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("127.0.0.1:8080")
+    expect(result2["data"]).to_equal(
+        {
+            "host": "127.0.0.1",
+            "port": 8080,
+        }
+    )
+    expect(len(mock_setup.mock_calls)).to_equal(1)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
     mock_hlk_sw16_connection = await create_mock_hlk_sw16_connection(False)
 
@@ -102,26 +116,29 @@ async def test_form(hass: HomeAssistant) -> None:
         result3 = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({})
 
     result4 = await hass.config_entries.flow.async_configure(
         result3["flow_id"],
         conf,
     )
 
-    assert result4["type"] is FlowResultType.ABORT
-    assert result4["reason"] == "already_configured"
+    expect(result4["type"]).to_be(FlowResultType.ABORT)
+    expect(result4["reason"]).to_equal("already_configured")
 
 
-async def test_import(hass: HomeAssistant) -> None:
+@test
+async def form_import(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_IMPORT}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     conf = {
         "host": "127.0.0.1",
@@ -149,17 +166,23 @@ async def test_import(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "127.0.0.1:8080"
-    assert result2["data"] == {
-        "host": "127.0.0.1",
-        "port": 8080,
-    }
-    assert len(mock_setup.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("127.0.0.1:8080")
+    expect(result2["data"]).to_equal(
+        {
+            "host": "127.0.0.1",
+            "port": 8080,
+        }
+    )
+    expect(len(mock_setup.mock_calls)).to_equal(1)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_data(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_data(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -181,11 +204,15 @@ async def test_form_invalid_data(hass: HomeAssistant) -> None:
             conf,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -206,5 +233,5 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             conf,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
