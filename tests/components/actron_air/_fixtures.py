@@ -9,12 +9,16 @@ from actron_neo_api.models.auth import ActronAirDeviceCode, ActronAirUserInfo
 from actron_neo_api.models.settings import ActronAirUserAirconSettings
 from actron_neo_api.models.status import ActronAirStatus
 from actron_neo_api.models.system import ActronAirACSystem, ActronAirSystemInfo
-from tryke import fixture
+from tryke import Depends, fixture
 
 from homeassistant.components.actron_air.const import DOMAIN
-from homeassistant.const import CONF_API_TOKEN
+from homeassistant.const import CONF_API_TOKEN, Platform
+from homeassistant.core import HomeAssistant
+
+from . import setup_integration
 
 from tests.common import MockConfigEntry, load_fixture
+from tests.hass_fixtures import hass as hass_fixture
 
 
 @fixture
@@ -110,3 +114,38 @@ def mock_setup_entry() -> Generator[AsyncMock]:
         "homeassistant.components.actron_air.async_setup_entry", return_value=True
     ) as mock_setup:
         yield mock_setup
+
+
+@fixture
+def mock_zone() -> MagicMock:
+    """Return a mocked zone."""
+    zone = MagicMock()
+    zone.exists = True
+    zone.zone_id = 0
+    zone.zone_name = "Test Zone"
+    zone.title = "Living Room"
+    zone.live_temp_c = 22.0
+    zone.current_setpoint = 24.0
+    zone.is_active = True
+    zone.hvac_mode = "COOL"
+    zone.humidity = 50.0
+    zone.min_temp = 16
+    zone.max_temp = 30
+    zone.set_temperature = AsyncMock()
+    zone.enable = AsyncMock()
+    return zone
+
+
+@fixture
+async def init_integration_with_zone(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_actron_api: AsyncMock = Depends(mock_actron_api),
+    mock_zone: MagicMock = Depends(mock_zone),
+) -> None:
+    """Set up the Actron Air integration with zone for testing."""
+    status = mock_actron_api.state_manager.get_status.return_value
+    status.remote_zone_info = [mock_zone]
+
+    with patch("homeassistant.components.actron_air.PLATFORMS", [Platform.CLIMATE]):
+        await setup_integration(hass, mock_config_entry)
