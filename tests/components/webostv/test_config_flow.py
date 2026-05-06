@@ -1,7 +1,9 @@
 """Test the LG webOS TV config flow."""
 
+from unittest.mock import AsyncMock, Mock
+
 from aiowebostv import WebOsTvPairError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.webostv.const import (
@@ -21,6 +23,7 @@ from homeassistant.helpers.service_info.ssdp import (
 )
 
 from . import setup_webostv
+from ._fixtures import client, mock_setup_entry
 from .const import (
     CLIENT_KEY,
     FAKE_UUID,
@@ -31,7 +34,8 @@ from .const import (
     TV_NAME,
 )
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 
 MOCK_USER_CONFIG = {CONF_HOST: HOST}
 
@@ -46,7 +50,20 @@ MOCK_DISCOVERY_INFO = SsdpServiceInfo(
 )
 
 
-async def test_form(hass: HomeAssistant, client) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+) -> None:
     """Test successful user flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -55,22 +72,27 @@ async def test_form(hass: HomeAssistant, client) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TV_NAME
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TV_NAME)
     config_entry = result["result"]
-    assert config_entry.unique_id == FAKE_UUID
+    expect(config_entry.unique_id).to_equal(FAKE_UUID)
 
 
-async def test_form_no_model_name(hass: HomeAssistant, client) -> None:
+@test
+async def form_no_model_name(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+) -> None:
     """Test successful user flow without model name."""
-    client.tv_info.system = {}
+    web_client.tv_info.system = {}
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: config_entries.SOURCE_USER},
@@ -78,99 +100,118 @@ async def test_form_no_model_name(hass: HomeAssistant, client) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_NAME
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_NAME)
     config_entry = result["result"]
-    assert config_entry.unique_id == FAKE_UUID
+    expect(config_entry.unique_id).to_equal(FAKE_UUID)
 
 
-@pytest.mark.parametrize(
-    ("apps", "inputs"),
-    [
-        # Live TV in apps (default)
-        (MOCK_APPS, MOCK_INPUTS),
-        # Live TV in inputs
-        (
-            {},
-            {
-                **MOCK_INPUTS,
-                "livetv": {"label": "Live TV", "id": "livetv", "appId": LIVE_TV_APP_ID},
-            },
-        ),
-        # Live TV not found
-        ({}, MOCK_INPUTS),
-    ],
+@test.cases(
+    test.case(
+        "live_tv_in_apps_default",
+        apps=MOCK_APPS,
+        inputs=MOCK_INPUTS,
+    ),
+    test.case(
+        "live_tv_in_inputs",
+        apps={},
+        inputs={
+            **MOCK_INPUTS,
+            "livetv": {"label": "Live TV", "id": "livetv", "appId": LIVE_TV_APP_ID},
+        },
+    ),
+    test.case(
+        "live_tv_not_found",
+        apps={},
+        inputs=MOCK_INPUTS,
+    ),
 )
-async def test_options_flow_live_tv_in_apps(
-    hass: HomeAssistant, client, apps, inputs
+async def options_flow_live_tv_in_apps(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+    *,
+    apps: dict,
+    inputs: dict,
 ) -> None:
     """Test options config flow Live TV found in apps."""
-    client.tv_state.apps = apps
-    client.tv_state.inputs = inputs
+    web_client.tv_state.apps = apps
+    web_client.tv_state.inputs = inputs
     entry = await setup_webostv(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_SOURCES: ["Live TV", "Input01", "Input02"]},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_SOURCES] == ["Live TV", "Input01", "Input02"]
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_SOURCES]).to_equal(["Live TV", "Input01", "Input02"])
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (WebOsTvPairError, "error_pairing"),
-        (ConnectionResetError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("pair_error", side_effect=WebOsTvPairError, error="error_pairing"),
+    test.case(
+        "connection_reset",
+        side_effect=ConnectionResetError,
+        error="cannot_connect",
+    ),
 )
-async def test_options_flow_errors(
-    hass: HomeAssistant, client, side_effect, error
+async def options_flow_errors(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+    *,
+    side_effect: type[Exception],
+    error: str,
 ) -> None:
     """Test options config flow errors."""
     entry = await setup_webostv(hass)
 
-    client.connect.side_effect = side_effect
+    web_client.connect.side_effect = side_effect
     result = await hass.config_entries.options.async_init(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
     # recover
-    client.connect.side_effect = None
+    web_client.connect.side_effect = None
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input=None,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result3 = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_SOURCES: ["Input01", "Input02"]},
     )
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["data"][CONF_SOURCES] == ["Input01", "Input02"]
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["data"][CONF_SOURCES]).to_equal(["Input01", "Input02"])
 
 
-async def test_form_cannot_connect(hass: HomeAssistant, client) -> None:
+@test
+async def form_cannot_connect(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -178,25 +219,30 @@ async def test_form_cannot_connect(hass: HomeAssistant, client) -> None:
         data=MOCK_USER_CONFIG,
     )
 
-    client.connect.side_effect = ConnectionResetError
+    web_client.connect.side_effect = ConnectionResetError
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     # recover
-    client.connect.side_effect = None
+    web_client.connect.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TV_NAME
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TV_NAME)
 
 
-async def test_form_pairexception(hass: HomeAssistant, client) -> None:
+@test
+async def form_pairexception(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+) -> None:
     """Test pairing exception."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -204,25 +250,30 @@ async def test_form_pairexception(hass: HomeAssistant, client) -> None:
         data=MOCK_USER_CONFIG,
     )
 
-    client.connect.side_effect = WebOsTvPairError
+    web_client.connect.side_effect = WebOsTvPairError
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "error_pairing"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "error_pairing"})
 
     # recover
-    client.connect.side_effect = None
+    web_client.connect.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TV_NAME
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TV_NAME)
 
 
-async def test_entry_already_configured(hass: HomeAssistant, client) -> None:
+@test
+async def entry_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+) -> None:
     """Test entry already configured."""
     await setup_webostv(hass)
 
@@ -232,31 +283,41 @@ async def test_entry_already_configured(hass: HomeAssistant, client) -> None:
         data=MOCK_USER_CONFIG,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_form_ssdp(hass: HomeAssistant, client) -> None:
+@test
+async def form_ssdp(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+) -> None:
     """Test that the ssdp confirmation form is served."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_SSDP}, data=MOCK_DISCOVERY_INFO
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TV_NAME
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TV_NAME)
     config_entry = result["result"]
-    assert config_entry.unique_id == FAKE_UUID
+    expect(config_entry.unique_id).to_equal(FAKE_UUID)
 
 
-async def test_ssdp_in_progress(hass: HomeAssistant, client) -> None:
+@test
+async def ssdp_in_progress(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+) -> None:
     """Test abort if ssdp paring is already in progress."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -265,24 +326,28 @@ async def test_ssdp_in_progress(hass: HomeAssistant, client) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
-    # Start another ssdp flow to make sure it aborts as already in progress
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_SSDP}, data=MOCK_DISCOVERY_INFO
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_in_progress"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_in_progress")
 
 
-async def test_form_abort_uuid_configured(hass: HomeAssistant, client) -> None:
+@test
+async def form_abort_uuid_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+) -> None:
     """Test abort if uuid is already configured, verify host update."""
     entry = await setup_webostv(hass, MOCK_DISCOVERY_INFO.upnp[ATTR_UPNP_UDN][5:])
-    assert entry.unique_id == MOCK_DISCOVERY_INFO.upnp[ATTR_UPNP_UDN][5:]
-    assert entry.data[CONF_HOST] == HOST
+    expect(entry.unique_id).to_equal(MOCK_DISCOVERY_INFO.upnp[ATTR_UPNP_UDN][5:])
+    expect(entry.data[CONF_HOST]).to_equal(HOST)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -290,12 +355,11 @@ async def test_form_abort_uuid_configured(hass: HomeAssistant, client) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     user_config = {CONF_HOST: "new_host"}
 
-    # Start another flow to make sure it aborts and updates host
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: config_entries.SOURCE_USER},
@@ -303,147 +367,176 @@ async def test_form_abort_uuid_configured(hass: HomeAssistant, client) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "pairing"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("pairing")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert entry.data[CONF_HOST] == "new_host"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(entry.data[CONF_HOST]).to_equal("new_host")
 
 
-async def test_reauth_successful(hass: HomeAssistant, client) -> None:
+@test
+async def reauth_successful(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+) -> None:
     """Test that the reauthorization is successful."""
     entry = await setup_webostv(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert entry.data[CONF_CLIENT_SECRET] == CLIENT_KEY
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(entry.data[CONF_CLIENT_SECRET]).to_equal(CLIENT_KEY)
 
-    client.client_key = "new_key"
+    web_client.client_key = "new_key"
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.data[CONF_CLIENT_SECRET] == "new_key"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.data[CONF_CLIENT_SECRET]).to_equal("new_key")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (WebOsTvPairError, "error_pairing"),
-        (ConnectionResetError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("pair_error", side_effect=WebOsTvPairError, error="error_pairing"),
+    test.case(
+        "connection_reset",
+        side_effect=ConnectionResetError,
+        error="cannot_connect",
+    ),
 )
-async def test_reauth_errors(hass: HomeAssistant, client, side_effect, error) -> None:
+async def reauth_errors(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+    *,
+    side_effect: type[Exception],
+    error: str,
+) -> None:
     """Test reauthorization errors."""
     entry = await setup_webostv(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    client.connect.side_effect = side_effect()
+    web_client.connect.side_effect = side_effect()
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    client.connect.side_effect = None
+    web_client.connect.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-async def test_reconfigure_successful(hass: HomeAssistant, client) -> None:
+@test
+async def reconfigure_successful(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+) -> None:
     """Test that the reconfigure is successful."""
     entry = await setup_webostv(hass)
 
     result = await entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "new_host"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert entry.data[CONF_HOST] == "new_host"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(entry.data[CONF_HOST]).to_equal("new_host")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (WebOsTvPairError, "error_pairing"),
-        (ConnectionResetError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("pair_error", side_effect=WebOsTvPairError, error="error_pairing"),
+    test.case(
+        "connection_reset",
+        side_effect=ConnectionResetError,
+        error="cannot_connect",
+    ),
 )
-async def test_reconfigure_errors(
-    hass: HomeAssistant, client, side_effect, error
+async def reconfigure_errors(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+    *,
+    side_effect: type[Exception],
+    error: str,
 ) -> None:
     """Test reconfigure errors."""
     entry = await setup_webostv(hass)
 
     result = await entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
-    client.connect.side_effect = side_effect
+    web_client.connect.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "new_host"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    client.connect.side_effect = None
+    web_client.connect.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "new_host"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
 
-async def test_reconfigure_wrong_device(hass: HomeAssistant, client) -> None:
+@test
+async def reconfigure_wrong_device(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    web_client: Mock = Depends(client),
+) -> None:
     """Test abort if reconfigure host is wrong webOS TV device."""
     entry = await setup_webostv(hass)
 
     result = await entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
-    client.tv_info.hello = {"deviceUUID": "wrong_uuid"}
+    web_client.tv_info.hello = {"deviceUUID": "wrong_uuid"}
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "new_host"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "wrong_device"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("wrong_device")
