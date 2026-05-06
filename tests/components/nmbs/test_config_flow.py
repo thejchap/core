@@ -3,6 +3,8 @@
 from typing import Any
 from unittest.mock import AsyncMock
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.nmbs.config_flow import CONF_EXCLUDE_VIAS
 from homeassistant.components.nmbs.const import (
@@ -14,19 +16,10 @@ from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_nmbs_client, mock_setup_entry
+
 from tests.common import MockConfigEntry
-
-DUMMY_DATA_IMPORT: dict[str, Any] = {
-    "STAT_BRUSSELS_NORTH": "Brussel-Noord/Bruxelles-Nord",
-    "STAT_BRUSSELS_CENTRAL": "Brussel-Centraal/Bruxelles-Central",
-    "STAT_BRUSSELS_SOUTH": "Brussel-Zuid/Bruxelles-Midi",
-}
-
-DUMMY_DATA_ALTERNATIVE_IMPORT: dict[str, Any] = {
-    "STAT_BRUSSELS_NORTH": "Brussels-North",
-    "STAT_BRUSSELS_CENTRAL": "Brussels-Central",
-    "STAT_BRUSSELS_SOUTH": "Brussels-South/Brussels-Midi",
-}
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 DUMMY_DATA: dict[str, Any] = {
     "STAT_BRUSSELS_NORTH": "BE.NMBS.008812005",
@@ -35,16 +28,28 @@ DUMMY_DATA: dict[str, Any] = {
 }
 
 
-async def test_full_flow(
-    hass: HomeAssistant, mock_nmbs_client: AsyncMock, mock_setup_entry: AsyncMock
+@fixture
+def _trigger_executor(
+    _client: AsyncMock = Depends(mock_nmbs_client),
+    _network: None = Depends(mock_network),
+) -> None:
+    """Module-level fixture priming common mocks."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(mock_nmbs_client),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the full flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -53,31 +58,35 @@ async def test_full_flow(
             CONF_STATION_TO: DUMMY_DATA["STAT_BRUSSELS_SOUTH"],
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert (
-        result["title"]
-        == "Train from Brussel-Noord/Bruxelles-Nord to Brussel-Zuid/Bruxelles-Midi"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(
+        "Train from Brussel-Noord/Bruxelles-Nord to Brussel-Zuid/Bruxelles-Midi"
     )
-    assert result["data"] == {
-        CONF_STATION_FROM: DUMMY_DATA["STAT_BRUSSELS_NORTH"],
-        CONF_STATION_TO: DUMMY_DATA["STAT_BRUSSELS_SOUTH"],
-    }
-    assert (
-        result["result"].unique_id
-        == f"{DUMMY_DATA['STAT_BRUSSELS_NORTH']}_{DUMMY_DATA['STAT_BRUSSELS_SOUTH']}"
+    expect(result["data"]).to_equal(
+        {
+            CONF_STATION_FROM: DUMMY_DATA["STAT_BRUSSELS_NORTH"],
+            CONF_STATION_TO: DUMMY_DATA["STAT_BRUSSELS_SOUTH"],
+        }
+    )
+    expect(result["result"].unique_id).to_equal(
+        f"{DUMMY_DATA['STAT_BRUSSELS_NORTH']}_{DUMMY_DATA['STAT_BRUSSELS_SOUTH']}"
     )
 
 
-async def test_same_station(
-    hass: HomeAssistant, mock_nmbs_client: AsyncMock, mock_setup_entry: AsyncMock
+@test
+async def same_station(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(mock_nmbs_client),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test selecting the same station."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -86,8 +95,8 @@ async def test_same_station(
             CONF_STATION_TO: DUMMY_DATA["STAT_BRUSSELS_NORTH"],
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "same_station"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "same_station"})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -96,14 +105,18 @@ async def test_same_station(
             CONF_STATION_TO: DUMMY_DATA["STAT_BRUSSELS_SOUTH"],
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_abort_if_exists(
-    hass: HomeAssistant, mock_nmbs_client: AsyncMock, mock_config_entry: MockConfigEntry
+@test
+async def abort_if_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(mock_nmbs_client),
+    entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test aborting the flow if the entry already exists."""
-    mock_config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
@@ -112,15 +125,19 @@ async def test_abort_if_exists(
             CONF_STATION_TO: DUMMY_DATA["STAT_BRUSSELS_SOUTH"],
         },
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_dont_abort_if_exists_when_vias_differs(
-    hass: HomeAssistant, mock_nmbs_client: AsyncMock, mock_config_entry: MockConfigEntry
+@test
+async def dont_abort_if_exists_when_vias_differs(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(mock_nmbs_client),
+    entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test aborting the flow if the entry already exists."""
-    mock_config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
@@ -130,18 +147,21 @@ async def test_dont_abort_if_exists_when_vias_differs(
             CONF_EXCLUDE_VIAS: True,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_unavailable_api(
-    hass: HomeAssistant, mock_nmbs_client: AsyncMock
+@test
+async def unavailable_api(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_nmbs_client),
 ) -> None:
     """Test starting a flow by user and api is unavailable."""
-    mock_nmbs_client.get_stations.return_value = None
+    client.get_stations.return_value = None
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "api_unavailable"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("api_unavailable")
