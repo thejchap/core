@@ -1,12 +1,12 @@
 """Test the swiss_public_transport config flow."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from opendata_transport.exceptions import (
     OpendataTransportConnectionError,
     OpendataTransportError,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.swiss_public_transport import config_flow
 from homeassistant.components.swiss_public_transport.const import (
@@ -23,9 +23,10 @@ from homeassistant.components.swiss_public_transport.helper import unique_id_fro
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from tests.common import MockConfigEntry
+from ._fixtures import mock_setup_entry
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 MOCK_USER_DATA_STEP = {
     CONF_START: "test_start",
@@ -78,45 +79,69 @@ MOCK_ADVANCED_DATA_STEP_TIME_OFFSET = {
 }
 
 
-@pytest.mark.parametrize(
-    ("user_input", "time_mode_input", "config_title"),
-    [
-        (MOCK_USER_DATA_STEP, None, "test_start test_destination"),
-        (
-            MOCK_USER_DATA_STEP_ONE_VIA,
-            None,
-            "test_start test_destination via via_station",
-        ),
-        (
-            MOCK_USER_DATA_STEP_MANY_VIA,
-            None,
-            "test_start test_destination via via_station_1, via_station_2, via_station_3",
-        ),
-        (MOCK_USER_DATA_STEP_ARRIVAL, None, "test_start test_destination arrival"),
-        (
-            MOCK_USER_DATA_STEP_TIME_FIXED,
-            MOCK_ADVANCED_DATA_STEP_TIME,
-            "test_start test_destination at 18:03:00",
-        ),
-        (
-            MOCK_USER_DATA_STEP_TIME_FIXED_OFFSET,
-            MOCK_ADVANCED_DATA_STEP_TIME_OFFSET,
-            "test_start test_destination in 00:10:00",
-        ),
-    ],
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test.cases(
+    test.case(
+        "default",
+        user_input=MOCK_USER_DATA_STEP,
+        time_mode_input=None,
+        config_title="test_start test_destination",
+    ),
+    test.case(
+        "one_via",
+        user_input=MOCK_USER_DATA_STEP_ONE_VIA,
+        time_mode_input=None,
+        config_title="test_start test_destination via via_station",
+    ),
+    test.case(
+        "many_via",
+        user_input=MOCK_USER_DATA_STEP_MANY_VIA,
+        time_mode_input=None,
+        config_title="test_start test_destination via via_station_1, via_station_2, via_station_3",
+    ),
+    test.case(
+        "arrival",
+        user_input=MOCK_USER_DATA_STEP_ARRIVAL,
+        time_mode_input=None,
+        config_title="test_start test_destination arrival",
+    ),
+    test.case(
+        "time_fixed",
+        user_input=MOCK_USER_DATA_STEP_TIME_FIXED,
+        time_mode_input=MOCK_ADVANCED_DATA_STEP_TIME,
+        config_title="test_start test_destination at 18:03:00",
+    ),
+    test.case(
+        "time_fixed_offset",
+        user_input=MOCK_USER_DATA_STEP_TIME_FIXED_OFFSET,
+        time_mode_input=MOCK_ADVANCED_DATA_STEP_TIME_OFFSET,
+        config_title="test_start test_destination in 00:10:00",
+    ),
 )
-async def test_flow_user_init_data_success(
-    hass: HomeAssistant, user_input, time_mode_input, config_title
+async def flow_user_init_data_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    user_input: dict,
+    time_mode_input: dict | None,
+    config_title: str,
 ) -> None:
     """Test success response."""
     result = await hass.config_entries.flow.async_init(
         config_flow.DOMAIN, context={"source": "user"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["handler"] == "swiss_public_transport"
-    assert result["data_schema"] == config_flow.USER_DATA_SCHEMA
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["handler"]).to_equal("swiss_public_transport")
+    expect(result["data_schema"]).to_equal(config_flow.USER_DATA_SCHEMA)
 
     with patch(
         "homeassistant.components.swiss_public_transport.config_flow.OpendataTransport.async_get_data",
@@ -129,33 +154,55 @@ async def test_flow_user_init_data_success(
         )
 
         if time_mode_input:
-            assert result["type"] is FlowResultType.FORM
+            expect(result["type"]).to_be(FlowResultType.FORM)
             if CONF_TIME_FIXED in time_mode_input:
-                assert result["step_id"] == "time_fixed"
+                expect(result["step_id"]).to_equal("time_fixed")
             if CONF_TIME_OFFSET in time_mode_input:
-                assert result["step_id"] == "time_offset"
+                expect(result["step_id"]).to_equal("time_offset")
             result = await hass.config_entries.flow.async_configure(
                 result["flow_id"],
                 user_input=time_mode_input,
             )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["result"].title == config_title
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["result"].title).to_equal(config_title)
 
-        assert result["data"] == {**user_input, **(time_mode_input or {})}
+        expect(result["data"]).to_equal({**user_input, **(time_mode_input or {})})
 
 
-@pytest.mark.parametrize(
-    ("raise_error", "text_error", "user_input_error"),
-    [
-        (OpendataTransportConnectionError(), "cannot_connect", MOCK_USER_DATA_STEP),
-        (OpendataTransportError(), "bad_config", MOCK_USER_DATA_STEP),
-        (None, "too_many_via_stations", MOCK_USER_DATA_STEP_TOO_MANY_STATIONS),
-        (IndexError(), "unknown", MOCK_USER_DATA_STEP),
-    ],
+@test.cases(
+    test.case(
+        "cannot_connect",
+        raise_error=OpendataTransportConnectionError(),
+        text_error="cannot_connect",
+        user_input_error=MOCK_USER_DATA_STEP,
+    ),
+    test.case(
+        "bad_config",
+        raise_error=OpendataTransportError(),
+        text_error="bad_config",
+        user_input_error=MOCK_USER_DATA_STEP,
+    ),
+    test.case(
+        "too_many_via",
+        raise_error=None,
+        text_error="too_many_via_stations",
+        user_input_error=MOCK_USER_DATA_STEP_TOO_MANY_STATIONS,
+    ),
+    test.case(
+        "unknown",
+        raise_error=IndexError(),
+        text_error="unknown",
+        user_input_error=MOCK_USER_DATA_STEP,
+    ),
 )
-async def test_flow_user_init_data_error_and_recover_on_step_1(
-    hass: HomeAssistant, raise_error, text_error, user_input_error
+async def flow_user_init_data_error_and_recover_on_step_1(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    raise_error: Exception | None,
+    text_error: str,
+    user_input_error: dict,
 ) -> None:
     """Test errors in user step."""
     result = await hass.config_entries.flow.async_init(
@@ -171,10 +218,9 @@ async def test_flow_user_init_data_error_and_recover_on_step_1(
             user_input=user_input_error,
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"]["base"] == text_error
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]["base"]).to_equal(text_error)
 
-        # Recover
         mock_OpendataTransport.side_effect = None
         mock_OpendataTransport.return_value = True
         result = await hass.config_entries.flow.async_configure(
@@ -182,36 +228,49 @@ async def test_flow_user_init_data_error_and_recover_on_step_1(
             user_input=MOCK_USER_DATA_STEP,
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["result"].title == "test_start test_destination"
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["result"].title).to_equal("test_start test_destination")
 
-        assert result["data"] == MOCK_USER_DATA_STEP
+        expect(result["data"]).to_equal(MOCK_USER_DATA_STEP)
 
 
-@pytest.mark.parametrize(
-    ("raise_error", "text_error", "user_input"),
-    [
-        (
-            OpendataTransportConnectionError(),
-            "cannot_connect",
-            MOCK_ADVANCED_DATA_STEP_TIME,
-        ),
-        (OpendataTransportError(), "bad_config", MOCK_ADVANCED_DATA_STEP_TIME),
-        (IndexError(), "unknown", MOCK_ADVANCED_DATA_STEP_TIME),
-    ],
+@test.cases(
+    test.case(
+        "cannot_connect",
+        raise_error=OpendataTransportConnectionError(),
+        text_error="cannot_connect",
+        user_input=MOCK_ADVANCED_DATA_STEP_TIME,
+    ),
+    test.case(
+        "bad_config",
+        raise_error=OpendataTransportError(),
+        text_error="bad_config",
+        user_input=MOCK_ADVANCED_DATA_STEP_TIME,
+    ),
+    test.case(
+        "unknown",
+        raise_error=IndexError(),
+        text_error="unknown",
+        user_input=MOCK_ADVANCED_DATA_STEP_TIME,
+    ),
 )
-async def test_flow_user_init_data_error_and_recover_on_step_2(
-    hass: HomeAssistant, raise_error, text_error, user_input
+async def flow_user_init_data_error_and_recover_on_step_2(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    raise_error: Exception,
+    text_error: str,
+    user_input: dict,
 ) -> None:
     """Test errors in time mode step."""
     result = await hass.config_entries.flow.async_init(
         config_flow.DOMAIN, context={"source": "user"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["handler"] == "swiss_public_transport"
-    assert result["data_schema"] == config_flow.USER_DATA_SCHEMA
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["handler"]).to_equal("swiss_public_transport")
+    expect(result["data_schema"]).to_equal(config_flow.USER_DATA_SCHEMA)
 
     with patch(
         "homeassistant.components.swiss_public_transport.config_flow.OpendataTransport.async_get_data",
@@ -222,8 +281,8 @@ async def test_flow_user_init_data_error_and_recover_on_step_2(
             result["flow_id"],
             user_input=MOCK_USER_DATA_STEP_TIME_FIXED,
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "time_fixed"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("time_fixed")
 
     with patch(
         "homeassistant.components.swiss_public_transport.config_flow.OpendataTransport.async_get_data",
@@ -235,10 +294,9 @@ async def test_flow_user_init_data_error_and_recover_on_step_2(
             user_input=user_input,
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"]["base"] == text_error
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]["base"]).to_equal(text_error)
 
-        # Recover
         mock_OpendataTransport.side_effect = None
         mock_OpendataTransport.return_value = True
         result = await hass.config_entries.flow.async_configure(
@@ -246,11 +304,17 @@ async def test_flow_user_init_data_error_and_recover_on_step_2(
             user_input=user_input,
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["result"].title == "test_start test_destination at 18:03:00"
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["result"].title).to_equal(
+            "test_start test_destination at 18:03:00"
+        )
 
 
-async def test_flow_user_init_data_already_configured(hass: HomeAssistant) -> None:
+@test
+async def flow_user_init_data_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we abort user data set when entry is already configured."""
 
     entry = MockConfigEntry(
@@ -274,5 +338,5 @@ async def test_flow_user_init_data_already_configured(hass: HomeAssistant) -> No
             user_input=MOCK_USER_DATA_STEP,
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
