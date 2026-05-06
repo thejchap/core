@@ -688,3 +688,174 @@ def current_request_with_host(
     current_request.get.return_value = current_request.get.return_value.clone(
         headers=new_headers
     )
+
+
+# ---------------------------------------------------------------------------
+# Auth + HTTP/WS client fixtures
+# ---------------------------------------------------------------------------
+
+
+@fixture
+async def local_auth(
+    hass: HomeAssistant = Depends(hass),
+):
+    """Load the local Home Assistant auth provider."""
+    from homeassistant.auth.providers import homeassistant as ha_auth  # noqa: PLC0415
+
+    prv = ha_auth.HassAuthProvider(
+        hass, hass.auth._store, {"type": "homeassistant"}
+    )
+    await prv.async_initialize()
+    hass.auth._providers[(prv.type, prv.id)] = prv
+    return prv
+
+
+@fixture
+async def hass_owner_user(
+    hass: HomeAssistant = Depends(hass),
+    _local_auth: Any = Depends(local_auth),
+):
+    """Return a Home Assistant owner user."""
+    from .common import MockUser  # noqa: PLC0415
+
+    return MockUser(is_owner=True).add_to_hass(hass)
+
+
+@fixture
+async def hass_admin_user(
+    hass: HomeAssistant = Depends(hass),
+    _local_auth: Any = Depends(local_auth),
+):
+    """Return a Home Assistant admin user."""
+    from homeassistant.auth.const import GROUP_ID_ADMIN  # noqa: PLC0415
+
+    from .common import MockUser  # noqa: PLC0415
+
+    admin_group = await hass.auth.async_get_group(GROUP_ID_ADMIN)
+    return MockUser(groups=[admin_group]).add_to_hass(hass)
+
+
+@fixture
+async def hass_read_only_user(
+    hass: HomeAssistant = Depends(hass),
+    _local_auth: Any = Depends(local_auth),
+):
+    """Return a Home Assistant read-only user."""
+    from homeassistant.auth.const import GROUP_ID_READ_ONLY  # noqa: PLC0415
+
+    from .common import MockUser  # noqa: PLC0415
+
+    read_only_group = await hass.auth.async_get_group(GROUP_ID_READ_ONLY)
+    return MockUser(groups=[read_only_group]).add_to_hass(hass)
+
+
+@fixture
+async def hass_admin_credential(
+    hass: HomeAssistant = Depends(hass),
+    _local_auth: Any = Depends(local_auth),
+):
+    """Provide credentials for the admin user."""
+    from homeassistant.auth.models import Credentials  # noqa: PLC0415
+
+    return Credentials(
+        id="mock-credential-id",
+        auth_provider_type="homeassistant",
+        auth_provider_id=None,
+        data={"username": "admin"},
+        is_new=False,
+    )
+
+
+@fixture
+async def hass_access_token(
+    hass: HomeAssistant = Depends(hass),
+    user=Depends(hass_admin_user),
+    credential=Depends(hass_admin_credential),
+) -> str:
+    """Return an access token for the admin user."""
+    CLIENT_ID = "https://hass.io/"
+    await hass.auth.async_link_user(user, credential)
+    refresh_token = await hass.auth.async_create_refresh_token(
+        user, CLIENT_ID, credential=credential
+    )
+    return hass.auth.async_create_access_token(refresh_token)
+
+
+@fixture
+def hass_client(
+    hass: HomeAssistant = Depends(hass),
+    aiohttp_client: ClientSessionGenerator = Depends(aiohttp_client),
+    hass_access_token: str = Depends(hass_access_token),
+) -> ClientSessionGenerator:
+    """Return an authenticated HTTP client for the hass test app."""
+
+    async def auth_client(access_token: str | None = hass_access_token):
+        return await aiohttp_client(
+            hass.http.app, headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+    return auth_client
+
+
+@fixture
+def hass_ws_client(
+    hass: HomeAssistant = Depends(hass),
+    aiohttp_client: ClientSessionGenerator = Depends(aiohttp_client),
+    hass_access_token: str = Depends(hass_access_token),
+):
+    """Return a WebSocket client connected to the hass websocket API."""
+    from homeassistant.components.websocket_api.const import (  # noqa: PLC0415
+        TYPE_AUTH,
+        TYPE_AUTH_OK,
+        TYPE_AUTH_REQUIRED,
+        URL,
+    )
+    from homeassistant.setup import async_setup_component  # noqa: PLC0415
+
+    async def create_client(
+        target_hass: HomeAssistant = hass,
+        access_token: str | None = hass_access_token,
+    ):
+        assert await async_setup_component(target_hass, "websocket_api", {})
+        client = await aiohttp_client(target_hass.http.app)
+        websocket = await client.ws_connect(URL)
+        auth_resp = await websocket.receive_json()
+        assert auth_resp["type"] == TYPE_AUTH_REQUIRED
+
+        if access_token is None:
+            await websocket.send_json({"type": TYPE_AUTH, "access_token": "incorrect"})
+        else:
+            await websocket.send_json(
+                {"type": TYPE_AUTH, "access_token": access_token}
+            )
+
+        auth_ok = await websocket.receive_json()
+        assert auth_ok["type"] == TYPE_AUTH_OK
+
+        def _get_next_id() -> Generator[int]:
+            i = 0
+            while True:
+                yield (i := i + 1)
+
+        id_generator = _get_next_id()
+
+        def _send_json_auto_id(data: dict[str, Any]):
+            data["id"] = next(id_generator)
+            return websocket.send_json(data)
+
+        async def _remove_device(device_id: str, config_entry_id: str) -> Any:
+            await _send_json_auto_id(
+                {
+                    "type": "config/device_registry/remove_config_entry",
+                    "config_entry_id": config_entry_id,
+                    "device_id": device_id,
+                }
+            )
+            return await websocket.receive_json()
+
+        websocket.client = client  # type: ignore[attr-defined]
+        websocket.send_json_auto_id = _send_json_auto_id  # type: ignore[attr-defined]
+        websocket.remove_device = _remove_device  # type: ignore[attr-defined]
+        return websocket
+
+    return create_client
