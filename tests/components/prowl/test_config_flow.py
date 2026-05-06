@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock
 
 import prowlpy
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.prowl.const import DOMAIN
@@ -10,10 +11,30 @@ from homeassistant.const import CONF_API_KEY, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import BAD_API_RESPONSE, CONF_INPUT, INVALID_API_KEY_ERROR, TIMEOUT_ERROR
+from ._fixtures import (
+    BAD_API_RESPONSE,
+    CONF_INPUT,
+    INVALID_API_KEY_ERROR,
+    TIMEOUT_ERROR,
+    mock_prowlpy,
+)
+
+from tests.hass_fixtures import hass as hass_fixture
 
 
-async def test_flow_user(hass: HomeAssistant, mock_prowlpy: AsyncMock) -> None:
+@fixture
+def _trigger_executor(
+    _prowl: AsyncMock = Depends(mock_prowlpy),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def flow_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    prowl: AsyncMock = Depends(mock_prowlpy),
+) -> None:
     """Test user initialized flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -24,14 +45,17 @@ async def test_flow_user(hass: HomeAssistant, mock_prowlpy: AsyncMock) -> None:
         user_input=CONF_INPUT,
     )
 
-    assert mock_prowlpy.verify_key.call_count > 0
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == CONF_INPUT[CONF_NAME]
-    assert result["data"] == {CONF_API_KEY: CONF_INPUT[CONF_API_KEY]}
+    expect(prowl.verify_key.call_count > 0).to_be(True)
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(CONF_INPUT[CONF_NAME])
+    expect(result["data"]).to_equal({CONF_API_KEY: CONF_INPUT[CONF_API_KEY]})
 
 
-async def test_flow_duplicate_api_key(
-    hass: HomeAssistant, mock_prowlpy: AsyncMock
+@test
+async def flow_duplicate_api_key(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    prowl: AsyncMock = Depends(mock_prowlpy),
 ) -> None:
     """Test user initialized flow."""
     result = await hass.config_entries.flow.async_init(
@@ -51,12 +75,17 @@ async def test_flow_duplicate_api_key(
         result["flow_id"],
         user_input=CONF_INPUT,
     )
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-async def test_flow_user_bad_key(hass: HomeAssistant, mock_prowlpy: AsyncMock) -> None:
+@test
+async def flow_user_bad_key(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    prowl: AsyncMock = Depends(mock_prowlpy),
+) -> None:
     """Test user submitting a bad API key."""
-    mock_prowlpy.verify_key.side_effect = prowlpy.APIError("Invalid API key")
+    prowl.verify_key.side_effect = prowlpy.APIError("Invalid API key")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -67,16 +96,19 @@ async def test_flow_user_bad_key(hass: HomeAssistant, mock_prowlpy: AsyncMock) -
         user_input=CONF_INPUT,
     )
 
-    assert mock_prowlpy.verify_key.call_count > 0
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == INVALID_API_KEY_ERROR
+    expect(prowl.verify_key.call_count > 0).to_be(True)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal(INVALID_API_KEY_ERROR)
 
 
-async def test_flow_user_prowl_timeout(
-    hass: HomeAssistant, mock_prowlpy: AsyncMock
+@test
+async def flow_user_prowl_timeout(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    prowl: AsyncMock = Depends(mock_prowlpy),
 ) -> None:
     """Test Prowl API timeout."""
-    mock_prowlpy.verify_key.side_effect = TimeoutError
+    prowl.verify_key.side_effect = TimeoutError
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -87,14 +119,19 @@ async def test_flow_user_prowl_timeout(
         user_input=CONF_INPUT,
     )
 
-    assert mock_prowlpy.verify_key.call_count > 0
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == TIMEOUT_ERROR
+    expect(prowl.verify_key.call_count > 0).to_be(True)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal(TIMEOUT_ERROR)
 
 
-async def test_flow_api_failure(hass: HomeAssistant, mock_prowlpy: AsyncMock) -> None:
+@test
+async def flow_api_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    prowl: AsyncMock = Depends(mock_prowlpy),
+) -> None:
     """Test Prowl API failure."""
-    mock_prowlpy.verify_key.side_effect = prowlpy.APIError(BAD_API_RESPONSE)
+    prowl.verify_key.side_effect = prowlpy.APIError(BAD_API_RESPONSE)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -105,6 +142,6 @@ async def test_flow_api_failure(hass: HomeAssistant, mock_prowlpy: AsyncMock) ->
         user_input=CONF_INPUT,
     )
 
-    assert mock_prowlpy.verify_key.call_count > 0
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == BAD_API_RESPONSE
+    expect(prowl.verify_key.call_count > 0).to_be(True)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal(BAD_API_RESPONSE)
