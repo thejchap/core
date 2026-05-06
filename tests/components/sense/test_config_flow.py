@@ -1,14 +1,16 @@
 """Test the Sense config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from sense_energy import (
     SenseAPIException,
     SenseAPITimeoutException,
     SenseAuthenticationException,
     SenseMFARequiredException,
 )
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.sense.const import DOMAIN
@@ -16,35 +18,31 @@ from homeassistant.const import CONF_CODE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_sense
 from .const import MOCK_CONFIG
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.fixture(name="mock_sense")
-def mock_sense():
-    """Mock Sense object for authenticatation."""
-    with patch(
-        "homeassistant.components.sense.config_flow.ASyncSenseable"
-    ) as mock_sense:
-        mock_sense.return_value.authenticate = AsyncMock(return_value=True)
-        mock_sense.return_value.validate_mfa = AsyncMock(return_value=True)
-        mock_sense.return_value.sense_access_token = "ABC"
-        mock_sense.return_value.sense_user_id = "123"
-        mock_sense.return_value.sense_monitor_id = "456"
-        mock_sense.return_value.device_id = "789"
-        mock_sense.return_value.refresh_token = "XYZ"
-        yield mock_sense
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-async def test_form(hass: HomeAssistant, mock_sense) -> None:
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    sense: AsyncMock = Depends(mock_sense),
+) -> None:
     """Test we get the form."""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.sense.async_setup_entry",
@@ -56,13 +54,17 @@ async def test_form(hass: HomeAssistant, mock_sense) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "test-email"
-    assert result2["data"] == MOCK_CONFIG
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("test-email")
+    expect(result2["data"]).to_equal(MOCK_CONFIG)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -77,118 +79,141 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             {"timeout": "6", "email": "test-email", "password": "test-password"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_mfa_required(hass: HomeAssistant, mock_sense) -> None:
+@test
+async def form_mfa_required(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    sense: AsyncMock = Depends(mock_sense),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    mock_sense.return_value.authenticate.side_effect = SenseMFARequiredException
+    sense.return_value.authenticate.side_effect = SenseMFARequiredException
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {"timeout": "6", "email": "test-email", "password": "test-password"},
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "validation"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("validation")
 
-    mock_sense.return_value.validate_mfa.side_effect = None
+    sense.return_value.validate_mfa.side_effect = None
     result3 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_CODE: "012345"},
     )
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == "test-email"
-    assert result3["data"] == MOCK_CONFIG
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("test-email")
+    expect(result3["data"]).to_equal(MOCK_CONFIG)
 
 
-async def test_form_mfa_required_wrong(hass: HomeAssistant, mock_sense) -> None:
+@test
+async def form_mfa_required_wrong(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    sense: AsyncMock = Depends(mock_sense),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    mock_sense.return_value.authenticate.side_effect = SenseMFARequiredException
+    sense.return_value.authenticate.side_effect = SenseMFARequiredException
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {"timeout": "6", "email": "test-email", "password": "test-password"},
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "validation"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("validation")
 
-    mock_sense.return_value.validate_mfa.side_effect = SenseAuthenticationException
-    # Try with the WRONG verification code give us the form back again
+    sense.return_value.validate_mfa.side_effect = SenseAuthenticationException
     result3 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_CODE: "000000"},
     )
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "invalid_auth"}
-    assert result3["step_id"] == "validation"
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": "invalid_auth"})
+    expect(result3["step_id"]).to_equal("validation")
 
 
-async def test_form_mfa_required_timeout(hass: HomeAssistant, mock_sense) -> None:
+@test
+async def form_mfa_required_timeout(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    sense: AsyncMock = Depends(mock_sense),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    mock_sense.return_value.authenticate.side_effect = SenseMFARequiredException
+    sense.return_value.authenticate.side_effect = SenseMFARequiredException
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {"timeout": "6", "email": "test-email", "password": "test-password"},
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "validation"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("validation")
 
-    mock_sense.return_value.validate_mfa.side_effect = SenseAPITimeoutException
+    sense.return_value.validate_mfa.side_effect = SenseAPITimeoutException
     result3 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_CODE: "000000"},
     )
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "cannot_connect"}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_mfa_required_exception(hass: HomeAssistant, mock_sense) -> None:
+@test
+async def form_mfa_required_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    sense: AsyncMock = Depends(mock_sense),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    mock_sense.return_value.authenticate.side_effect = SenseMFARequiredException
+    sense.return_value.authenticate.side_effect = SenseMFARequiredException
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {"timeout": "6", "email": "test-email", "password": "test-password"},
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "validation"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("validation")
 
-    mock_sense.return_value.validate_mfa.side_effect = Exception
+    sense.return_value.validate_mfa.side_effect = Exception
     result3 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_CODE: "000000"},
     )
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "unknown"}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_form_timeout(hass: HomeAssistant) -> None:
+@test
+async def form_timeout(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -203,11 +228,15 @@ async def test_form_timeout(hass: HomeAssistant) -> None:
             {"timeout": "6", "email": "test-email", "password": "test-password"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -222,11 +251,15 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             {"timeout": "6", "email": "test-email", "password": "test-password"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_unknown_exception(hass: HomeAssistant) -> None:
+@test
+async def form_unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -241,14 +274,18 @@ async def test_form_unknown_exception(hass: HomeAssistant) -> None:
             {"timeout": "6", "email": "test-email", "password": "test-password"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_reauth_no_form(hass: HomeAssistant, mock_sense) -> None:
+@test
+async def reauth_no_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    sense: AsyncMock = Depends(mock_sense),
+) -> None:
     """Test reauth where no form needed."""
 
-    # set up initially
     entry = MockConfigEntry(
         domain=DOMAIN,
         data=MOCK_CONFIG,
@@ -260,27 +297,30 @@ async def test_reauth_no_form(hass: HomeAssistant, mock_sense) -> None:
         return_value=True,
     ):
         result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-async def test_reauth_password(hass: HomeAssistant, mock_sense) -> None:
+@test
+async def reauth_password(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    sense: AsyncMock = Depends(mock_sense),
+) -> None:
     """Test reauth form."""
 
-    # set up initially
     entry = MockConfigEntry(
         domain=DOMAIN,
         data=MOCK_CONFIG,
         unique_id="test-email",
     )
     entry.add_to_hass(hass)
-    mock_sense.return_value.authenticate.side_effect = SenseAuthenticationException
+    sense.return_value.authenticate.side_effect = SenseAuthenticationException
 
-    # Reauth success without user input
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
-    mock_sense.return_value.authenticate.side_effect = None
+    sense.return_value.authenticate.side_effect = None
     with patch(
         "homeassistant.components.sense.async_setup_entry",
         return_value=True,
@@ -291,5 +331,5 @@ async def test_reauth_password(hass: HomeAssistant, mock_sense) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
