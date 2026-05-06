@@ -1,9 +1,11 @@
 """Define tests for the 17Track config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock
 
 from pyseventeentrack.errors import SeventeenTrackError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.seventeentrack import DOMAIN
@@ -16,30 +18,35 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from tests.common import MockConfigEntry
+from ._fixtures import mock_setup_entry, mock_seventeentrack
 
-ACCOUNT_ID = "1234"
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 VALID_CONFIG = {
     CONF_USERNAME: "someemail@gmail.com",
     CONF_PASSWORD: "edc3eee7330e4fdda04489e3fbc283d0",
 }
 
-VALID_CONFIG_OLD = {
-    CONF_USERNAME: "someemail@gmail.com",
-    CONF_PASSWORD: "edc3eee7330e4fdda04489e3fbc283d0",
-}
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-async def test_create_entry(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_seventeentrack: AsyncMock
+@test
+async def create_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    seventeentrack: AsyncMock = Depends(mock_seventeentrack),
 ) -> None:
     """Test that the user step works."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -47,49 +54,46 @@ async def test_create_entry(
     )
     await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "someemail@gmail.com"
-    assert result2["data"] == {
-        CONF_PASSWORD: "edc3eee7330e4fdda04489e3fbc283d0",
-        CONF_USERNAME: "someemail@gmail.com",
-    }
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("someemail@gmail.com")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_PASSWORD: "edc3eee7330e4fdda04489e3fbc283d0",
+            CONF_USERNAME: "someemail@gmail.com",
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    ("return_value", "side_effect", "error"),
-    [
-        (
-            False,
-            None,
-            "invalid_auth",
-        ),
-        (
-            True,
-            SeventeenTrackError(),
-            "cannot_connect",
-        ),
-    ],
+@test.cases(
+    test.case("invalid_auth", return_value=False, side_effect=None, error="invalid_auth"),
+    test.case(
+        "cannot_connect",
+        return_value=True,
+        side_effect=SeventeenTrackError(),
+        error="cannot_connect",
+    ),
 )
-async def test_flow_fails(
-    hass: HomeAssistant,
-    mock_seventeentrack: AsyncMock,
-    return_value,
-    side_effect,
-    error,
+async def flow_fails(
+    return_value: bool,
+    side_effect: Exception | None,
+    error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    seventeentrack: AsyncMock = Depends(mock_seventeentrack),
 ) -> None:
     """Test that the user step fails."""
-    mock_seventeentrack.return_value.profile.login.return_value = return_value
-    mock_seventeentrack.return_value.profile.login.side_effect = side_effect
+    seventeentrack.return_value.profile.login.return_value = return_value
+    seventeentrack.return_value.profile.login.side_effect = side_effect
     failed_result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
         data=VALID_CONFIG,
     )
 
-    assert failed_result["errors"] == {"base": error}
+    expect(failed_result["errors"]).to_equal({"base": error})
 
-    mock_seventeentrack.return_value.profile.login.return_value = True
-    mock_seventeentrack.return_value.profile.login.side_effect = None
+    seventeentrack.return_value.profile.login.return_value = True
+    seventeentrack.return_value.profile.login.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         failed_result["flow_id"],
@@ -97,15 +101,22 @@ async def test_flow_fails(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "someemail@gmail.com"
-    assert result["data"] == {
-        CONF_PASSWORD: "edc3eee7330e4fdda04489e3fbc283d0",
-        CONF_USERNAME: "someemail@gmail.com",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("someemail@gmail.com")
+    expect(result["data"]).to_equal(
+        {
+            CONF_PASSWORD: "edc3eee7330e4fdda04489e3fbc283d0",
+            CONF_USERNAME: "someemail@gmail.com",
+        }
+    )
 
 
-async def test_option_flow(hass: HomeAssistant, mock_seventeentrack: AsyncMock) -> None:
+@test
+async def option_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    seventeentrack: AsyncMock = Depends(mock_seventeentrack),
+) -> None:
     """Test option flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -121,14 +132,14 @@ async def test_option_flow(hass: HomeAssistant, mock_seventeentrack: AsyncMock) 
     await hass.async_block_till_done()
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_SHOW_ARCHIVED: True, CONF_SHOW_DELIVERED: False},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_SHOW_ARCHIVED]
-    assert not result["data"][CONF_SHOW_DELIVERED]
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_SHOW_ARCHIVED]).to_be(True)
+    expect(result["data"][CONF_SHOW_DELIVERED]).to_be(False)
