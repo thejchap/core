@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from tryke import fixture
 
-from homeassistant.components.yardian import DOMAIN
+from homeassistant.components.yardian.const import DOMAIN
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_HOST, CONF_NAME
 
 from tests.common import MockConfigEntry
