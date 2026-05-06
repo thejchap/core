@@ -2,19 +2,35 @@
 
 from unittest.mock import AsyncMock
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.apsystems.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.const import CONF_IP_ADDRESS, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_apsystems, mock_config_entry, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form_create_success(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_apsystems: AsyncMock
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
 ) -> None:
-    """Test we handle creatinw with success."""
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form_create_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _apsystems: AsyncMock = Depends(mock_apsystems),
+) -> None:
+    """Test we handle creating with success."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
@@ -22,13 +38,17 @@ async def test_form_create_success(
             CONF_IP_ADDRESS: "127.0.0.1",
         },
     )
-    assert result["result"].unique_id == "MY_SERIAL_NUMBER"
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result["data"].get(CONF_IP_ADDRESS) == "127.0.0.1"
+    expect(result["result"].unique_id).to_equal("MY_SERIAL_NUMBER")
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"].get(CONF_IP_ADDRESS)).to_equal("127.0.0.1")
 
 
-async def test_form_create_success_custom_port(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_apsystems: AsyncMock
+@test
+async def form_create_success_custom_port(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _apsystems: AsyncMock = Depends(mock_apsystems),
 ) -> None:
     """Test we handle creating with custom port with success."""
     result = await hass.config_entries.flow.async_init(
@@ -39,18 +59,22 @@ async def test_form_create_success_custom_port(
             CONF_PORT: 8042,
         },
     )
-    assert result["result"].unique_id == "MY_SERIAL_NUMBER"
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result["data"].get(CONF_IP_ADDRESS) == "127.0.0.1"
-    assert result["data"].get(CONF_PORT) == 8042
+    expect(result["result"].unique_id).to_equal("MY_SERIAL_NUMBER")
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"].get(CONF_IP_ADDRESS)).to_equal("127.0.0.1")
+    expect(result["data"].get(CONF_PORT)).to_equal(8042)
 
 
-async def test_form_cannot_connect_and_recover(
-    hass: HomeAssistant, mock_apsystems: AsyncMock, mock_setup_entry: AsyncMock
+@test
+async def form_cannot_connect_and_recover(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    apsystems: AsyncMock = Depends(mock_apsystems),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we handle cannot connect error."""
 
-    mock_apsystems.get_device_info.side_effect = TimeoutError
+    apsystems.get_device_info.side_effect = TimeoutError
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
@@ -59,10 +83,10 @@ async def test_form_cannot_connect_and_recover(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    mock_apsystems.get_device_info.side_effect = None
+    apsystems.get_device_info.side_effect = None
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -70,46 +94,52 @@ async def test_form_cannot_connect_and_recover(
             CONF_IP_ADDRESS: "127.0.0.1",
         },
     )
-    assert result2["result"].unique_id == "MY_SERIAL_NUMBER"
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2["data"].get(CONF_IP_ADDRESS) == "127.0.0.1"
+    expect(result2["result"].unique_id).to_equal("MY_SERIAL_NUMBER")
+    expect(result2.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["data"].get(CONF_IP_ADDRESS)).to_equal("127.0.0.1")
 
 
-async def test_form_cannot_connect_and_recover_custom_port(
-    hass: HomeAssistant, mock_apsystems: AsyncMock, mock_setup_entry: AsyncMock
+@test
+async def form_cannot_connect_and_recover_custom_port(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    apsystems: AsyncMock = Depends(mock_apsystems),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we handle cannot connect error but recovering with custom port."""
 
-    mock_apsystems.get_device_info.side_effect = TimeoutError
+    apsystems.get_device_info.side_effect = TimeoutError
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
         data={CONF_IP_ADDRESS: "127.0.0.2", CONF_PORT: 8042},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    mock_apsystems.get_device_info.side_effect = None
+    apsystems.get_device_info.side_effect = None
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_IP_ADDRESS: "127.0.0.1", CONF_PORT: 8042},
     )
-    assert result2["result"].unique_id == "MY_SERIAL_NUMBER"
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2["data"].get(CONF_IP_ADDRESS) == "127.0.0.1"
-    assert result2["data"].get(CONF_PORT) == 8042
+    expect(result2["result"].unique_id).to_equal("MY_SERIAL_NUMBER")
+    expect(result2.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["data"].get(CONF_IP_ADDRESS)).to_equal("127.0.0.1")
+    expect(result2["data"].get(CONF_PORT)).to_equal(8042)
 
 
-async def test_form_unique_id_already_configured(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_apsystems: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def form_unique_id_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _apsystems: AsyncMock = Depends(mock_apsystems),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we handle cannot connect error."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -118,5 +148,5 @@ async def test_form_unique_id_already_configured(
             CONF_IP_ADDRESS: "127.0.0.2",
         },
     )
-    assert result["reason"] == "already_configured"
-    assert result.get("type") is FlowResultType.ABORT
+    expect(result["reason"]).to_equal("already_configured")
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
