@@ -3,7 +3,6 @@
 from unittest.mock import patch
 
 from aioairzone_cloud.exceptions import AirzoneCloudError
-from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.airzone_cloud.const import DOMAIN
 from homeassistant.components.airzone_cloud.coordinator import SCAN_INTERVAL
@@ -21,20 +20,11 @@ from .util import (
 )
 
 from tests.common import MockConfigEntry, async_fire_time_changed
-from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@fixture
-def _ensure_executor() -> None:
-    """Force a HookExecutor for this module (tryke discovery quirk)."""
-
-
-@test
-async def coordinator_client_connector_error(
-    _network: None = Depends(mock_network),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
+async def test_coordinator_client_connector_error(hass: HomeAssistant) -> None:
     """Test ClientConnectorError on coordinator update."""
+
     config_entry = MockConfigEntry(
         data=CONFIG,
         domain=DOMAIN,
@@ -90,4 +80,4 @@ async def coordinator_client_connector_error(
         mock_device_status.assert_called()
 
         state = hass.states.get("sensor.salon_temperature")
-        expect(state.state).to_equal(STATE_UNAVAILABLE)
+        assert state.state == STATE_UNAVAILABLE

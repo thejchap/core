@@ -3,7 +3,8 @@
 from unittest.mock import MagicMock, patch
 
 from actron_neo_api import ActronAirAPIError
-from tryke import Depends, expect, fixture, test
+import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from homeassistant.components.switch import (
     DOMAIN as SWITCH_DOMAIN,
@@ -16,58 +17,38 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
 from . import setup_integration
-from ._fixtures import mock_actron_api, mock_config_entry
 
-from tests.common import MockConfigEntry
-from tests.hass_fixtures import (
-    entity_registry as entity_registry_fixture,
-    hass as hass_fixture,
-)
+from tests.common import MockConfigEntry, snapshot_platform
 
 
-@fixture
-def _ensure_executor() -> None:
-    """Force a HookExecutor for this module (tryke discovery quirk)."""
-
-
-async def _expect_raises_async(
-    coro_factory, exc_type: type[BaseException], match: str | None = None
+async def test_switch_entities(
+    hass: HomeAssistant,
+    mock_actron_api: MagicMock,
+    entity_registry: er.EntityRegistry,
+    snapshot: SnapshotAssertion,
+    mock_config_entry: MockConfigEntry,
 ) -> None:
-    """Async-safe version of expect(...).to_raise() preserving regex match."""
-    import re  # noqa: PLC0415
-
-    raised: BaseException | None = None
-    try:
-        await coro_factory()
-    except BaseException as exc:  # noqa: BLE001 - test assertion
-        raised = exc
-    expect(raised).not_.to_be(None)
-    expect(isinstance(raised, exc_type)).to_be_truthy()
-    if match is not None:
-        candidates = (
-            str(raised),
-            *(str(a) for a in getattr(raised, "args", ())),
-        )
-        expect(bool(re.search(match, " ".join(candidates)))).to_be_truthy()
+    """Test switch entities."""
+    with patch("homeassistant.components.actron_air.PLATFORMS", [Platform.SWITCH]):
+        await setup_integration(hass, mock_config_entry)
+    await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
 
 
-@test.skip("uses syrupy snapshot")
-async def switch_entities() -> None:
-    """Test switch entities (snapshot platform)."""
-
-
-@test.cases(
-    test.case("away_mode", entity_id="switch.test_system_away_mode", method="set_away_mode"),
-    test.case("continuous_fan", entity_id="switch.test_system_continuous_fan", method="set_continuous_mode"),
-    test.case("quiet_mode", entity_id="switch.test_system_quiet_mode", method="set_quiet_mode"),
-    test.case("turbo_mode", entity_id="switch.test_system_turbo_mode", method="set_turbo_mode"),
+@pytest.mark.parametrize(
+    ("entity_id", "method"),
+    [
+        ("switch.test_system_away_mode", "set_away_mode"),
+        ("switch.test_system_continuous_fan", "set_continuous_mode"),
+        ("switch.test_system_quiet_mode", "set_quiet_mode"),
+        ("switch.test_system_turbo_mode", "set_turbo_mode"),
+    ],
 )
-async def switch_toggles(
+async def test_switch_toggles(
+    hass: HomeAssistant,
+    mock_actron_api: MagicMock,
+    mock_config_entry: MockConfigEntry,
     entity_id: str,
     method: str,
-    hass: HomeAssistant = Depends(hass_fixture),
-    mock_actron_api: MagicMock = Depends(mock_actron_api),
-    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test switch toggles."""
     with patch("homeassistant.components.actron_air.PLATFORMS", [Platform.SWITCH]):
@@ -94,12 +75,11 @@ async def switch_toggles(
     mock_method.assert_awaited_once_with(False)
 
 
-@test
-async def turbo_mode_not_supported(
-    hass: HomeAssistant = Depends(hass_fixture),
-    mock_actron_api: MagicMock = Depends(mock_actron_api),
-    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
-    entity_registry: er.EntityRegistry = Depends(entity_registry_fixture),
+async def test_turbo_mode_not_supported(
+    hass: HomeAssistant,
+    mock_actron_api: MagicMock,
+    mock_config_entry: MockConfigEntry,
+    entity_registry: er.EntityRegistry,
 ) -> None:
     """Test turbo mode switch is not created when not supported."""
     status = mock_actron_api.state_manager.get_status.return_value
@@ -111,43 +91,26 @@ async def turbo_mode_not_supported(
     await setup_integration(hass, mock_config_entry)
 
     entity_id = "switch.test_system_turbo_mode"
-    expect(hass.states.get(entity_id)).to_be_falsy()
-    expect(entity_registry.async_get(entity_id)).to_be_falsy()
+    assert not hass.states.get(entity_id)
+    assert not entity_registry.async_get(entity_id)
 
 
-@test.cases(
-    test.case(
-        "away_mode_on",
-        entity_id="switch.test_system_away_mode",
-        method="set_away_mode",
-        service=SERVICE_TURN_ON,
-    ),
-    test.case(
-        "continuous_fan_off",
-        entity_id="switch.test_system_continuous_fan",
-        method="set_continuous_mode",
-        service=SERVICE_TURN_OFF,
-    ),
-    test.case(
-        "quiet_mode_on",
-        entity_id="switch.test_system_quiet_mode",
-        method="set_quiet_mode",
-        service=SERVICE_TURN_ON,
-    ),
-    test.case(
-        "turbo_mode_off",
-        entity_id="switch.test_system_turbo_mode",
-        method="set_turbo_mode",
-        service=SERVICE_TURN_OFF,
-    ),
+@pytest.mark.parametrize(
+    ("entity_id", "method", "service"),
+    [
+        ("switch.test_system_away_mode", "set_away_mode", SERVICE_TURN_ON),
+        ("switch.test_system_continuous_fan", "set_continuous_mode", SERVICE_TURN_OFF),
+        ("switch.test_system_quiet_mode", "set_quiet_mode", SERVICE_TURN_ON),
+        ("switch.test_system_turbo_mode", "set_turbo_mode", SERVICE_TURN_OFF),
+    ],
 )
-async def switch_api_error(
+async def test_switch_api_error(
+    hass: HomeAssistant,
+    mock_actron_api: MagicMock,
+    mock_config_entry: MockConfigEntry,
     entity_id: str,
     method: str,
     service: str,
-    hass: HomeAssistant = Depends(hass_fixture),
-    mock_actron_api: MagicMock = Depends(mock_actron_api),
-    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test API error handling when toggling switches."""
     with patch("homeassistant.components.actron_air.PLATFORMS", [Platform.SWITCH]):
@@ -157,12 +120,10 @@ async def switch_api_error(
     mock_method = getattr(status.user_aircon_settings, method)
     mock_method.side_effect = ActronAirAPIError("Test error")
 
-    async def call() -> None:
+    with pytest.raises(HomeAssistantError, match="Test error"):
         await hass.services.async_call(
             SWITCH_DOMAIN,
             service,
             {ATTR_ENTITY_ID: [entity_id]},
             blocking=True,
         )
-
-    await _expect_raises_async(call, HomeAssistantError, match="Test error")
