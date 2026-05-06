@@ -1,9 +1,12 @@
 """Test the sentry config flow."""
 
+from __future__ import annotations
+
 import logging
 from unittest.mock import patch
 
 from sentry_sdk.utils import BadDsn
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.sentry.const import (
     CONF_ENVIRONMENT,
@@ -21,16 +24,26 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_full_user_flow_implementation(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_user_flow_implementation(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {}
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({})
 
     with (
         patch("homeassistant.components.sentry.config_flow.Dsn"),
@@ -44,28 +57,34 @@ async def test_full_user_flow_implementation(hass: HomeAssistant) -> None:
             {"dsn": "http://public@sentry.local/1"},
         )
 
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2.get("title") == "Sentry"
-    assert result2.get("data") == {
-        "dsn": "http://public@sentry.local/1",
-    }
+    expect(result2.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2.get("title")).to_equal("Sentry")
+    expect(result2.get("data")).to_equal({"dsn": "http://public@sentry.local/1"})
     await hass.async_block_till_done()
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_integration_already_exists(hass: HomeAssistant) -> None:
+@test
+async def integration_already_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we only allow a single config flow."""
     MockConfigEntry(domain=DOMAIN).add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "single_instance_allowed"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("single_instance_allowed")
 
 
-async def test_user_flow_bad_dsn(hass: HomeAssistant) -> None:
+@test
+async def user_flow_bad_dsn(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle bad dsn error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -80,11 +99,15 @@ async def test_user_flow_bad_dsn(hass: HomeAssistant) -> None:
             {"dsn": "foo"},
         )
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("errors") == {"base": "bad_dsn"}
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("errors")).to_equal({"base": "bad_dsn"})
 
 
-async def test_user_flow_unknown_exception(hass: HomeAssistant) -> None:
+@test
+async def user_flow_unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle any unknown exception error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -99,11 +122,15 @@ async def test_user_flow_unknown_exception(hass: HomeAssistant) -> None:
             {"dsn": "foo"},
         )
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("errors") == {"base": "unknown"}
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("errors")).to_equal({"base": "unknown"})
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test options config flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -112,13 +139,13 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     with patch("homeassistant.components.sentry.async_setup_entry", return_value=True):
-        assert await hass.config_entries.async_setup(entry.entry_id)
+        expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
         await hass.async_block_till_done()
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "init"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -134,14 +161,16 @@ async def test_options_flow(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("data") == {
-        CONF_ENVIRONMENT: "Test",
-        CONF_EVENT_CUSTOM_COMPONENTS: True,
-        CONF_EVENT_HANDLED: True,
-        CONF_EVENT_THIRD_PARTY_PACKAGES: True,
-        CONF_LOGGING_EVENT_LEVEL: logging.DEBUG,
-        CONF_LOGGING_LEVEL: logging.DEBUG,
-        CONF_TRACING: True,
-        CONF_TRACING_SAMPLE_RATE: 0.5,
-    }
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("data")).to_equal(
+        {
+            CONF_ENVIRONMENT: "Test",
+            CONF_EVENT_CUSTOM_COMPONENTS: True,
+            CONF_EVENT_HANDLED: True,
+            CONF_EVENT_THIRD_PARTY_PACKAGES: True,
+            CONF_LOGGING_EVENT_LEVEL: logging.DEBUG,
+            CONF_LOGGING_LEVEL: logging.DEBUG,
+            CONF_TRACING: True,
+            CONF_TRACING_SAMPLE_RATE: 0.5,
+        }
+    )
