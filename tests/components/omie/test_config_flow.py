@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.omie.const import DOMAIN
@@ -11,61 +11,81 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import spot_price_fetcher
+from ._fixtures import mock_config_entry, mock_pyomie, mock_setup_entry
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry", "mock_pyomie")
+
+@fixture
+def _trigger_executor(
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    _pyomie: MagicMock = Depends(mock_pyomie),
+    _network: None = Depends(mock_network),
+) -> None:
+    """Module-level fixture priming common mocks."""
 
 
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "OMIE"
-    assert result2["data"] == {}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("OMIE")
+    expect(result2["data"]).to_equal({})
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_cannot_connect(hass: HomeAssistant, mock_pyomie: MagicMock) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    pyomie: MagicMock = Depends(mock_pyomie),
+) -> None:
     """Test we handle connection error."""
-    mock_pyomie.spot_price.side_effect = aiohttp.ClientError("Connection failed")
+    pyomie.spot_price.side_effect = aiohttp.ClientError("Connection failed")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
-    # Fix the error and retry
-    mock_pyomie.spot_price.side_effect = spot_price_fetcher({})
+    pyomie.spot_price.side_effect = spot_price_fetcher({})
     result3 = await hass.config_entries.flow.async_configure(result2["flow_id"], {})
     await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_form_already_setup(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def form_already_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we abort if already set up."""
-    mock_config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
+    expect(len(setup_entry.mock_calls)).to_equal(0)
