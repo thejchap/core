@@ -1,10 +1,13 @@
-"""Define tests for the OpenUV config flow."""
+"""Define tests for the RainMachine config flow."""
+
+from __future__ import annotations
 
 from ipaddress import ip_address
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
-import pytest
 from regenmaschine.errors import RainMachineError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries, setup
 from homeassistant.components.rainmachine import (
@@ -19,68 +22,104 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
+from ._fixtures import (
+    client as client_fx,
+    config as config_fx,
+    config_entry as config_entry_fx,
+    setup_rainmachine as setup_rainmachine_fx,
+)
 
-async def test_duplicate_error(hass: HomeAssistant, config, config_entry) -> None:
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import entity_registry as entity_registry_fx, hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+def _zeroconf_data(ip: str) -> ZeroconfServiceInfo:
+    return ZeroconfServiceInfo(
+        ip_address=ip_address(ip),
+        ip_addresses=[ip_address(ip)],
+        hostname="mock_hostname",
+        name="mock_name",
+        port=None,
+        properties={},
+        type="mock_type",
+    )
+
+
+@test
+async def duplicate_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    cfg: dict[str, Any] = Depends(config_fx),
+    _entry: MockConfigEntry = Depends(config_entry_fx),
+) -> None:
     """Test that errors are shown when duplicates are added."""
     result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}, data=config
+        DOMAIN, context={"source": config_entries.SOURCE_USER}, data=cfg
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_invalid_password(hass: HomeAssistant, config) -> None:
+@test
+async def invalid_password(
+    hass: HomeAssistant = Depends(hass_fixture),
+    cfg: dict[str, Any] = Depends(config_fx),
+) -> None:
     """Test that an invalid password throws an error."""
-    with patch("regenmaschine.client.Client.load_local", side_effect=RainMachineError):
+    with patch(
+        "regenmaschine.client.Client.load_local", side_effect=RainMachineError
+    ):
         result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": config_entries.SOURCE_USER}, data=config
+            DOMAIN, context={"source": config_entries.SOURCE_USER}, data=cfg
         )
-    assert result["errors"] == {CONF_PASSWORD: "invalid_auth"}
+    expect(result["errors"]).to_equal({CONF_PASSWORD: "invalid_auth"})
 
 
-@pytest.mark.parametrize(
-    ("platform", "entity_name", "entity_id", "old_unique_id", "new_unique_id"),
-    [
-        (
-            "binary_sensor",
-            "Home Flow Sensor",
-            "binary_sensor.home_flow_sensor",
-            "60e32719b6cf_flow_sensor",
-            "60:e3:27:19:b6:cf_flow_sensor",
-        ),
-        (
-            "switch",
-            "Home Landscaping",
-            "switch.home_landscaping",
-            "60e32719b6cf_RainMachineZone_1",
-            "60:e3:27:19:b6:cf_zone_1",
-        ),
-    ],
+@test.cases(
+    test.case(
+        "binary_sensor",
+        platform="binary_sensor",
+        entity_name="Home Flow Sensor",
+        entity_id="binary_sensor.home_flow_sensor",
+        old_unique_id="60e32719b6cf_flow_sensor",
+        new_unique_id="60:e3:27:19:b6:cf_flow_sensor",
+    ),
+    test.case(
+        "switch",
+        platform="switch",
+        entity_name="Home Landscaping",
+        entity_id="switch.home_landscaping",
+        old_unique_id="60e32719b6cf_RainMachineZone_1",
+        new_unique_id="60:e3:27:19:b6:cf_zone_1",
+    ),
 )
-async def test_migrate_1_2(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    client,
-    config,
-    config_entry,
-    entity_id,
-    entity_name,
-    old_unique_id,
-    new_unique_id,
-    platform,
+async def migrate_1_2(
+    *,
+    platform: str,
+    entity_name: str,
+    entity_id: str,
+    old_unique_id: str,
+    new_unique_id: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fx),
+    client_mock: AsyncMock = Depends(client_fx),
+    entry: MockConfigEntry = Depends(config_entry_fx),
 ) -> None:
     """Test migration from version 1 to 2 (consistent unique IDs)."""
-    # Create entity RegistryEntry using old unique ID format:
     entity_entry = entity_registry.async_get_or_create(
         platform,
         DOMAIN,
         old_unique_id,
         suggested_object_id=entity_name,
-        config_entry=config_entry,
+        config_entry=entry,
         original_name=entity_name,
     )
-    assert entity_entry.entity_id == entity_id
-    assert entity_entry.unique_id == old_unique_id
+    expect(entity_entry.entity_id).to_equal(entity_id)
+    expect(entity_entry.unique_id).to_equal(old_unique_id)
 
     with (
         patch(
@@ -88,27 +127,33 @@ async def test_migrate_1_2(
         ),
         patch(
             "homeassistant.components.rainmachine.config_flow.Client",
-            return_value=client,
+            return_value=client_mock,
         ),
     ):
         await setup.async_setup_component(hass, DOMAIN, {})
         await hass.async_block_till_done()
 
-    # Check that new RegistryEntry is using new unique ID format
-    entity_entry = entity_registry.async_get(entity_id)
-    assert entity_entry.unique_id == new_unique_id
-    assert entity_registry.async_get_entity_id(platform, DOMAIN, old_unique_id) is None
+    updated = entity_registry.async_get(entity_id)
+    expect(updated.unique_id).to_equal(new_unique_id)
+    expect(
+        entity_registry.async_get_entity_id(platform, DOMAIN, old_unique_id)
+    ).to_be(None)
 
 
-async def test_options_flow(hass: HomeAssistant, config, config_entry) -> None:
+@test
+async def options_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    cfg: dict[str, Any] = Depends(config_fx),
+    entry: MockConfigEntry = Depends(config_entry_fx),
+) -> None:
     """Test config flow options."""
     with patch(
         "homeassistant.components.rainmachine.async_setup_entry", return_value=True
     ):
-        await hass.config_entries.async_setup(config_entry.entry_id)
-        result = await hass.config_entries.options.async_init(config_entry.entry_id)
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        await hass.config_entries.async_setup(entry.entry_id)
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -118,126 +163,126 @@ async def test_options_flow(hass: HomeAssistant, config, config_entry) -> None:
                 CONF_ALLOW_INACTIVE_ZONES_TO_RUN: False,
             },
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert config_entry.options == {
-            CONF_DEFAULT_ZONE_RUN_TIME: 600,
-            CONF_USE_APP_RUN_TIMES: False,
-            CONF_ALLOW_INACTIVE_ZONES_TO_RUN: False,
-        }
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(entry.options).to_equal(
+            {
+                CONF_DEFAULT_ZONE_RUN_TIME: 600,
+                CONF_USE_APP_RUN_TIMES: False,
+                CONF_ALLOW_INACTIVE_ZONES_TO_RUN: False,
+            }
+        )
 
 
-async def test_show_form(hass: HomeAssistant) -> None:
+@test
+async def show_form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that the form is served with no input."""
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": config_entries.SOURCE_USER},
-        data=None,
+        DOMAIN, context={"source": config_entries.SOURCE_USER}, data=None
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_step_user(hass: HomeAssistant, config, setup_rainmachine) -> None:
+@test
+async def step_user(
+    hass: HomeAssistant = Depends(hass_fixture),
+    cfg: dict[str, Any] = Depends(config_fx),
+    _setup: None = Depends(setup_rainmachine_fx),
+) -> None:
     """Test that the user step works."""
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": config_entries.SOURCE_USER},
-        data=config,
+        DOMAIN, context={"source": config_entries.SOURCE_USER}, data=cfg
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "12345"
-    assert result["data"] == {
-        CONF_IP_ADDRESS: "192.168.1.100",
-        CONF_PASSWORD: "password",
-        CONF_PORT: 8080,
-        CONF_SSL: True,
-        CONF_DEFAULT_ZONE_RUN_TIME: 600,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("12345")
+    expect(result["data"]).to_equal(
+        {
+            CONF_IP_ADDRESS: "192.168.1.100",
+            CONF_PASSWORD: "password",
+            CONF_PORT: 8080,
+            CONF_SSL: True,
+            CONF_DEFAULT_ZONE_RUN_TIME: 600,
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    "source", [config_entries.SOURCE_ZEROCONF, config_entries.SOURCE_HOMEKIT]
+@test.cases(
+    test.case("zeroconf", source=config_entries.SOURCE_ZEROCONF),
+    test.case("homekit", source=config_entries.SOURCE_HOMEKIT),
 )
-async def test_step_homekit_zeroconf_ip_already_exists(
-    hass: HomeAssistant, client, config, config_entry, source
+async def step_homekit_zeroconf_ip_already_exists(
+    *,
+    source: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_mock: AsyncMock = Depends(client_fx),
+    _entry: MockConfigEntry = Depends(config_entry_fx),
 ) -> None:
     """Test homekit and zeroconf with an ip that already exists."""
     with patch(
-        "homeassistant.components.rainmachine.config_flow.Client", return_value=client
+        "homeassistant.components.rainmachine.config_flow.Client",
+        return_value=client_mock,
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": source},
-            data=ZeroconfServiceInfo(
-                ip_address=ip_address("192.168.1.100"),
-                ip_addresses=[ip_address("192.168.1.100")],
-                hostname="mock_hostname",
-                name="mock_name",
-                port=None,
-                properties={},
-                type="mock_type",
-            ),
+            data=_zeroconf_data("192.168.1.100"),
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    "source", [config_entries.SOURCE_ZEROCONF, config_entries.SOURCE_HOMEKIT]
+@test.cases(
+    test.case("zeroconf", source=config_entries.SOURCE_ZEROCONF),
+    test.case("homekit", source=config_entries.SOURCE_HOMEKIT),
 )
-async def test_step_homekit_zeroconf_ip_change(
-    hass: HomeAssistant, client, config_entry, source
+async def step_homekit_zeroconf_ip_change(
+    *,
+    source: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_mock: AsyncMock = Depends(client_fx),
+    entry: MockConfigEntry = Depends(config_entry_fx),
 ) -> None:
     """Test zeroconf with an ip change."""
     with patch(
-        "homeassistant.components.rainmachine.config_flow.Client", return_value=client
+        "homeassistant.components.rainmachine.config_flow.Client",
+        return_value=client_mock,
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": source},
-            data=ZeroconfServiceInfo(
-                ip_address=ip_address("192.168.1.2"),
-                ip_addresses=[ip_address("192.168.1.2")],
-                hostname="mock_hostname",
-                name="mock_name",
-                port=None,
-                properties={},
-                type="mock_type",
-            ),
+            data=_zeroconf_data("192.168.1.2"),
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert config_entry.data[CONF_IP_ADDRESS] == "192.168.1.2"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(entry.data[CONF_IP_ADDRESS]).to_equal("192.168.1.2")
 
 
-@pytest.mark.parametrize(
-    "source", [config_entries.SOURCE_ZEROCONF, config_entries.SOURCE_HOMEKIT]
+@test.cases(
+    test.case("zeroconf", source=config_entries.SOURCE_ZEROCONF),
+    test.case("homekit", source=config_entries.SOURCE_HOMEKIT),
 )
-async def test_step_homekit_zeroconf_new_controller_when_some_exist(
-    hass: HomeAssistant, client, config, source
+async def step_homekit_zeroconf_new_controller_when_some_exist(
+    *,
+    source: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_mock: AsyncMock = Depends(client_fx),
+    _cfg: dict[str, Any] = Depends(config_fx),
 ) -> None:
     """Test homekit and zeroconf for a new controller when one already exists."""
     with patch(
-        "homeassistant.components.rainmachine.config_flow.Client", return_value=client
+        "homeassistant.components.rainmachine.config_flow.Client",
+        return_value=client_mock,
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": source},
-            data=ZeroconfServiceInfo(
-                ip_address=ip_address("192.168.1.100"),
-                ip_addresses=[ip_address("192.168.1.100")],
-                hostname="mock_hostname",
-                name="mock_name",
-                port=None,
-                properties={},
-                type="mock_type",
-            ),
+            data=_zeroconf_data("192.168.1.100"),
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -245,7 +290,7 @@ async def test_step_homekit_zeroconf_new_controller_when_some_exist(
         ),
         patch(
             "homeassistant.components.rainmachine.config_flow.Client",
-            return_value=client,
+            return_value=client_mock,
         ),
     ):
         result2 = await hass.config_entries.flow.async_configure(
@@ -258,57 +303,47 @@ async def test_step_homekit_zeroconf_new_controller_when_some_exist(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "12345"
-    assert result2["data"] == {
-        CONF_IP_ADDRESS: "192.168.1.100",
-        CONF_PASSWORD: "password",
-        CONF_PORT: 8080,
-        CONF_SSL: True,
-        CONF_DEFAULT_ZONE_RUN_TIME: 600,
-    }
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("12345")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_IP_ADDRESS: "192.168.1.100",
+            CONF_PASSWORD: "password",
+            CONF_PORT: 8080,
+            CONF_SSL: True,
+            CONF_DEFAULT_ZONE_RUN_TIME: 600,
+        }
+    )
 
 
-async def test_discovery_by_homekit_and_zeroconf_same_time(
-    hass: HomeAssistant, client
+@test
+async def discovery_by_homekit_and_zeroconf_same_time(
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_mock: AsyncMock = Depends(client_fx),
 ) -> None:
     """Test the same controller gets discovered by two different methods."""
     with patch(
-        "homeassistant.components.rainmachine.config_flow.Client", return_value=client
+        "homeassistant.components.rainmachine.config_flow.Client",
+        return_value=client_mock,
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": config_entries.SOURCE_ZEROCONF},
-            data=ZeroconfServiceInfo(
-                ip_address=ip_address("192.168.1.100"),
-                ip_addresses=[ip_address("192.168.1.100")],
-                hostname="mock_hostname",
-                name="mock_name",
-                port=None,
-                properties={},
-                type="mock_type",
-            ),
+            data=_zeroconf_data("192.168.1.100"),
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with patch(
-        "homeassistant.components.rainmachine.config_flow.Client", return_value=client
+        "homeassistant.components.rainmachine.config_flow.Client",
+        return_value=client_mock,
     ):
         result2 = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": config_entries.SOURCE_HOMEKIT},
-            data=ZeroconfServiceInfo(
-                ip_address=ip_address("192.168.1.100"),
-                ip_addresses=[ip_address("192.168.1.100")],
-                hostname="mock_hostname",
-                name="mock_name",
-                port=None,
-                properties={},
-                type="mock_type",
-            ),
+            data=_zeroconf_data("192.168.1.100"),
         )
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_in_progress"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_in_progress")
