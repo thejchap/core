@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 from aiogithubapi import GitHubException
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.github.const import (
     CONF_REPOSITORY,
@@ -16,17 +16,33 @@ from homeassistant.const import CONF_ACCESS_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType, UnknownFlow
 
+from ._fixtures import (
+    device_activation_event,
+    github_client,
+    github_device_client,
+    mock_config_entry,
+    mock_config_entry_no_subentries,
+    mock_setup_entry,
+)
 from .const import MOCK_ACCESS_TOKEN
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_full_user_flow_implementation(
-    hass: HomeAssistant,
-    mock_setup_entry: None,
-    github_device_client: AsyncMock,
-    github_client: AsyncMock,
-    device_activation_event: asyncio.Event,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def full_user_flow_implementation(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: None = Depends(mock_setup_entry),
+    _device_client: AsyncMock = Depends(github_device_client),
+    _client: AsyncMock = Depends(github_client),
+    activation_event: asyncio.Event = Depends(device_activation_event),
 ) -> None:
     """Test the full manual user flow from start to finish."""
 
@@ -34,63 +50,70 @@ async def test_full_user_flow_implementation(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["step_id"] == "device"
-    assert result["type"] is FlowResultType.SHOW_PROGRESS
+    expect(result["step_id"]).to_equal("device")
+    expect(result["type"]).to_be(FlowResultType.SHOW_PROGRESS)
 
-    device_activation_event.set()
+    activation_event.set()
     await hass.async_block_till_done()
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["title"] == ""
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_ACCESS_TOKEN: MOCK_ACCESS_TOKEN}
+    expect(result["title"]).to_equal("")
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({CONF_ACCESS_TOKEN: MOCK_ACCESS_TOKEN})
 
 
-async def test_flow_with_registration_failure(
-    hass: HomeAssistant,
-    github_device_client: AsyncMock,
+@test
+async def flow_with_registration_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    device_client: AsyncMock = Depends(github_device_client),
 ) -> None:
     """Test flow with registration failure of the device."""
-    github_device_client.register.side_effect = GitHubException("Registration failed")
+    device_client.register.side_effect = GitHubException("Registration failed")
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "could_not_register"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("could_not_register")
 
 
-async def test_flow_with_activation_failure(
-    hass: HomeAssistant,
-    github_device_client: AsyncMock,
-    device_activation_event: asyncio.Event,
+@test
+async def flow_with_activation_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    device_client: AsyncMock = Depends(github_device_client),
+    activation_event: asyncio.Event = Depends(device_activation_event),
 ) -> None:
     """Test flow with activation failure of the device."""
 
     async def mock_api_device_activation(device_code) -> None:
         # Simulate the device activation process
-        await device_activation_event.wait()
+        await activation_event.wait()
         raise GitHubException("Activation failed")
 
-    github_device_client.activation = mock_api_device_activation
+    device_client.activation = mock_api_device_activation
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["step_id"] == "device"
-    assert result["type"] is FlowResultType.SHOW_PROGRESS
+    expect(result["step_id"]).to_equal("device")
+    expect(result["type"]).to_be(FlowResultType.SHOW_PROGRESS)
 
-    device_activation_event.set()
+    activation_event.set()
     await hass.async_block_till_done()
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "could_not_register"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("could_not_register")
 
 
-async def test_flow_with_remove_while_activating(
-    hass: HomeAssistant, github_device_client: AsyncMock
+@test
+async def flow_with_remove_while_activating(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _device_client: AsyncMock = Depends(github_device_client),
 ) -> None:
     """Test flow with user canceling while activating."""
 
@@ -98,151 +121,161 @@ async def test_flow_with_remove_while_activating(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["step_id"] == "device"
-    assert result["type"] is FlowResultType.SHOW_PROGRESS
+    expect(result["step_id"]).to_equal("device")
+    expect(result["type"]).to_be(FlowResultType.SHOW_PROGRESS)
 
-    assert hass.config_entries.flow.async_get(result["flow_id"])
+    expect(hass.config_entries.flow.async_get(result["flow_id"]) is not None).to_be(
+        True
+    )
 
     # Simulate user canceling the flow
     hass.config_entries.flow._async_remove_flow_progress(result["flow_id"])
     await hass.async_block_till_done()
 
-    with pytest.raises(UnknownFlow):
-        hass.config_entries.flow.async_get(result["flow_id"])
+    expect(
+        lambda: hass.config_entries.flow.async_get(result["flow_id"])
+    ).to_raise(UnknownFlow)
 
 
-async def test_already_configured(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we abort if already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize("mock_subentries", [[]])
-async def test_repository_subentry_flow(
-    hass: HomeAssistant,
-    github_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def repository_subentry_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(github_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry_no_subentries),
 ) -> None:
     """Test the repository subentry flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.subentries.async_init(
-        (mock_config_entry.entry_id, SUBENTRY_TYPE_REPOSITORY),
+        (config_entry.entry_id, SUBENTRY_TYPE_REPOSITORY),
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {CONF_REPOSITORY: "home-assistant/core"}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_REPOSITORY: "home-assistant/core"}
-    subentry = list(mock_config_entry.subentries.values())[0]
-    assert subentry.unique_id == "home-assistant/core"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({CONF_REPOSITORY: "home-assistant/core"})
+    subentry = list(config_entry.subentries.values())[0]
+    expect(subentry.unique_id).to_equal("home-assistant/core")
 
 
-@pytest.mark.parametrize("mock_subentries", [[]])
-async def test_repository_subentry_flow_repository_error(
-    hass: HomeAssistant,
-    github_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def repository_subentry_flow_repository_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(github_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry_no_subentries),
 ) -> None:
     """Test the repository subentry flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    github_client.user.repos.side_effect = GitHubException()
+    client.user.repos.side_effect = GitHubException()
 
     result = await hass.config_entries.subentries.async_init(
-        (mock_config_entry.entry_id, SUBENTRY_TYPE_REPOSITORY),
+        (config_entry.entry_id, SUBENTRY_TYPE_REPOSITORY),
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     schema = result["data_schema"]
     repositories = schema.schema[CONF_REPOSITORY]
-    assert len(repositories.config["options"]) == 2
+    expect(len(repositories.config["options"])).to_equal(2)
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {CONF_REPOSITORY: "home-assistant/core"}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_REPOSITORY: "home-assistant/core"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({CONF_REPOSITORY: "home-assistant/core"})
 
 
-@pytest.mark.parametrize("mock_subentries", [[]])
-async def test_repository_subentry_flow_no_repositories(
-    hass: HomeAssistant,
-    github_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def repository_subentry_flow_no_repositories(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(github_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry_no_subentries),
 ) -> None:
     """Test the repository subentry flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    github_client.user.repos.side_effect = [MagicMock(is_last_page=True, data=[])]
-    github_client.user.starred.side_effect = [MagicMock(is_last_page=True, data=[])]
+    client.user.repos.side_effect = [MagicMock(is_last_page=True, data=[])]
+    client.user.starred.side_effect = [MagicMock(is_last_page=True, data=[])]
 
     result = await hass.config_entries.subentries.async_init(
-        (mock_config_entry.entry_id, SUBENTRY_TYPE_REPOSITORY),
+        (config_entry.entry_id, SUBENTRY_TYPE_REPOSITORY),
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     schema = result["data_schema"]
     repositories = schema.schema[CONF_REPOSITORY]
-    assert len(repositories.config["options"]) == 2
+    expect(len(repositories.config["options"])).to_equal(2)
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {CONF_REPOSITORY: "home-assistant/core"}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_REPOSITORY: "home-assistant/core"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({CONF_REPOSITORY: "home-assistant/core"})
 
 
-async def test_repository_subentry_flow_omit_already_setup_repository(
-    hass: HomeAssistant,
-    github_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def repository_subentry_flow_omit_already_setup_repository(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(github_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test the repository subentry flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.subentries.async_init(
-        (mock_config_entry.entry_id, SUBENTRY_TYPE_REPOSITORY),
+        (config_entry.entry_id, SUBENTRY_TYPE_REPOSITORY),
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     schema = result["data_schema"]
     repositories = schema.schema[CONF_REPOSITORY]
-    assert len(repositories.config["options"]) == 3
+    expect(len(repositories.config["options"])).to_equal(3)
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"], {CONF_REPOSITORY: "esphome/esphome"}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_REPOSITORY: "esphome/esphome"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({CONF_REPOSITORY: "esphome/esphome"})
