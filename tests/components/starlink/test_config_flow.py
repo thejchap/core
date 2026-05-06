@@ -1,5 +1,9 @@
 """Test the Starlink config flow."""
 
+from __future__ import annotations
+
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.starlink.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -10,9 +14,19 @@ from homeassistant.data_entry_flow import FlowResultType
 from .patchers import DEVICE_FOUND_PATCHER, NO_DEVICE_PATCHER, SETUP_ENTRY_PATCHER
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_flow_user_fails_can_succeed(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def flow_user_fails_can_succeed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user initialized flow can still succeed after failure when Starlink is available."""
     user_input = {CONF_IP_ADDRESS: "192.168.100.1:9200"}
 
@@ -28,8 +42,8 @@ async def test_flow_user_fails_can_succeed(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(True)
 
     with DEVICE_FOUND_PATCHER, SETUP_ENTRY_PATCHER:
         result = await hass.config_entries.flow.async_configure(
@@ -38,11 +52,15 @@ async def test_flow_user_fails_can_succeed(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == user_input
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(user_input)
 
 
-async def test_flow_user_success(hass: HomeAssistant) -> None:
+@test
+async def flow_user_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user initialized flow succeeds when Starlink is available."""
     user_input = {CONF_IP_ADDRESS: "192.168.100.1:9200"}
 
@@ -58,11 +76,15 @@ async def test_flow_user_success(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == user_input
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(user_input)
 
 
-async def test_flow_user_duplicate_abort(hass: HomeAssistant) -> None:
+@test
+async def flow_user_duplicate_abort(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user initialized flow aborts when Starlink is already configured."""
     user_input = {CONF_IP_ADDRESS: "192.168.100.1:9200"}
 
@@ -86,5 +108,5 @@ async def test_flow_user_duplicate_abort(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
