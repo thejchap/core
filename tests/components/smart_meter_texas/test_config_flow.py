@@ -1,13 +1,15 @@
 """Test the Smart Meter Texas config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 from aiohttp import ClientError
-import pytest
 from smart_meter_texas.exceptions import (
     SmartMeterTexasAPIError,
     SmartMeterTexasAuthError,
 )
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.smart_meter_texas.const import DOMAIN
@@ -16,18 +18,27 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 TEST_LOGIN = {CONF_USERNAME: "test-username", CONF_PASSWORD: "test-password"}
 
 
-async def test_form(hass: HomeAssistant) -> None:
-    """Test we get the form."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch("smart_meter_texas.Client.authenticate", return_value=True),
@@ -41,13 +52,17 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == TEST_LOGIN[CONF_USERNAME]
-    assert result2["data"] == TEST_LOGIN
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(TEST_LOGIN[CONF_USERNAME])
+    expect(result2["data"]).to_equal(TEST_LOGIN)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -62,14 +77,20 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             TEST_LOGIN,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-@pytest.mark.parametrize(
-    "side_effect", [TimeoutError, ClientError, SmartMeterTexasAPIError]
+@test.cases(
+    test.case("timeout", side_effect=TimeoutError),
+    test.case("client_error", side_effect=ClientError),
+    test.case("api_error", side_effect=SmartMeterTexasAPIError),
 )
-async def test_form_cannot_connect(hass: HomeAssistant, side_effect) -> None:
+async def form_cannot_connect(
+    side_effect: type[Exception],
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -83,11 +104,15 @@ async def test_form_cannot_connect(hass: HomeAssistant, side_effect) -> None:
             result["flow_id"], TEST_LOGIN
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_unknown_exception(hass: HomeAssistant) -> None:
+@test
+async def form_unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test base exception is handled."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -102,11 +127,15 @@ async def test_form_unknown_exception(hass: HomeAssistant) -> None:
             TEST_LOGIN,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_form_duplicate_account(hass: HomeAssistant) -> None:
+@test
+async def form_duplicate_account(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that a duplicate account cannot be configured."""
     MockConfigEntry(
         domain=DOMAIN,
@@ -124,5 +153,5 @@ async def test_form_duplicate_account(hass: HomeAssistant) -> None:
             data={"username": "user123", "password": "password123"},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
