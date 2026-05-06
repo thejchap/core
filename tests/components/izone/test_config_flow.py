@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Any
 from unittest.mock import Mock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.izone.const import DISPATCH_CONTROLLER_DISCOVERED, IZONE
@@ -12,27 +12,31 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
+from ._fixtures import mock_disco
 
-@pytest.fixture
-def mock_disco() -> Mock:
-    """Mock discovery service."""
-    disco = Mock()
-    disco.pi_disco = Mock()
-    disco.pi_disco.controllers = {}
-    return disco
+from tests.hass_fixtures import hass as hass_fixture
 
 
-def _mock_start_discovery(hass: HomeAssistant, mock_disco: Mock) -> Callable[..., Mock]:
+@fixture
+def _trigger_executor(_disco: Mock = Depends(mock_disco)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+def _mock_start_discovery(hass: HomeAssistant, disco: Mock) -> Callable[..., Mock]:
     def do_disovered(*args: Any) -> Mock:
         async_dispatcher_send(hass, DISPATCH_CONTROLLER_DISCOVERED, True)
-        return mock_disco
+        return disco
 
     return do_disovered
 
 
-async def test_not_found(hass: HomeAssistant, mock_disco: Mock) -> None:
+@test
+async def not_found(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    disco: Mock = Depends(mock_disco),
+) -> None:
     """Test not finding iZone controller."""
-
     with (
         patch(
             "homeassistant.components.izone.config_flow.async_start_discovery_service"
@@ -42,25 +46,29 @@ async def test_not_found(hass: HomeAssistant, mock_disco: Mock) -> None:
             return_value=None,
         ) as stop_disco,
     ):
-        start_disco.side_effect = _mock_start_discovery(hass, mock_disco)
+        start_disco.side_effect = _mock_start_discovery(hass, disco)
         result = await hass.config_entries.flow.async_init(
             IZONE, context={"source": config_entries.SOURCE_USER}
         )
 
-        # Confirmation form
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.ABORT
+        expect(result["type"]).to_be(FlowResultType.ABORT)
 
         await hass.async_block_till_done()
 
     stop_disco.assert_called_once()
 
 
-async def test_found(hass: HomeAssistant, mock_disco: Mock) -> None:
-    """Test not finding iZone controller."""
-    mock_disco.pi_disco.controllers["blah"] = object()
+@test
+async def found(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    disco: Mock = Depends(mock_disco),
+) -> None:
+    """Test finding iZone controller."""
+    disco.pi_disco.controllers["blah"] = object()
 
     with (
         patch(
@@ -75,16 +83,15 @@ async def test_found(hass: HomeAssistant, mock_disco: Mock) -> None:
             return_value=None,
         ),
     ):
-        start_disco.side_effect = _mock_start_discovery(hass, mock_disco)
+        start_disco.side_effect = _mock_start_discovery(hass, disco)
         result = await hass.config_entries.flow.async_init(
             IZONE, context={"source": config_entries.SOURCE_USER}
         )
 
-        # Confirmation form
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-        assert result["type"] is FlowResultType.CREATE_ENTRY
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
         await hass.async_block_till_done()
 
