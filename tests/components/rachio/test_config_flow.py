@@ -1,7 +1,11 @@
 """Test the Rachio config flow."""
 
+from __future__ import annotations
+
 from ipaddress import ip_address
 from unittest.mock import MagicMock, patch
+
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.rachio.const import (
@@ -18,6 +22,12 @@ from homeassistant.helpers.service_info.zeroconf import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
 
 
 def _mock_rachio_return_value(get=None, info=None):
@@ -29,14 +39,14 @@ def _mock_rachio_return_value(get=None, info=None):
     return rachio_mock
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@test
+async def form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     rachio_mock = _mock_rachio_return_value(
         get=({"status": 200}, {"username": "myusername"}),
@@ -63,17 +73,20 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "myusername"
-    assert result2["data"] == {
-        CONF_API_KEY: "api_key",
-        CONF_CUSTOM_URL: "http://custom.url",
-        CONF_MANUAL_RUN_MINS: 5,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("myusername")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_API_KEY: "api_key",
+            CONF_CUSTOM_URL: "http://custom.url",
+            CONF_MANUAL_RUN_MINS: 5,
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -91,11 +104,12 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             {CONF_API_KEY: "api_key"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -113,13 +127,13 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             {CONF_API_KEY: "api_key"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_homekit(hass: HomeAssistant) -> None:
+@test
+async def form_homekit(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that we abort from homekit if rachio is already setup."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_HOMEKIT},
@@ -133,14 +147,14 @@ async def test_form_homekit(hass: HomeAssistant) -> None:
             type="mock_type",
         ),
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
     flow = next(
-        flow
-        for flow in hass.config_entries.flow.async_progress()
-        if flow["flow_id"] == result["flow_id"]
+        f
+        for f in hass.config_entries.flow.async_progress()
+        if f["flow_id"] == result["flow_id"]
     )
-    assert flow["context"]["unique_id"] == "AA:BB:CC:DD:EE:FF"
+    expect(flow["context"]["unique_id"]).to_equal("AA:BB:CC:DD:EE:FF")
 
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_API_KEY: "api_key"})
     entry.add_to_hass(hass)
@@ -158,11 +172,12 @@ async def test_form_homekit(hass: HomeAssistant) -> None:
             type="mock_type",
         ),
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_form_homekit_ignored(hass: HomeAssistant) -> None:
+@test
+async def form_homekit_ignored(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that we abort from homekit if rachio is ignored."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -184,18 +199,18 @@ async def test_form_homekit_ignored(hass: HomeAssistant) -> None:
             type="mock_type",
         ),
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test option flow."""
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_API_KEY: "api_key"})
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
-    # This should be improved at a later stage to increase test coverage
     hass.config_entries.options.async_abort(result["flow_id"])
