@@ -1,9 +1,12 @@
 """Tests for the Soma config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 from api.soma_api import SomaApi
 from requests import RequestException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.soma import DOMAIN
 from homeassistant.config_entries import SOURCE_IMPORT, SOURCE_USER
@@ -11,30 +14,48 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 MOCK_HOST = "123.45.67.89"
 MOCK_PORT = 3000
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user form showing."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
 
-async def test_import_abort(hass: HomeAssistant) -> None:
+@test
+async def import_abort(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test configuration from YAML aborting with existing entity."""
     MockConfigEntry(domain=DOMAIN).add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_IMPORT}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_setup"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_setup")
 
 
-async def test_import_create(hass: HomeAssistant) -> None:
+@test
+async def import_create(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test configuration from YAML."""
     with patch.object(SomaApi, "list_devices", return_value={"result": "success"}):
         result = await hass.config_entries.flow.async_init(
@@ -42,10 +63,14 @@ async def test_import_create(hass: HomeAssistant) -> None:
             context={"source": SOURCE_IMPORT},
             data={"host": MOCK_HOST, "port": MOCK_PORT},
         )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_error_status(hass: HomeAssistant) -> None:
+@test
+async def error_status(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test Connect successfully returning error status."""
     with patch.object(SomaApi, "list_devices", return_value={"result": "error"}):
         result = await hass.config_entries.flow.async_init(
@@ -53,24 +78,31 @@ async def test_error_status(hass: HomeAssistant) -> None:
             context={"source": SOURCE_IMPORT},
             data={"host": MOCK_HOST, "port": MOCK_PORT},
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "result_error"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("result_error")
 
 
-async def test_key_error(hass: HomeAssistant) -> None:
+@test
+async def key_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test Connect returning empty string."""
-
     with patch.object(SomaApi, "list_devices", return_value={}):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,
             context={"source": SOURCE_IMPORT},
             data={"host": MOCK_HOST, "port": MOCK_PORT},
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "connection_error"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("connection_error")
 
 
-async def test_exception(hass: HomeAssistant) -> None:
+@test
+async def exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test if RequestException fires when no connection can be made."""
     with patch.object(SomaApi, "list_devices", side_effect=RequestException()):
         result = await hass.config_entries.flow.async_init(
@@ -78,11 +110,15 @@ async def test_exception(hass: HomeAssistant) -> None:
             context={"source": SOURCE_IMPORT},
             data={"host": MOCK_HOST, "port": MOCK_PORT},
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "connection_error"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("connection_error")
 
 
-async def test_full_flow(hass: HomeAssistant) -> None:
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Check classic use case."""
     hass.data[DOMAIN] = {}
     with patch.object(SomaApi, "list_devices", return_value={"result": "success"}):
@@ -91,4 +127,4 @@ async def test_full_flow(hass: HomeAssistant) -> None:
             context={"source": SOURCE_USER},
             data={"host": MOCK_HOST, "port": MOCK_PORT},
         )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
