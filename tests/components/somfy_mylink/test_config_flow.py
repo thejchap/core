@@ -1,8 +1,10 @@
 """Test the Somfy MyLink config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.somfy_mylink.const import (
@@ -16,16 +18,25 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form_user(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -39,27 +50,24 @@ async def test_form_user(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.1.1.1",
-                CONF_PORT: 1234,
-                CONF_SYSTEM_ID: "456",
-            },
+            {CONF_HOST: "1.1.1.1", CONF_PORT: 1234, CONF_SYSTEM_ID: "456"},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "MyLink 1.1.1.1"
-    assert result2["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: 1234,
-        CONF_SYSTEM_ID: "456",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("MyLink 1.1.1.1")
+    expect(result2["data"]).to_equal(
+        {CONF_HOST: "1.1.1.1", CONF_PORT: 1234, CONF_SYSTEM_ID: "456"}
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_user_already_configured(hass: HomeAssistant) -> None:
+@test
+async def form_user_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we abort if already configured."""
-
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: "1.1.1.1", CONF_PORT: 12, CONF_SYSTEM_ID: 46},
@@ -68,8 +76,8 @@ async def test_form_user_already_configured(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -83,19 +91,19 @@ async def test_form_user_already_configured(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.1.1.1",
-                CONF_PORT: 1234,
-                CONF_SYSTEM_ID: "456",
-            },
+            {CONF_HOST: "1.1.1.1", CONF_PORT: 1234, CONF_SYSTEM_ID: "456"},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -111,18 +119,18 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.1.1.1",
-                CONF_PORT: 1234,
-                CONF_SYSTEM_ID: "456",
-            },
+            {CONF_HOST: "1.1.1.1", CONF_PORT: 1234, CONF_SYSTEM_ID: "456"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -134,18 +142,18 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.1.1.1",
-                CONF_PORT: 1234,
-                CONF_SYSTEM_ID: "456",
-            },
+            {CONF_HOST: "1.1.1.1", CONF_PORT: 1234, CONF_SYSTEM_ID: "456"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_unknown_error(hass: HomeAssistant) -> None:
+@test
+async def form_unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle broad exception."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -157,20 +165,19 @@ async def test_form_unknown_error(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.1.1.1",
-                CONF_PORT: 1234,
-                CONF_SYSTEM_ID: "456",
-            },
+            {CONF_HOST: "1.1.1.1", CONF_PORT: 1234, CONF_SYSTEM_ID: "456"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_options_not_loaded(hass: HomeAssistant) -> None:
+@test
+async def options_not_loaded(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test options will not display until loaded."""
-
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: "1.1.1.1", CONF_PORT: 12, CONF_SYSTEM_ID: "46"},
@@ -183,13 +190,19 @@ async def test_options_not_loaded(hass: HomeAssistant) -> None:
     ):
         result = await hass.config_entries.options.async_init(config_entry.entry_id)
         await hass.async_block_till_done()
-        assert result["type"] is FlowResultType.ABORT
+        expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-@pytest.mark.parametrize("reversed", [True, False])
-async def test_options_with_targets(hass: HomeAssistant, reversed) -> None:
+@test.cases(
+    test.case("reversed_true", reversed=True),
+    test.case("reversed_false", reversed=False),
+)
+async def options_with_targets(
+    reversed: bool,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we can configure reverse for a target."""
-
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: "1.1.1.1", CONF_PORT: 12, CONF_SYSTEM_ID: "46"},
@@ -199,51 +212,47 @@ async def test_options_with_targets(hass: HomeAssistant, reversed) -> None:
     with patch(
         "homeassistant.components.somfy_mylink.SomfyMyLinkSynergy.status_info",
         return_value={
-            "result": [
-                {
-                    "targetID": "a",
-                    "name": "Master Window",
-                    "type": 0,
-                }
-            ]
+            "result": [{"targetID": "a", "name": "Master Window", "type": 0}]
         },
     ):
-        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(
+            True
+        )
         await hass.async_block_till_done()
         result = await hass.config_entries.options.async_init(config_entry.entry_id)
         await hass.async_block_till_done()
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
         result2 = await hass.config_entries.options.async_configure(
-            result["flow_id"],
-            user_input={"target_id": "a"},
+            result["flow_id"], user_input={"target_id": "a"}
         )
 
-        assert result2["type"] is FlowResultType.FORM
+        expect(result2["type"]).to_be(FlowResultType.FORM)
         result3 = await hass.config_entries.options.async_configure(
-            result2["flow_id"],
-            user_input={"reverse": reversed},
+            result2["flow_id"], user_input={"reverse": reversed}
         )
 
-        assert result3["type"] is FlowResultType.FORM
+        expect(result3["type"]).to_be(FlowResultType.FORM)
 
         result4 = await hass.config_entries.options.async_configure(
-            result3["flow_id"],
-            user_input={"target_id": None},
+            result3["flow_id"], user_input={"target_id": None}
         )
-        assert result4["type"] is FlowResultType.CREATE_ENTRY
+        expect(result4["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
-        assert config_entry.options == {
-            CONF_REVERSED_TARGET_IDS: {"a": reversed},
-        }
+        expect(config_entry.options).to_equal(
+            {CONF_REVERSED_TARGET_IDS: {"a": reversed}}
+        )
 
         await hass.async_block_till_done()
 
 
-async def test_form_user_already_configured_from_dhcp(hass: HomeAssistant) -> None:
+@test
+async def form_user_already_configured_from_dhcp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we abort if already configured from dhcp."""
-
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: "1.1.1.1", CONF_PORT: 12, CONF_SYSTEM_ID: 46},
@@ -264,21 +273,21 @@ async def test_form_user_already_configured_from_dhcp(hass: HomeAssistant) -> No
             DOMAIN,
             context={"source": config_entries.SOURCE_DHCP},
             data=DhcpServiceInfo(
-                ip="1.1.1.1",
-                macaddress="aabbccddeeff",
-                hostname="somfy_eeff",
+                ip="1.1.1.1", macaddress="aabbccddeeff", hostname="somfy_eeff"
             ),
         )
-
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_already_configured_with_ignored(hass: HomeAssistant) -> None:
+@test
+async def already_configured_with_ignored(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test ignored entries do not break checking for existing entries."""
-
     config_entry = MockConfigEntry(
         domain=DOMAIN, data={}, source=config_entries.SOURCE_IGNORE
     )
@@ -288,28 +297,27 @@ async def test_already_configured_with_ignored(hass: HomeAssistant) -> None:
         DOMAIN,
         context={"source": config_entries.SOURCE_DHCP},
         data=DhcpServiceInfo(
-            ip="1.1.1.1",
-            macaddress="aabbccddeeff",
-            hostname="somfy_eeff",
+            ip="1.1.1.1", macaddress="aabbccddeeff", hostname="somfy_eeff"
         ),
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
 
-async def test_dhcp_discovery(hass: HomeAssistant) -> None:
+@test
+async def dhcp_discovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we can process the discovery from dhcp."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_DHCP},
         data=DhcpServiceInfo(
-            ip="1.1.1.1",
-            macaddress="aabbccddeeff",
-            hostname="somfy_eeff",
+            ip="1.1.1.1", macaddress="aabbccddeeff", hostname="somfy_eeff"
         ),
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -323,19 +331,13 @@ async def test_dhcp_discovery(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.1.1.1",
-                CONF_PORT: 1234,
-                CONF_SYSTEM_ID: "456",
-            },
+            {CONF_HOST: "1.1.1.1", CONF_PORT: 1234, CONF_SYSTEM_ID: "456"},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "MyLink 1.1.1.1"
-    assert result2["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: 1234,
-        CONF_SYSTEM_ID: "456",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("MyLink 1.1.1.1")
+    expect(result2["data"]).to_equal(
+        {CONF_HOST: "1.1.1.1", CONF_PORT: 1234, CONF_SYSTEM_ID: "456"}
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
