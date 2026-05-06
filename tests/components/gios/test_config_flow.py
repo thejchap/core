@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock
 
 from gios import ApiError, InvalidSensorsDataError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.gios.const import CONF_STATION_ID, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -11,66 +11,92 @@ from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_gios
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 CONFIG = {
     CONF_STATION_ID: "123",
 }
 
-pytestmark = pytest.mark.usefixtures("mock_gios")
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _gios: MagicMock = Depends(mock_gios),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-async def test_happy_flow(hass: HomeAssistant) -> None:
+@test
+async def happy_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the user step works."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert len(result["data_schema"].schema[CONF_STATION_ID].config["options"]) == 2
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(len(result["data_schema"].schema[CONF_STATION_ID].config["options"])).to_equal(2)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=CONFIG
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Home"
-    assert result["data"] == {
-        CONF_STATION_ID: 123,
-        CONF_NAME: "Home",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Home")
+    expect(result["data"]).to_equal(
+        {
+            CONF_STATION_ID: 123,
+            CONF_NAME: "Home",
+        }
+    )
 
-    assert result["result"].unique_id == "123"
+    expect(result["result"].unique_id).to_equal("123")
 
 
-async def test_form_with_api_error(hass: HomeAssistant, mock_gios: MagicMock) -> None:
+@test
+async def form_with_api_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    gios: MagicMock = Depends(mock_gios),
+) -> None:
     """Test the form is aborted because of API error."""
-    mock_gios.create.side_effect = ApiError("error")
+    gios.create.side_effect = ApiError("error")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-@pytest.mark.parametrize(
-    ("exception", "errors"),
-    [
-        (
-            InvalidSensorsDataError("Invalid data"),
-            {CONF_STATION_ID: "invalid_sensors_data"},
-        ),
-        (ApiError("error"), {"base": "cannot_connect"}),
-    ],
+@test.cases(
+    test.case(
+        "invalid_sensors_data",
+        exception=InvalidSensorsDataError("Invalid data"),
+        errors={CONF_STATION_ID: "invalid_sensors_data"},
+    ),
+    test.case(
+        "api_error",
+        exception=ApiError("error"),
+        errors={"base": "cannot_connect"},
+    ),
 )
-async def test_form_submission_errors(
-    hass: HomeAssistant, mock_gios: MagicMock, exception, errors
+async def form_submission_errors(
+    exception: Exception,
+    errors: dict,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    gios: MagicMock = Depends(mock_gios),
 ) -> None:
     """Test errors during form submission."""
-    mock_gios.async_update.side_effect = exception
+    gios.async_update.side_effect = exception
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -80,22 +106,25 @@ async def test_form_submission_errors(
         result["flow_id"], user_input=CONFIG
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == errors
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal(errors)
 
-    mock_gios.async_update.side_effect = None
+    gios.async_update.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=CONFIG
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Home"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Home")
 
 
-async def test_duplicate_entry(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def duplicate_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that duplicate station IDs are rejected."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -105,5 +134,5 @@ async def test_duplicate_entry(
         result["flow_id"], user_input=CONFIG
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
