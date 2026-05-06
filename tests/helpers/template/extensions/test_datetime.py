@@ -1,43 +1,54 @@
 """Test datetime template functions."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from types import MappingProxyType
 from typing import Any
 from unittest.mock import patch
 
 from freezegun import freeze_time
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import TemplateError
 from homeassistant.util import dt as dt_util
 from homeassistant.util.read_only_dict import ReadOnlyDict
 
+from tests.hass_fixtures import hass
 from tests.helpers.template.helpers import render, render_to_info
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ([1, 2], False),
-        ({1, 2}, False),
-        ({"a": 1, "b": 2}, False),
-        (ReadOnlyDict({"a": 1, "b": 2}), False),
-        (MappingProxyType({"a": 1, "b": 2}), False),
-        ("abc", False),
-        (b"abc", False),
-        ((1, 2), False),
-        (datetime(2024, 1, 1, 0, 0, 0), True),
-    ],
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test.cases(
+    test.case("list", [1, 2], False),
+    test.case("set", {1, 2}, False),
+    test.case("dict", {"a": 1, "b": 2}, False),
+    test.case("read_only_dict", ReadOnlyDict({"a": 1, "b": 2}), False),
+    test.case("mapping_proxy", MappingProxyType({"a": 1, "b": 2}), False),
+    test.case("str", "abc", False),
+    test.case("bytes", b"abc", False),
+    test.case("tuple", (1, 2), False),
+    test.case("datetime", datetime(2024, 1, 1, 0, 0, 0), True),
 )
-def test_is_datetime(hass: HomeAssistant, value, expected) -> None:
+async def is_datetime(
+    value: Any,
+    expected: bool,
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test is datetime."""
-    assert render(hass, "{{ value is datetime }}", {"value": value}) == expected
+    expect(render(hass, "{{ value is datetime }}", {"value": value})).to_equal(expected)
 
 
-def test_strptime(hass: HomeAssistant) -> None:
+@test
+async def strptime(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the parse timestamp method."""
-    tests = [
+    tests: list[tuple[str, str, str | None]] = [
         ("2016-10-19 15:22:05.588122 UTC", "%Y-%m-%d %H:%M:%S.%f %Z", None),
         ("2016-10-19 15:22:05.588122+0100", "%Y-%m-%d %H:%M:%S.%f%z", None),
         ("2016-10-19 15:22:05.588122", "%Y-%m-%d %H:%M:%S.%f", None),
@@ -47,12 +58,9 @@ def test_strptime(hass: HomeAssistant) -> None:
     ]
 
     for inp, fmt, expected in tests:
-        if expected is None:
-            expected = str(datetime.strptime(inp, fmt))
-
+        exp = expected if expected is not None else str(datetime.strptime(inp, fmt))
         temp = f"{{{{ strptime('{inp}', '{fmt}') }}}}"
-
-        assert render(hass, temp) == expected
+        expect(render(hass, temp)).to_equal(exp)
 
     # Test handling of invalid input
     invalid_tests = [
@@ -62,16 +70,15 @@ def test_strptime(hass: HomeAssistant) -> None:
 
     for inp, fmt in invalid_tests:
         temp = f"{{{{ strptime('{inp}', '{fmt}') }}}}"
-
-        with pytest.raises(TemplateError):
-            render(hass, temp)
+        expect(lambda t=temp: render(hass, t)).to_raise(TemplateError)
 
     # Test handling of default return value
-    assert render(hass, "{{ strptime('invalid', '%Y', 1) }}") == 1
-    assert render(hass, "{{ strptime('invalid', '%Y', default=1) }}") == 1
+    expect(render(hass, "{{ strptime('invalid', '%Y', 1) }}")).to_equal(1)
+    expect(render(hass, "{{ strptime('invalid', '%Y', default=1) }}")).to_equal(1)
 
 
-async def test_timestamp_custom(hass: HomeAssistant) -> None:
+@test
+async def timestamp_custom(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the timestamps to custom filter."""
     await hass.config.async_set_time_zone("UTC")
     now = dt_util.utcnow()
@@ -90,7 +97,7 @@ async def test_timestamp_custom(hass: HomeAssistant) -> None:
         else:
             fil = "timestamp_custom"
 
-        assert render(hass, f"{{{{ {inp} | {fil} }}}}") == out
+        expect(render(hass, f"{{{{ {inp} | {fil} }}}}")).to_equal(out)
 
     # Test handling of invalid input
     invalid_tests = [
@@ -105,15 +112,19 @@ async def test_timestamp_custom(hass: HomeAssistant) -> None:
         else:
             fil = "timestamp_custom"
 
-        with pytest.raises(TemplateError):
-            render(hass, f"{{{{ {inp} | {fil} }}}}")
+        expect(lambda f=fil, i=inp: render(hass, f"{{{{ {i} | {f} }}}}")).to_raise(
+            TemplateError
+        )
 
     # Test handling of default return value
-    assert render(hass, "{{ None | timestamp_custom('invalid', True, 1) }}") == 1
-    assert render(hass, "{{ None | timestamp_custom(default=1) }}") == 1
+    expect(render(hass, "{{ None | timestamp_custom('invalid', True, 1) }}")).to_equal(
+        1
+    )
+    expect(render(hass, "{{ None | timestamp_custom(default=1) }}")).to_equal(1)
 
 
-async def test_timestamp_local(hass: HomeAssistant) -> None:
+@test
+async def timestamp_local(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the timestamps to local filter."""
     await hass.config.async_set_time_zone("UTC")
     tests = [
@@ -121,7 +132,7 @@ async def test_timestamp_local(hass: HomeAssistant) -> None:
     ]
 
     for inp, out in tests:
-        assert render(hass, f"{{{{ {inp} | timestamp_local }}}}") == out
+        expect(render(hass, f"{{{{ {inp} | timestamp_local }}}}")).to_equal(out)
 
     # Test handling of invalid input
     invalid_tests = [
@@ -129,109 +140,110 @@ async def test_timestamp_local(hass: HomeAssistant) -> None:
     ]
 
     for inp in invalid_tests:
-        with pytest.raises(TemplateError):
-            render(hass, f"{{{{ {inp} | timestamp_local }}}}")
+        expect(
+            lambda i=inp: render(hass, f"{{{{ {i} | timestamp_local }}}}")
+        ).to_raise(TemplateError)
 
     # Test handling of default return value
-    assert render(hass, "{{ None | timestamp_local(1) }}") == 1
-    assert render(hass, "{{ None | timestamp_local(default=1) }}") == 1
+    expect(render(hass, "{{ None | timestamp_local(1) }}")).to_equal(1)
+    expect(render(hass, "{{ None | timestamp_local(default=1) }}")).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    "input",
-    [
-        "2021-06-03 13:00:00.000000+00:00",
-        "1986-07-09T12:00:00Z",
-        "2016-10-19 15:22:05.588122+0100",
-        "2016-10-19",
-        "2021-01-01 00:00:01",
-        "invalid",
-    ],
+@test.cases(
+    test.case("utc_offset", "2021-06-03 13:00:00.000000+00:00"),
+    test.case("iso_z", "1986-07-09T12:00:00Z"),
+    test.case("tz_offset", "2016-10-19 15:22:05.588122+0100"),
+    test.case("date_only", "2016-10-19"),
+    test.case("naive", "2021-01-01 00:00:01"),
+    test.case("invalid", "invalid"),
 )
-def test_as_datetime(hass: HomeAssistant, input) -> None:
+async def as_datetime(
+    input_value: str,
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test converting a timestamp string to a date object."""
-    expected = dt_util.parse_datetime(input)
-    if expected is not None:
-        expected = str(expected)
-    assert render(hass, f"{{{{ as_datetime('{input}') }}}}") == expected
-    assert render(hass, f"{{{{ '{input}' | as_datetime }}}}") == expected
+    parsed = dt_util.parse_datetime(input_value)
+    expected = str(parsed) if parsed is not None else None
+    expect(render(hass, f"{{{{ as_datetime('{input_value}') }}}}")).to_equal(expected)
+    expect(render(hass, f"{{{{ '{input_value}' | as_datetime }}}}")).to_equal(expected)
 
 
-@pytest.mark.parametrize(
-    ("input", "output"),
-    [
-        (1469119144, "2016-07-21 16:39:04+00:00"),
-        (1469119144.0, "2016-07-21 16:39:04+00:00"),
-        (-1, "1969-12-31 23:59:59+00:00"),
-    ],
+@test.cases(
+    test.case("int", 1469119144, "2016-07-21 16:39:04+00:00"),
+    test.case("float", 1469119144.0, "2016-07-21 16:39:04+00:00"),
+    test.case("negative", -1, "1969-12-31 23:59:59+00:00"),
 )
-def test_as_datetime_from_timestamp(
-    hass: HomeAssistant,
-    input: float,
+async def as_datetime_from_timestamp(
+    input_value: float,
     output: str,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test converting a UNIX timestamp to a date object."""
-    assert render(hass, f"{{{{ as_datetime({input}) }}}}") == output
-    assert render(hass, f"{{{{ {input} | as_datetime }}}}") == output
-    assert render(hass, f"{{{{ as_datetime('{input}') }}}}") == output
-    assert render(hass, f"{{{{ '{input}' | as_datetime }}}}") == output
+    expect(render(hass, f"{{{{ as_datetime({input_value}) }}}}")).to_equal(output)
+    expect(render(hass, f"{{{{ {input_value} | as_datetime }}}}")).to_equal(output)
+    expect(render(hass, f"{{{{ as_datetime('{input_value}') }}}}")).to_equal(output)
+    expect(render(hass, f"{{{{ '{input_value}' | as_datetime }}}}")).to_equal(output)
 
 
-@pytest.mark.parametrize(
-    ("input", "output"),
-    [
-        (
-            "{% set dt = as_datetime('2024-01-01 16:00:00-08:00') %}",
-            "2024-01-01 16:00:00-08:00",
-        ),
-        (
-            "{% set dt = as_datetime('2024-01-29').date() %}",
-            "2024-01-29 00:00:00",
-        ),
-    ],
+@test.cases(
+    test.case(
+        "datetime_with_tz",
+        "{% set dt = as_datetime('2024-01-01 16:00:00-08:00') %}",
+        "2024-01-01 16:00:00-08:00",
+    ),
+    test.case(
+        "date_only",
+        "{% set dt = as_datetime('2024-01-29').date() %}",
+        "2024-01-29 00:00:00",
+    ),
 )
-def test_as_datetime_from_datetime(
-    hass: HomeAssistant, input: str, output: str
+async def as_datetime_from_datetime(
+    input_value: str,
+    output: str,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test using datetime.datetime or datetime.date objects as input."""
-
-    assert render(hass, f"{input}{{{{ dt | as_datetime }}}}") == output
-
-    assert render(hass, f"{input}{{{{ as_datetime(dt) }}}}") == output
+    expect(render(hass, f"{input_value}{{{{ dt | as_datetime }}}}")).to_equal(output)
+    expect(render(hass, f"{input_value}{{{{ as_datetime(dt) }}}}")).to_equal(output)
 
 
-@pytest.mark.parametrize(
-    ("input", "default", "output"),
-    [
-        (1469119144, 123, "2016-07-21 16:39:04+00:00"),
-        ('"invalid"', ["default output"], ["default output"]),
-        (["a", "list"], 0, 0),
-        ({"a": "dict"}, None, None),
-    ],
+@test.cases(
+    test.case("int_ignored", 1469119144, 123, "2016-07-21 16:39:04+00:00"),
+    test.case("str_default_list", '"invalid"', ["default output"], ["default output"]),
+    test.case("list_default_zero", ["a", "list"], 0, 0),
+    test.case("dict_default_none", {"a": "dict"}, None, None),
 )
-def test_as_datetime_default(
-    hass: HomeAssistant, input: Any, default: Any, output: str
+async def as_datetime_default(
+    input_value: Any,
+    default: Any,
+    output: Any,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test invalid input and return default value."""
+    expect(
+        render(hass, f"{{{{ as_datetime({input_value}, default={default}) }}}}")
+    ).to_equal(output)
+    expect(render(hass, f"{{{{ {input_value} | as_datetime({default}) }}}}")).to_equal(
+        output
+    )
 
-    assert render(hass, f"{{{{ as_datetime({input}, default={default}) }}}}") == output
-    assert render(hass, f"{{{{ {input} | as_datetime({default}) }}}}") == output
 
-
-def test_as_local(hass: HomeAssistant) -> None:
+@test
+async def as_local(hass: HomeAssistant = Depends(hass)) -> None:
     """Test converting time to local."""
 
     hass.states.async_set("test.object", "available")
     last_updated = hass.states.get("test.object").last_updated
-    assert render(hass, "{{ as_local(states.test.object.last_updated) }}") == str(
-        dt_util.as_local(last_updated)
+    expect(render(hass, "{{ as_local(states.test.object.last_updated) }}")).to_equal(
+        str(dt_util.as_local(last_updated))
     )
-    assert render(hass, "{{ states.test.object.last_updated | as_local }}") == str(
-        dt_util.as_local(last_updated)
+    expect(render(hass, "{{ states.test.object.last_updated | as_local }}")).to_equal(
+        str(dt_util.as_local(last_updated))
     )
 
 
-def test_timestamp_utc(hass: HomeAssistant) -> None:
+@test
+async def timestamp_utc(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the timestamps to local filter."""
     now = dt_util.utcnow()
     tests = [
@@ -240,7 +252,7 @@ def test_timestamp_utc(hass: HomeAssistant) -> None:
     ]
 
     for inp, out in tests:
-        assert render(hass, f"{{{{ {inp} | timestamp_utc }}}}") == out
+        expect(render(hass, f"{{{{ {inp} | timestamp_utc }}}}")).to_equal(out)
 
     # Test handling of invalid input
     invalid_tests = [
@@ -248,541 +260,565 @@ def test_timestamp_utc(hass: HomeAssistant) -> None:
     ]
 
     for inp in invalid_tests:
-        with pytest.raises(TemplateError):
-            render(hass, f"{{{{ {inp} | timestamp_utc }}}}")
+        expect(
+            lambda i=inp: render(hass, f"{{{{ {i} | timestamp_utc }}}}")
+        ).to_raise(TemplateError)
 
     # Test handling of default return value
-    assert render(hass, "{{ None | timestamp_utc(1) }}") == 1
-    assert render(hass, "{{ None | timestamp_utc(default=1) }}") == 1
+    expect(render(hass, "{{ None | timestamp_utc(1) }}")).to_equal(1)
+    expect(render(hass, "{{ None | timestamp_utc(default=1) }}")).to_equal(1)
 
 
-def test_as_timestamp(hass: HomeAssistant) -> None:
+@test
+async def as_timestamp(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the as_timestamp function."""
-    with pytest.raises(TemplateError):
-        render(hass, '{{ as_timestamp("invalid") }}')
+    expect(lambda: render(hass, '{{ as_timestamp("invalid") }}')).to_raise(
+        TemplateError
+    )
 
     hass.states.async_set("test.object", None)
-    with pytest.raises(TemplateError):
-        render(hass, "{{ as_timestamp(states.test.object) }}")
+    expect(lambda: render(hass, "{{ as_timestamp(states.test.object) }}")).to_raise(
+        TemplateError
+    )
 
     tpl = (
         '{{ as_timestamp(strptime("2024-02-03T09:10:24+0000", '
         '"%Y-%m-%dT%H:%M:%S%z")) }}'
     )
-    assert render(hass, tpl) == 1706951424.0
+    expect(render(hass, tpl)).to_equal(1706951424.0)
 
     # Test handling of default return value
-    assert render(hass, "{{ 'invalid' | as_timestamp(1) }}") == 1
-    assert render(hass, "{{ 'invalid' | as_timestamp(default=1) }}") == 1
-    assert render(hass, "{{ as_timestamp('invalid', 1) }}") == 1
-    assert render(hass, "{{ as_timestamp('invalid', default=1) }}") == 1
+    expect(render(hass, "{{ 'invalid' | as_timestamp(1) }}")).to_equal(1)
+    expect(render(hass, "{{ 'invalid' | as_timestamp(default=1) }}")).to_equal(1)
+    expect(render(hass, "{{ as_timestamp('invalid', 1) }}")).to_equal(1)
+    expect(render(hass, "{{ as_timestamp('invalid', default=1) }}")).to_equal(1)
 
 
-def test_as_timedelta(hass: HomeAssistant) -> None:
+@test
+async def as_timedelta(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the as_timedelta function/filter."""
 
     result = render(hass, "{{ as_timedelta('PT10M') }}")
-    assert result == "0:10:00"
+    expect(result).to_equal("0:10:00")
 
     result = render(hass, "{{ 'PT10M' | as_timedelta }}")
-    assert result == "0:10:00"
+    expect(result).to_equal("0:10:00")
 
     result = render(hass, "{{ 'T10M' | as_timedelta }}")
-    assert result is None
+    expect(result).to_be(None)
 
 
-@patch(
-    "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
-    return_value=True,
-)
-def test_now(mock_is_safe, hass: HomeAssistant) -> None:
+@test
+async def now_function(hass: HomeAssistant = Depends(hass)) -> None:
     """Test now method."""
-    now = dt_util.now()
-    with freeze_time(now):
-        info = render_to_info(hass, "{{ now().isoformat() }}")
-        assert now.isoformat() == info.result()
+    with patch(
+        "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
+        return_value=True,
+    ):
+        now = dt_util.now()
+        with freeze_time(now):
+            info = render_to_info(hass, "{{ now().isoformat() }}")
+            expect(info.result()).to_equal(now.isoformat())
 
-    assert info.has_time is True
+        expect(info.has_time).to_be(True)
 
 
-@patch(
-    "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
-    return_value=True,
-)
-def test_utcnow(mock_is_safe, hass: HomeAssistant) -> None:
+@test
+async def utcnow_function(hass: HomeAssistant = Depends(hass)) -> None:
     """Test now method."""
-    utcnow = dt_util.utcnow()
-    with freeze_time(utcnow):
-        info = render_to_info(hass, "{{ utcnow().isoformat() }}")
-        assert utcnow.isoformat() == info.result()
+    with patch(
+        "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
+        return_value=True,
+    ):
+        utcnow = dt_util.utcnow()
+        with freeze_time(utcnow):
+            info = render_to_info(hass, "{{ utcnow().isoformat() }}")
+            expect(info.result()).to_equal(utcnow.isoformat())
 
-    assert info.has_time is True
+        expect(info.has_time).to_be(True)
 
 
-@pytest.mark.parametrize(
-    ("now", "expected", "expected_midnight", "timezone_str"),
-    [
-        # Host clock in UTC
-        (
-            "2021-11-24 03:00:00+00:00",
-            "2021-11-23T10:00:00-08:00",
-            "2021-11-23T00:00:00-08:00",
-            "America/Los_Angeles",
-        ),
-        # Host clock in local time
-        (
-            "2021-11-23 19:00:00-08:00",
-            "2021-11-23T10:00:00-08:00",
-            "2021-11-23T00:00:00-08:00",
-            "America/Los_Angeles",
-        ),
-    ],
+@test.cases(
+    test.case(
+        "host_clock_utc",
+        "2021-11-24 03:00:00+00:00",
+        "2021-11-23T10:00:00-08:00",
+        "2021-11-23T00:00:00-08:00",
+        "America/Los_Angeles",
+    ),
+    test.case(
+        "host_clock_local",
+        "2021-11-23 19:00:00-08:00",
+        "2021-11-23T10:00:00-08:00",
+        "2021-11-23T00:00:00-08:00",
+        "America/Los_Angeles",
+    ),
 )
-@patch(
-    "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
-    return_value=True,
-)
-async def test_today_at(
-    mock_is_safe, hass: HomeAssistant, now, expected, expected_midnight, timezone_str
+async def today_at_function(
+    now: str,
+    expected: str,
+    expected_midnight: str,
+    timezone_str: str,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test today_at method."""
-    freezer = freeze_time(now)
-    freezer.start()
+    with patch(
+        "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
+        return_value=True,
+    ):
+        freezer = freeze_time(now)
+        freezer.start()
+        try:
+            await hass.config.async_set_time_zone(timezone_str)
 
-    await hass.config.async_set_time_zone(timezone_str)
+            result = render(hass, "{{ today_at('10:00').isoformat() }}")
+            expect(result).to_equal(expected)
 
-    result = render(hass, "{{ today_at('10:00').isoformat() }}")
-    assert result == expected
+            result = render(hass, "{{ today_at('10:00:00').isoformat() }}")
+            expect(result).to_equal(expected)
 
-    result = render(hass, "{{ today_at('10:00:00').isoformat() }}")
-    assert result == expected
+            result = render(hass, "{{ ('10:00:00' | today_at).isoformat() }}")
+            expect(result).to_equal(expected)
 
-    result = render(hass, "{{ ('10:00:00' | today_at).isoformat() }}")
-    assert result == expected
+            result = render(hass, "{{ today_at().isoformat() }}")
+            expect(result).to_equal(expected_midnight)
 
-    result = render(hass, "{{ today_at().isoformat() }}")
-    assert result == expected_midnight
+            expect(lambda: render(hass, "{{ today_at('bad') }}")).to_raise(
+                TemplateError
+            )
 
-    with pytest.raises(TemplateError):
-        render(hass, "{{ today_at('bad') }}")
-
-    info = render_to_info(hass, "{{ today_at('10:00').isoformat() }}")
-    assert info.has_time is True
-
-    freezer.stop()
+            info = render_to_info(hass, "{{ today_at('10:00').isoformat() }}")
+            expect(info.has_time).to_be(True)
+        finally:
+            freezer.stop()
 
 
-@patch(
-    "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
-    return_value=True,
-)
-async def test_relative_time(mock_is_safe, hass: HomeAssistant) -> None:
+@test
+async def relative_time(hass: HomeAssistant = Depends(hass)) -> None:
     """Test relative_time method."""
-    await hass.config.async_set_time_zone("UTC")
-    now = datetime.strptime("2000-01-01 10:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z")
-    relative_time_template = (
-        '{{relative_time(strptime("2000-01-01 09:00:00", "%Y-%m-%d %H:%M:%S"))}}'
-    )
-    with freeze_time(now):
-        result = render(hass, relative_time_template)
-        assert result == "1 hour"
-        result = render(
-            hass,
-            (
-                "{{"
-                "  relative_time("
-                "    strptime("
-                '        "2000-01-01 09:00:00 +01:00",'
-                '        "%Y-%m-%d %H:%M:%S %z"'
-                "    )"
-                "  )"
-                "}}"
-            ),
+    with patch(
+        "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
+        return_value=True,
+    ):
+        await hass.config.async_set_time_zone("UTC")
+        now = datetime.strptime("2000-01-01 10:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z")
+        relative_time_template = (
+            '{{relative_time(strptime("2000-01-01 09:00:00", "%Y-%m-%d %H:%M:%S"))}}'
         )
-        assert result == "2 hours"
+        with freeze_time(now):
+            result = render(hass, relative_time_template)
+            expect(result).to_equal("1 hour")
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  relative_time("
+                    "    strptime("
+                    '        "2000-01-01 09:00:00 +01:00",'
+                    '        "%Y-%m-%d %H:%M:%S %z"'
+                    "    )"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("2 hours")
 
-        result = render(
-            hass,
-            (
-                "{{"
-                "  relative_time("
-                "    strptime("
-                '       "2000-01-01 03:00:00 -06:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"'
-                "    )"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "1 hour"
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  relative_time("
+                    "    strptime("
+                    '       "2000-01-01 03:00:00 -06:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"'
+                    "    )"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("1 hour")
 
-        result1 = str(
-            datetime.strptime("2000-01-01 11:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z")
-        )
-        result2 = render(
-            hass,
-            (
-                "{{"
-                "  relative_time("
-                "    strptime("
-                '       "2000-01-01 11:00:00 +00:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"'
-                "    )"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result1 == result2
+            result1 = str(
+                datetime.strptime(
+                    "2000-01-01 11:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z"
+                )
+            )
+            result2 = render(
+                hass,
+                (
+                    "{{"
+                    "  relative_time("
+                    "    strptime("
+                    '       "2000-01-01 11:00:00 +00:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"'
+                    "    )"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result2).to_equal(result1)
 
-        result = render(hass, '{{relative_time("string")}}')
-        assert result == "string"
+            result = render(hass, '{{relative_time("string")}}')
+            expect(result).to_equal("string")
 
-        # Test behavior when current time is same as the input time
-        result = render(
-            hass,
-            (
-                "{{"
-                "  relative_time("
-                "    strptime("
-                '        "2000-01-01 10:00:00 +00:00",'
-                '        "%Y-%m-%d %H:%M:%S %z"'
-                "    )"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "0 seconds"
+            # Test behavior when current time is same as the input time
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  relative_time("
+                    "    strptime("
+                    '        "2000-01-01 10:00:00 +00:00",'
+                    '        "%Y-%m-%d %H:%M:%S %z"'
+                    "    )"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("0 seconds")
 
-        # Test behavior when the input time is in the future
-        result = render(
-            hass,
-            (
-                "{{"
-                "  relative_time("
-                "    strptime("
-                '        "2000-01-01 11:00:00 +00:00",'
-                '        "%Y-%m-%d %H:%M:%S %z"'
-                "    )"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "2000-01-01 11:00:00+00:00"
+            # Test behavior when the input time is in the future
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  relative_time("
+                    "    strptime("
+                    '        "2000-01-01 11:00:00 +00:00",'
+                    '        "%Y-%m-%d %H:%M:%S %z"'
+                    "    )"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("2000-01-01 11:00:00+00:00")
 
-        info = render_to_info(hass, relative_time_template)
-        assert info.has_time is True
+            info = render_to_info(hass, relative_time_template)
+            expect(info.has_time).to_be(True)
 
 
-@patch(
-    "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
-    return_value=True,
-)
-async def test_time_since(mock_is_safe, hass: HomeAssistant) -> None:
+@test
+async def time_since(hass: HomeAssistant = Depends(hass)) -> None:
     """Test time_since method."""
-    await hass.config.async_set_time_zone("UTC")
-    now = datetime.strptime("2000-01-01 10:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z")
-    time_since_template = (
-        '{{time_since(strptime("2000-01-01 09:00:00", "%Y-%m-%d %H:%M:%S"))}}'
-    )
-    with freeze_time(now):
-        result = render(hass, time_since_template)
-        assert result == "1 hour"
+    with patch(
+        "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
+        return_value=True,
+    ):
+        await hass.config.async_set_time_zone("UTC")
+        now = datetime.strptime("2000-01-01 10:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z")
+        time_since_template = (
+            '{{time_since(strptime("2000-01-01 09:00:00", "%Y-%m-%d %H:%M:%S"))}}'
+        )
+        with freeze_time(now):
+            result = render(hass, time_since_template)
+            expect(result).to_equal("1 hour")
 
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_since("
-                "    strptime("
-                '        "2000-01-01 09:00:00 +01:00",'
-                '        "%Y-%m-%d %H:%M:%S %z"'
-                "    )"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "2 hours"
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_since("
+                    "    strptime("
+                    '        "2000-01-01 09:00:00 +01:00",'
+                    '        "%Y-%m-%d %H:%M:%S %z"'
+                    "    )"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("2 hours")
 
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_since("
-                "    strptime("
-                '       "2000-01-01 03:00:00 -06:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"'
-                "    )"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "1 hour"
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_since("
+                    "    strptime("
+                    '       "2000-01-01 03:00:00 -06:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"'
+                    "    )"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("1 hour")
 
-        result1 = str(
-            datetime.strptime("2000-01-01 11:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z")
-        )
-        result2 = render(
-            hass,
-            (
-                "{{"
-                "  time_since("
-                "    strptime("
-                '       "2000-01-01 11:00:00 +00:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"),'
-                "    precision = 2"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result1 == result2
+            result1 = str(
+                datetime.strptime(
+                    "2000-01-01 11:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z"
+                )
+            )
+            result2 = render(
+                hass,
+                (
+                    "{{"
+                    "  time_since("
+                    "    strptime("
+                    '       "2000-01-01 11:00:00 +00:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"),'
+                    "    precision = 2"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result2).to_equal(result1)
 
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_since("
-                "    strptime("
-                '        "2000-01-01 09:05:00 +01:00",'
-                '        "%Y-%m-%d %H:%M:%S %z"),'
-                "       precision=2"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "1 hour 55 minutes"
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_since("
+                    "    strptime("
+                    '        "2000-01-01 09:05:00 +01:00",'
+                    '        "%Y-%m-%d %H:%M:%S %z"),'
+                    "       precision=2"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("1 hour 55 minutes")
 
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_since("
-                "    strptime("
-                '       "2000-01-01 02:05:27 -06:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"),'
-                "       precision = 3"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "1 hour 54 minutes 33 seconds"
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_since("
-                "    strptime("
-                '       "2000-01-01 02:05:27 -06:00",'
-                '       "%Y-%m-%d %H:%M:%S %z")'
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "2 hours"
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_since("
-                "    strptime("
-                '       "1999-02-01 02:05:27 -06:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"),'
-                "       precision = 0"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "11 months 4 days 1 hour 54 minutes 33 seconds"
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_since("
-                "    strptime("
-                '       "1999-02-01 02:05:27 -06:00",'
-                '       "%Y-%m-%d %H:%M:%S %z")'
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "11 months"
-        result1 = str(
-            datetime.strptime("2000-01-01 11:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z")
-        )
-        result2 = render(
-            hass,
-            (
-                "{{"
-                "  time_since("
-                "    strptime("
-                '       "2000-01-01 11:00:00 +00:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"),'
-                "       precision=3"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result1 == result2
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_since("
+                    "    strptime("
+                    '       "2000-01-01 02:05:27 -06:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"),'
+                    "       precision = 3"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("1 hour 54 minutes 33 seconds")
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_since("
+                    "    strptime("
+                    '       "2000-01-01 02:05:27 -06:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z")'
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("2 hours")
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_since("
+                    "    strptime("
+                    '       "1999-02-01 02:05:27 -06:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"),'
+                    "       precision = 0"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("11 months 4 days 1 hour 54 minutes 33 seconds")
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_since("
+                    "    strptime("
+                    '       "1999-02-01 02:05:27 -06:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z")'
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("11 months")
+            result1 = str(
+                datetime.strptime(
+                    "2000-01-01 11:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z"
+                )
+            )
+            result2 = render(
+                hass,
+                (
+                    "{{"
+                    "  time_since("
+                    "    strptime("
+                    '       "2000-01-01 11:00:00 +00:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"),'
+                    "       precision=3"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result2).to_equal(result1)
 
-        result = render(hass, '{{time_since("string")}}')
-        assert result == "string"
+            result = render(hass, '{{time_since("string")}}')
+            expect(result).to_equal("string")
 
-        info = render_to_info(hass, time_since_template)
-        assert info.has_time is True
+            info = render_to_info(hass, time_since_template)
+            expect(info.has_time).to_be(True)
 
 
-@patch(
-    "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
-    return_value=True,
-)
-async def test_time_until(mock_is_safe, hass: HomeAssistant) -> None:
+@test
+async def time_until(hass: HomeAssistant = Depends(hass)) -> None:
     """Test time_until method."""
-    await hass.config.async_set_time_zone("UTC")
-    now = datetime.strptime("2000-01-01 10:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z")
-    time_until_template = (
-        '{{time_until(strptime("2000-01-01 11:00:00", "%Y-%m-%d %H:%M:%S"))}}'
-    )
-    with freeze_time(now):
-        result = render(hass, time_until_template)
-        assert result == "1 hour"
+    with patch(
+        "homeassistant.helpers.template.TemplateEnvironment.is_safe_callable",
+        return_value=True,
+    ):
+        await hass.config.async_set_time_zone("UTC")
+        now = datetime.strptime("2000-01-01 10:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z")
+        time_until_template = (
+            '{{time_until(strptime("2000-01-01 11:00:00", "%Y-%m-%d %H:%M:%S"))}}'
+        )
+        with freeze_time(now):
+            result = render(hass, time_until_template)
+            expect(result).to_equal("1 hour")
 
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_until("
-                "    strptime("
-                '        "2000-01-01 13:00:00 +01:00",'
-                '        "%Y-%m-%d %H:%M:%S %z"'
-                "    )"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "2 hours"
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_until("
+                    "    strptime("
+                    '        "2000-01-01 13:00:00 +01:00",'
+                    '        "%Y-%m-%d %H:%M:%S %z"'
+                    "    )"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("2 hours")
 
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_until("
-                "    strptime("
-                '       "2000-01-01 05:00:00 -06:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"'
-                "    )"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "1 hour"
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_until("
+                    "    strptime("
+                    '       "2000-01-01 05:00:00 -06:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"'
+                    "    )"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("1 hour")
 
-        result1 = str(
-            datetime.strptime("2000-01-01 09:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z")
-        )
-        result2 = render(
-            hass,
-            (
-                "{{"
-                "  time_until("
-                "    strptime("
-                '       "2000-01-01 09:00:00 +00:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"),'
-                "    precision = 2"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result1 == result2
+            result1 = str(
+                datetime.strptime(
+                    "2000-01-01 09:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z"
+                )
+            )
+            result2 = render(
+                hass,
+                (
+                    "{{"
+                    "  time_until("
+                    "    strptime("
+                    '       "2000-01-01 09:00:00 +00:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"),'
+                    "    precision = 2"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result2).to_equal(result1)
 
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_until("
-                "    strptime("
-                '        "2000-01-01 12:05:00 +01:00",'
-                '        "%Y-%m-%d %H:%M:%S %z"),'
-                "       precision=2"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "1 hour 5 minutes"
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_until("
+                    "    strptime("
+                    '        "2000-01-01 12:05:00 +01:00",'
+                    '        "%Y-%m-%d %H:%M:%S %z"),'
+                    "       precision=2"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("1 hour 5 minutes")
 
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_until("
-                "    strptime("
-                '       "2000-01-01 05:54:33 -06:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"),'
-                "       precision = 3"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "1 hour 54 minutes 33 seconds"
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_until("
-                "    strptime("
-                '       "2000-01-01 05:54:33 -06:00",'
-                '       "%Y-%m-%d %H:%M:%S %z")'
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "2 hours"
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_until("
-                "    strptime("
-                '       "2001-02-01 05:54:33 -06:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"),'
-                "       precision = 0"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "1 year 1 month 2 days 1 hour 54 minutes 33 seconds"
-        result = render(
-            hass,
-            (
-                "{{"
-                "  time_until("
-                "    strptime("
-                '       "2001-02-01 05:54:33 -06:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"),'
-                "       precision = 4"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result == "1 year 1 month 2 days 2 hours"
-        result1 = str(
-            datetime.strptime("2000-01-01 09:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z")
-        )
-        result2 = render(
-            hass,
-            (
-                "{{"
-                "  time_until("
-                "    strptime("
-                '       "2000-01-01 09:00:00 +00:00",'
-                '       "%Y-%m-%d %H:%M:%S %z"),'
-                "       precision=3"
-                "  )"
-                "}}"
-            ),
-        )
-        assert result1 == result2
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_until("
+                    "    strptime("
+                    '       "2000-01-01 05:54:33 -06:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"),'
+                    "       precision = 3"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("1 hour 54 minutes 33 seconds")
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_until("
+                    "    strptime("
+                    '       "2000-01-01 05:54:33 -06:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z")'
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("2 hours")
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_until("
+                    "    strptime("
+                    '       "2001-02-01 05:54:33 -06:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"),'
+                    "       precision = 0"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal(
+                "1 year 1 month 2 days 1 hour 54 minutes 33 seconds"
+            )
+            result = render(
+                hass,
+                (
+                    "{{"
+                    "  time_until("
+                    "    strptime("
+                    '       "2001-02-01 05:54:33 -06:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"),'
+                    "       precision = 4"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result).to_equal("1 year 1 month 2 days 2 hours")
+            result1 = str(
+                datetime.strptime(
+                    "2000-01-01 09:00:00 +00:00", "%Y-%m-%d %H:%M:%S %z"
+                )
+            )
+            result2 = render(
+                hass,
+                (
+                    "{{"
+                    "  time_until("
+                    "    strptime("
+                    '       "2000-01-01 09:00:00 +00:00",'
+                    '       "%Y-%m-%d %H:%M:%S %z"),'
+                    "       precision=3"
+                    "  )"
+                    "}}"
+                ),
+            )
+            expect(result2).to_equal(result1)
 
-        result = render(hass, '{{time_until("string")}}')
-        assert result == "string"
+            result = render(hass, '{{time_until("string")}}')
+            expect(result).to_equal("string")
 
-        info = render_to_info(hass, time_until_template)
-        assert info.has_time is True
+            info = render_to_info(hass, time_until_template)
+            expect(info.has_time).to_be(True)

@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import setup
 from homeassistant.const import Platform
@@ -13,96 +13,103 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from tests.common import MockModule, MockPlatform, mock_integration, mock_platform
+from tests.hass_fixtures import hass
 
 
-@pytest.fixture
-def mock_setup_component():
-    """Mock setup component."""
-    with patch("homeassistant.setup.async_setup_component", return_value=True) as mock:
-        yield mock
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
 
 
-async def test_listen(hass: HomeAssistant, mock_setup_component) -> None:
+@test
+async def listen(hass: HomeAssistant = Depends(hass)) -> None:
     """Test discovery listen/discover combo."""
-    calls_single = []
+    with patch(
+        "homeassistant.setup.async_setup_component", return_value=True
+    ) as mock_setup_component:
+        calls_single = []
 
-    @callback
-    def callback_single(service, info):
-        """Service discovered callback."""
-        calls_single.append((service, info))
+        @callback
+        def callback_single(service, info):
+            """Service discovered callback."""
+            calls_single.append((service, info))
 
-    discovery.async_listen(hass, "test service", callback_single)
+        discovery.async_listen(hass, "test service", callback_single)
 
-    await discovery.async_discover(
-        hass,
-        "test service",
-        "discovery info",
-        "test_component",
-        {},
-    )
-    await hass.async_block_till_done()
+        await discovery.async_discover(
+            hass,
+            "test service",
+            "discovery info",
+            "test_component",
+            {},
+        )
+        await hass.async_block_till_done()
 
-    assert mock_setup_component.called
-    assert mock_setup_component.call_args[0] == (hass, "test_component", {})
-    assert len(calls_single) == 1
-    assert calls_single[0] == ("test service", "discovery info")
+        expect(mock_setup_component.called).to_be(True)
+        expect(mock_setup_component.call_args[0]).to_equal((hass, "test_component", {}))
+        expect(len(calls_single)).to_equal(1)
+        expect(calls_single[0]).to_equal(("test service", "discovery info"))
 
 
-async def test_platform(hass: HomeAssistant, mock_setup_component) -> None:
+@test
+async def platform(hass: HomeAssistant = Depends(hass)) -> None:
     """Test discover platform method."""
-    calls = []
+    with patch(
+        "homeassistant.setup.async_setup_component", return_value=True
+    ) as mock_setup_component:
+        calls = []
 
-    @callback
-    def platform_callback(platform, info):
-        """Platform callback method."""
-        calls.append((platform, info))
+        @callback
+        def platform_callback(platform, info):
+            """Platform callback method."""
+            calls.append((platform, info))
 
-    discovery.async_listen_platform(
-        hass,
-        "test_component",
-        platform_callback,
-    )
+        discovery.async_listen_platform(
+            hass,
+            "test_component",
+            platform_callback,
+        )
 
-    await discovery.async_load_platform(
-        hass,
-        "test_component",
-        "test_platform",
-        "discovery info",
-        {"test_component": {}},
-    )
-    await hass.async_block_till_done()
-    assert mock_setup_component.called
-    assert mock_setup_component.call_args[0] == (
-        hass,
-        "test_component",
-        {"test_component": {}},
-    )
-    await hass.async_block_till_done()
+        await discovery.async_load_platform(
+            hass,
+            "test_component",
+            "test_platform",
+            "discovery info",
+            {"test_component": {}},
+        )
+        await hass.async_block_till_done()
+        expect(mock_setup_component.called).to_be(True)
+        expect(mock_setup_component.call_args[0]).to_equal(
+            (hass, "test_component", {"test_component": {}})
+        )
+        await hass.async_block_till_done()
 
-    await hass.async_add_executor_job(
-        discovery.load_platform,
-        hass,
-        "test_component_2",
-        "test_platform",
-        "discovery info",
-        {"test_component": {}},
-    )
-    await hass.async_block_till_done()
+        await hass.async_add_executor_job(
+            discovery.load_platform,
+            hass,
+            "test_component_2",
+            "test_platform",
+            "discovery info",
+            {"test_component": {}},
+        )
+        await hass.async_block_till_done()
 
-    assert len(calls) == 1
-    assert calls[0] == ("test_platform", "discovery info")
+        expect(len(calls)).to_equal(1)
+        expect(calls[0]).to_equal(("test_platform", "discovery info"))
 
-    async_dispatcher_send(
-        hass,
-        discovery.SIGNAL_PLATFORM_DISCOVERED,
-        {"service": discovery.EVENT_LOAD_PLATFORM.format("test_component")},
-    )
-    await hass.async_block_till_done()
+        async_dispatcher_send(
+            hass,
+            discovery.SIGNAL_PLATFORM_DISCOVERED,
+            {"service": discovery.EVENT_LOAD_PLATFORM.format("test_component")},
+        )
+        await hass.async_block_till_done()
 
-    assert len(calls) == 1
+        expect(len(calls)).to_equal(1)
 
 
-async def test_circular_import(hass: HomeAssistant) -> None:
+@test
+async def circular_import(hass: HomeAssistant = Depends(hass)) -> None:
     """Test we don't break doing circular import.
 
     This test will have test_component discover the switch.test_circular
@@ -152,15 +159,16 @@ async def test_circular_import(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     # test_component will only be setup once
-    assert len(component_calls) == 1
+    expect(len(component_calls)).to_equal(1)
     # The platform will be setup once via the config in `setup_component`
     # and once via the discovery inside test_component.
-    assert len(platform_calls) == 2
-    assert "test_component" in hass.config.components
-    assert "switch" in hass.config.components
+    expect(len(platform_calls)).to_equal(2)
+    expect("test_component" in hass.config.components).to_be(True)
+    expect("switch" in hass.config.components).to_be(True)
 
 
-async def test_1st_discovers_2nd_component(hass: HomeAssistant) -> None:
+@test
+async def _1st_discovers_2nd_component(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that we don't break if one component discovers the other.
 
     If the first component fires a discovery event to set up the
@@ -190,4 +198,4 @@ async def test_1st_discovers_2nd_component(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     # test_component will only be setup once
-    assert len(component_calls) == 1
+    expect(len(component_calls)).to_equal(1)

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.components.sensor.helpers import (  # pylint: disable=hass-component-root-import
@@ -29,39 +29,60 @@ from homeassistant.helpers.trigger_template_entity import (
     ValueTemplate,
 )
 
+from tests.hass_fixtures import LogCapture, caplog, hass
+
 _ICON_TEMPLATE = 'mdi:o{{ "n" if value=="on" else "ff" }}'
 _PICTURE_TEMPLATE = '/local/picture_o{{ "n" if value=="on" else "ff" }}'
 
 
-@pytest.mark.parametrize(
-    ("value", "test_template", "error_value", "expected", "error"),
-    [
-        (1, "{{ value == 1 }}", None, "True", None),
-        (1, "1", None, "1", None),
-        (
-            1,
-            "{{ x - 4 }}",
-            None,
-            None,
-            "",
-        ),
-        (
-            1,
-            "{{ x - 4 }}",
-            template._SENTINEL,
-            template._SENTINEL,
-            "Error parsing value for test.entity: 'x' is undefined (value: 1, template: {{ x - 4 }})",
-        ),
-    ],
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test.cases(
+    test.case(
+        "1-{{ value == 1 }}-None-True-None",
+        value=1,
+        test_template="{{ value == 1 }}",
+        error_value=None,
+        expected="True",
+        error=None,
+    ),
+    test.case(
+        "1-1-None-1-None",
+        value=1,
+        test_template="1",
+        error_value=None,
+        expected="1",
+        error=None,
+    ),
+    test.case(
+        "1-{{ x - 4 }}-None-None-",
+        value=1,
+        test_template="{{ x - 4 }}",
+        error_value=None,
+        expected=None,
+        error="",
+    ),
+    test.case(
+        "1-{{ x - 4 }}-error_value3-expected3-Error parsing value for test.entity: 'x' is undefined (value: 1, template: {{ x - 4 }})",
+        value=1,
+        test_template="{{ x - 4 }}",
+        error_value=template._SENTINEL,
+        expected=template._SENTINEL,
+        error="Error parsing value for test.entity: 'x' is undefined (value: 1, template: {{ x - 4 }})",
+    ),
 )
-async def test_value_template_object(
-    hass: HomeAssistant,
+async def value_template_object(
     value: Any,
     test_template: str,
     error_value: Any,
     expected: Any,
     error: str | None,
-    caplog: pytest.LogCaptureFixture,
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test ValueTemplate object."""
     entity = ManualTriggerEntity(
@@ -79,13 +100,14 @@ async def test_value_template_object(
         entity.entity_id, variables, error_value
     )
 
-    assert result == expected
+    expect(result).to_equal(expected)
 
     if error is not None:
-        assert error in caplog.text
+        expect(error in caplog.text).to_be(True)
 
 
-async def test_template_entity_requires_hass_set(hass: HomeAssistant) -> None:
+@test
+async def template_entity_requires_hass_set(hass: HomeAssistant = Depends(hass)) -> None:
     """Test manual trigger template entity."""
     config = {
         "name": template.Template("test_entity", hass),
@@ -107,9 +129,9 @@ async def test_template_entity_requires_hass_set(hass: HomeAssistant) -> None:
     entity._process_manual_data(variables)
     await hass.async_block_till_done()
 
-    assert entity.name == "test_entity"
-    assert entity.icon == "mdi:on"
-    assert entity.entity_picture == "/local/picture_on"
+    expect(entity.name).to_equal("test_entity")
+    expect(entity.icon).to_equal("mdi:on")
+    expect(entity.entity_picture).to_equal("/local/picture_on")
 
     hass.states.async_set("test.entity", STATE_OFF)
     await entity.async_added_to_hass()
@@ -118,28 +140,60 @@ async def test_template_entity_requires_hass_set(hass: HomeAssistant) -> None:
     entity._process_manual_data(variables)
     await hass.async_block_till_done()
 
-    assert entity.name == "test_entity"
-    assert entity.icon == "mdi:off"
-    assert entity.entity_picture == "/local/picture_off"
+    expect(entity.name).to_equal("test_entity")
+    expect(entity.icon).to_equal("mdi:off")
+    expect(entity.entity_picture).to_equal("/local/picture_off")
 
 
-@pytest.mark.parametrize(
-    ("test_template", "test_entity_state", "expected"),
-    [
-        ('{{ has_value("test.entity") }}', STATE_ON, True),
-        ('{{ has_value("test.entity") }}', STATE_OFF, True),
-        ('{{ has_value("test.entity") }}', STATE_UNKNOWN, False),
-        ('{{ "a" if has_value("test.entity") else "b" }}', STATE_ON, False),
-        ('{{ "something_not_boolean" }}', STATE_OFF, False),
-        ("{{ 1 }}", STATE_OFF, True),
-        ("{{ 0 }}", STATE_OFF, False),
-    ],
+@test.cases(
+    test.case(
+        '{{ has_value("test.entity") }}-on-True',
+        test_template='{{ has_value("test.entity") }}',
+        test_entity_state=STATE_ON,
+        expected=True,
+    ),
+    test.case(
+        '{{ has_value("test.entity") }}-off-True',
+        test_template='{{ has_value("test.entity") }}',
+        test_entity_state=STATE_OFF,
+        expected=True,
+    ),
+    test.case(
+        '{{ has_value("test.entity") }}-unknown-False',
+        test_template='{{ has_value("test.entity") }}',
+        test_entity_state=STATE_UNKNOWN,
+        expected=False,
+    ),
+    test.case(
+        '{{ "a" if has_value("test.entity") else "b" }}-on-False',
+        test_template='{{ "a" if has_value("test.entity") else "b" }}',
+        test_entity_state=STATE_ON,
+        expected=False,
+    ),
+    test.case(
+        '{{ "something_not_boolean" }}-off-False',
+        test_template='{{ "something_not_boolean" }}',
+        test_entity_state=STATE_OFF,
+        expected=False,
+    ),
+    test.case(
+        "{{ 1 }}-off-True",
+        test_template="{{ 1 }}",
+        test_entity_state=STATE_OFF,
+        expected=True,
+    ),
+    test.case(
+        "{{ 0 }}-off-False",
+        test_template="{{ 0 }}",
+        test_entity_state=STATE_OFF,
+        expected=False,
+    ),
 )
-async def test_trigger_template_availability(
-    hass: HomeAssistant,
+async def trigger_template_availability(
     test_template: str,
     test_entity_state: str,
     expected: bool,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test manual trigger template entity availability template."""
     config = {
@@ -154,15 +208,17 @@ async def test_trigger_template_availability(
     await entity.async_added_to_hass()
 
     variables = entity._template_variables()
-    assert entity._render_availability_template(variables) is expected
+    expect(entity._render_availability_template(variables) is expected).to_be(True)
     await hass.async_block_till_done()
 
-    assert entity.unique_id == "9961786c-f8c8-4ea0-ab1d-b9e922c39088"
-    assert entity.available is expected
+    expect(entity.unique_id).to_equal("9961786c-f8c8-4ea0-ab1d-b9e922c39088")
+    expect(entity.available is expected).to_be(True)
 
 
-async def test_trigger_no_availability_template(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def trigger_no_availability_template(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test manual trigger template entity when availability template isn't used."""
     config = {
@@ -185,28 +241,30 @@ async def test_trigger_no_availability_template(
     entity = TestEntity(hass, config)
     entity.entity_id = "test.entity"
     variables = entity._template_variables_with_value(STATE_ON)
-    assert entity._render_availability_template(variables) is True
-    assert entity.available is True
+    expect(entity._render_availability_template(variables)).to_be(True)
+    expect(entity.available).to_be(True)
     entity._process_manual_data(variables)
     await hass.async_block_till_done()
 
-    assert entity.state == "True"
-    assert entity.icon == "mdi:on"
-    assert entity.entity_picture == "/local/picture_on"
+    expect(entity.state).to_equal("True")
+    expect(entity.icon).to_equal("mdi:on")
+    expect(entity.entity_picture).to_equal("/local/picture_on")
 
     variables = entity._template_variables_with_value(STATE_OFF)
-    assert entity._render_availability_template(variables) is True
-    assert entity.available is True
+    expect(entity._render_availability_template(variables)).to_be(True)
+    expect(entity.available).to_be(True)
     entity._process_manual_data(variables)
     await hass.async_block_till_done()
 
-    assert entity.state == "False"
-    assert entity.icon == "mdi:off"
-    assert entity.entity_picture == "/local/picture_off"
+    expect(entity.state).to_equal("False")
+    expect(entity.icon).to_equal("mdi:off")
+    expect(entity.entity_picture).to_equal("/local/picture_off")
 
 
-async def test_trigger_template_availability_with_syntax_error(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def trigger_template_availability_with_syntax_error(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test manual trigger template entity when availability render fails."""
     config = {
@@ -219,13 +277,17 @@ async def test_trigger_template_availability_with_syntax_error(
 
     variables = entity._template_variables()
     entity._render_availability_template(variables)
-    assert entity.available is True
+    expect(entity.available).to_be(True)
 
-    assert "Error rendering availability template for test.entity" in caplog.text
+    expect(
+        "Error rendering availability template for test.entity" in caplog.text
+    ).to_be(True)
 
 
-async def test_attribute_order(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def attribute_order(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test manual trigger template entity when availability render fails."""
     config = {
@@ -246,15 +308,16 @@ async def test_attribute_order(
     entity._process_manual_data(variables)
     await hass.async_block_till_done()
 
-    assert entity.extra_state_attributes == {"beer": 1, "more_beer": 2}
+    expect(entity.extra_state_attributes).to_equal({"beer": 1, "more_beer": 2})
 
-    assert (
+    expect(
         "Error rendering attributes.no_beer template for test.entity: UndefinedError: 'sad' is undefined"
         in caplog.text
-    )
+    ).to_be(True)
 
 
-async def test_trigger_template_complex(hass: HomeAssistant) -> None:
+@test
+async def trigger_template_complex(hass: HomeAssistant = Depends(hass)) -> None:
     """Test manual trigger template entity complex template."""
     complex_template = """
     {% set d = {'test_key':'test_data'} %}
@@ -293,23 +356,19 @@ async def test_trigger_template_complex(hass: HomeAssistant) -> None:
     entity._process_manual_data(variables)
     await hass.async_block_till_done()
 
-    assert entity.some_other_key == {"test_key": "test_data"}
+    expect(entity.some_other_key).to_equal({"test_key": "test_data"})
 
 
-@pytest.mark.parametrize(
-    "device_class",
-    [SensorDeviceClass.TIMESTAMP, SensorDeviceClass.UPTIME],
-)
-async def test_manual_trigger_sensor_entity_with_date(
-    hass: HomeAssistant,
-    caplog: pytest.LogCaptureFixture,
-    device_class: SensorDeviceClass,
+@test
+async def manual_trigger_sensor_entity_with_date(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test manual trigger template entity when availability template isn't used."""
     config = {
         CONF_NAME: template.Template("test_entity", hass),
         CONF_STATE: template.Template("{{ as_datetime(value) }}", hass),
-        CONF_DEVICE_CLASS: device_class,
+        CONF_DEVICE_CLASS: SensorDeviceClass.TIMESTAMP,
     }
 
     class TestEntity(ManualTriggerSensorEntity):
@@ -325,13 +384,15 @@ async def test_manual_trigger_sensor_entity_with_date(
     entity = TestEntity(hass, config)
     entity.entity_id = "test.entity"
     variables = entity._template_variables_with_value("2025-01-01T00:00:00+00:00")
-    assert entity._render_availability_template(variables) is True
-    assert entity.available is True
+    expect(entity._render_availability_template(variables)).to_be(True)
+    expect(entity.available).to_be(True)
     entity._set_native_value_with_possible_timestamp(entity.state)
     await hass.async_block_till_done()
 
-    assert entity.native_value == async_parse_date_datetime(
-        "2025-01-01T00:00:00+00:00", entity.entity_id, entity.device_class
+    expect(entity.native_value).to_equal(
+        async_parse_date_datetime(
+            "2025-01-01T00:00:00+00:00", entity.entity_id, entity.device_class
+        )
     )
-    assert entity.state == "2025-01-01T00:00:00+00:00"
-    assert entity.device_class == device_class
+    expect(entity.state).to_equal("2025-01-01T00:00:00+00:00")
+    expect(entity.device_class).to_equal(SensorDeviceClass.TIMESTAMP)

@@ -3,31 +3,37 @@
 import pathlib
 from unittest.mock import Mock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
+from homeassistant import loader
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import icon
 from homeassistant.loader import IntegrationNotFound
 from homeassistant.setup import async_setup_component
 
+from tests.hass_fixtures import hass
 
-def test_battery_icon() -> None:
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+def battery_icon() -> None:
     """Test icon generator for battery sensor."""
-    assert icon.icon_for_battery_level(None, True) == "mdi:battery-unknown"
-    assert icon.icon_for_battery_level(None, False) == "mdi:battery-unknown"
+    expect(icon.icon_for_battery_level(None, True)).to_equal("mdi:battery-unknown")
+    expect(icon.icon_for_battery_level(None, False)).to_equal("mdi:battery-unknown")
 
-    assert icon.icon_for_battery_level(5, True) == "mdi:battery-outline"
-    assert icon.icon_for_battery_level(5, False) == "mdi:battery-alert"
+    expect(icon.icon_for_battery_level(5, True)).to_equal("mdi:battery-outline")
+    expect(icon.icon_for_battery_level(5, False)).to_equal("mdi:battery-alert")
 
-    assert icon.icon_for_battery_level(100, True) == "mdi:battery-charging-100"
-    assert icon.icon_for_battery_level(100, False) == "mdi:battery"
+    expect(icon.icon_for_battery_level(100, True)).to_equal("mdi:battery-charging-100")
+    expect(icon.icon_for_battery_level(100, False)).to_equal("mdi:battery")
 
     iconbase = "mdi:battery"
     for level in range(0, 100, 5):
-        print(  # noqa: T201
-            f"Level: {level}. icon: {icon.icon_for_battery_level(level, False)}, "
-            f"charging: {icon.icon_for_battery_level(level, True)}"
-        )
         if level <= 10:
             postfix_charging = "-outline"
         elif level <= 30:
@@ -46,105 +52,139 @@ def test_battery_icon() -> None:
             postfix = "-alert"
         else:
             postfix = ""
-        assert iconbase + postfix == icon.icon_for_battery_level(level, False)
-        assert iconbase + postfix_charging == icon.icon_for_battery_level(level, True)
+        expect(icon.icon_for_battery_level(level, False)).to_equal(iconbase + postfix)
+        expect(icon.icon_for_battery_level(level, True)).to_equal(
+            iconbase + postfix_charging
+        )
 
 
-def test_signal_icon() -> None:
+@test
+def signal_icon() -> None:
     """Test icon generator for signal sensor."""
-    assert icon.icon_for_signal_level(None) == "mdi:signal-cellular-outline"
-    assert icon.icon_for_signal_level(0) == "mdi:signal-cellular-outline"
-    assert icon.icon_for_signal_level(5) == "mdi:signal-cellular-1"
-    assert icon.icon_for_signal_level(40) == "mdi:signal-cellular-2"
-    assert icon.icon_for_signal_level(80) == "mdi:signal-cellular-3"
-    assert icon.icon_for_signal_level(100) == "mdi:signal-cellular-3"
+    expect(icon.icon_for_signal_level(None)).to_equal("mdi:signal-cellular-outline")
+    expect(icon.icon_for_signal_level(0)).to_equal("mdi:signal-cellular-outline")
+    expect(icon.icon_for_signal_level(5)).to_equal("mdi:signal-cellular-1")
+    expect(icon.icon_for_signal_level(40)).to_equal("mdi:signal-cellular-2")
+    expect(icon.icon_for_signal_level(80)).to_equal("mdi:signal-cellular-3")
+    expect(icon.icon_for_signal_level(100)).to_equal("mdi:signal-cellular-3")
 
 
-def test_load_icons_files(hass: HomeAssistant) -> None:
+@test
+async def load_icons_files(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the load icons files function."""
     file1 = hass.config.path("custom_components", "test", "icons.json")
     file2 = hass.config.path("custom_components", "test", "invalid.json")
-    assert icon._load_icons_files({"test": file1, "invalid": file2}) == {
-        "test": {
-            "entity": {
-                "switch": {
-                    "something": {
-                        "state": {"away": "mdi:home-outline", "home": "mdi:home"}
+    expect(icon._load_icons_files({"test": file1, "invalid": file2})).to_equal(
+        {
+            "test": {
+                "entity": {
+                    "switch": {
+                        "something": {
+                            "state": {"away": "mdi:home-outline", "home": "mdi:home"}
+                        }
                     }
-                }
+                },
             },
-        },
-        "invalid": {},
-    }
+            "invalid": {},
+        }
+    )
 
 
-@pytest.mark.usefixtures("enable_custom_integrations")
-async def test_get_icons(hass: HomeAssistant) -> None:
+@test
+async def get_icons(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the get icon helper."""
+    # Inline enable_custom_integrations behavior.
+    hass.data.pop(loader.DATA_CUSTOM_COMPONENTS, None)
+
     icons = await icon.async_get_icons(hass, "entity")
-    assert icons == {}
+    expect(icons).to_equal({})
 
     icons = await icon.async_get_icons(hass, "entity_component")
-    assert icons == {}
+    expect(icons).to_equal({})
 
     # Set up test switch component
-    assert await async_setup_component(hass, "switch", {"switch": {"platform": "test"}})
+    expect(
+        await async_setup_component(hass, "switch", {"switch": {"platform": "test"}})
+    ).to_be(True)
 
     # Test getting icons for the entity component
     icons = await icon.async_get_icons(hass, "entity_component")
-    assert icons["switch"]["_"]["default"] == "mdi:toggle-switch-variant"
+    expect(icons["switch"]["_"]["default"]).to_equal("mdi:toggle-switch-variant")
 
     # Test services icons are available
     icons = await icon.async_get_icons(hass, "services")
-    assert len(icons) == 1
-    assert icons["switch"]["turn_off"] == {"service": "mdi:toggle-switch-variant-off"}
+    expect(len(icons)).to_equal(1)
+    expect(icons["switch"]["turn_off"]).to_equal(
+        {"service": "mdi:toggle-switch-variant-off"}
+    )
 
     # Ensure icons file for platform isn't loaded, as that isn't supported
     icons = await icon.async_get_icons(hass, "entity")
-    assert icons == {}
-    with pytest.raises(ValueError, match="test.switch"):
+    expect(icons).to_equal({})
+
+    async def _get_entity_test_switch() -> None:
         await icon.async_get_icons(hass, "entity", ["test.switch"])
+
+    try:
+        await _get_entity_test_switch()
+    except ValueError as err:
+        expect("test.switch" in str(err)).to_be(True)
+    else:
+        expect("raised ValueError").to_equal("no exception")
 
     # Load up an custom integration
     hass.config.components.add("test_package")
     await hass.async_block_till_done()
 
     icons = await icon.async_get_icons(hass, "entity")
-    assert len(icons) == 1
+    expect(len(icons)).to_equal(1)
 
-    assert icons == {
-        "test_package": {
-            "switch": {
-                "something": {"state": {"away": "mdi:home-outline", "home": "mdi:home"}}
+    expect(icons).to_equal(
+        {
+            "test_package": {
+                "switch": {
+                    "something": {
+                        "state": {"away": "mdi:home-outline", "home": "mdi:home"}
+                    }
+                }
             }
         }
-    }
+    )
 
     icons = await icon.async_get_icons(hass, "services")
-    assert len(icons) == 2
-    assert icons["test_package"]["enable_god_mode"] == {"service": "mdi:shield"}
+    expect(len(icons)).to_equal(2)
+    expect(icons["test_package"]["enable_god_mode"]).to_equal(
+        {"service": "mdi:shield"}
+    )
 
     # Load another one
     hass.config.components.add("test_embedded")
     await hass.async_block_till_done()
 
     icons = await icon.async_get_icons(hass, "entity")
-    assert len(icons) == 2
+    expect(len(icons)).to_equal(2)
 
-    assert icons["test_package"] == {
-        "switch": {
-            "something": {"state": {"away": "mdi:home-outline", "home": "mdi:home"}}
+    expect(icons["test_package"]).to_equal(
+        {
+            "switch": {
+                "something": {"state": {"away": "mdi:home-outline", "home": "mdi:home"}}
+            }
         }
-    }
+    )
 
     # Test getting non-existing integration
-    with pytest.raises(
-        IntegrationNotFound, match="Integration 'non_existing' not found"
-    ):
+    try:
         await icon.async_get_icons(hass, "entity", ["non_existing"])
+    except IntegrationNotFound as err:
+        expect("Integration 'non_existing' not found" in str(err)).to_be(True)
+    else:
+        expect("raised IntegrationNotFound").to_equal("no exception")
 
 
-async def test_get_icons_while_loading_components(hass: HomeAssistant) -> None:
+@test
+async def get_icons_while_loading_components(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test the get icons helper loads icons."""
     integration = Mock(file_path=pathlib.Path(__file__))
     integration.name = "Component 1"
@@ -170,14 +210,17 @@ async def test_get_icons_while_loading_components(hass: HomeAssistant) -> None:
         times = 5
         all_icons = [await icon.async_get_icons(hass, "entity") for _ in range(times)]
 
-    assert all_icons == [
-        {"component1": {"climate": {"test": {"icon": "mdi:home"}}}}
-        for _ in range(times)
-    ]
-    assert load_count == 1
+    expect(all_icons).to_equal(
+        [
+            {"component1": {"climate": {"test": {"icon": "mdi:home"}}}}
+            for _ in range(times)
+        ]
+    )
+    expect(load_count).to_equal(1)
 
 
-async def test_caching(hass: HomeAssistant) -> None:
+@test
+async def caching(hass: HomeAssistant = Depends(hass)) -> None:
     """Test we cache data."""
     hass.config.components.add("binary_sensor")
     hass.config.components.add("switch")
@@ -189,28 +232,28 @@ async def test_caching(hass: HomeAssistant) -> None:
     ) as mock_build:
         load1 = await icon.async_get_icons(hass, "entity_component")
         # conditions, entity_component, services, triggers
-        assert len(mock_build.mock_calls) == 4
+        expect(len(mock_build.mock_calls)).to_equal(4)
 
         load2 = await icon.async_get_icons(hass, "entity_component")
         # conditions, entity_component, services, triggers
-        assert len(mock_build.mock_calls) == 4
+        expect(len(mock_build.mock_calls)).to_equal(4)
 
-        assert load1 == load2
+        expect(load1).to_equal(load2)
 
-        assert load1["binary_sensor"]
-        assert load1["switch"]
+        expect(bool(load1["binary_sensor"])).to_be(True)
+        expect(bool(load1["switch"])).to_be(True)
 
     load_switch_only = await icon.async_get_icons(
         hass, "entity_component", integrations={"switch"}
     )
-    assert load_switch_only
-    assert list(load_switch_only) == ["switch"]
+    expect(bool(load_switch_only)).to_be(True)
+    expect(list(load_switch_only)).to_equal(["switch"])
 
     load_binary_sensor_only = await icon.async_get_icons(
         hass, "entity_component", integrations={"binary_sensor"}
     )
-    assert load_binary_sensor_only
-    assert list(load_binary_sensor_only) == ["binary_sensor"]
+    expect(bool(load_binary_sensor_only)).to_be(True)
+    expect(list(load_binary_sensor_only)).to_equal(["binary_sensor"])
 
     # Check if new loaded component, trigger load
     hass.config.components.add("media_player")
@@ -221,10 +264,10 @@ async def test_caching(hass: HomeAssistant) -> None:
         load_sensor_only = await icon.async_get_icons(
             hass, "entity_component", integrations={"switch"}
         )
-        assert load_sensor_only
-        assert len(mock_load.mock_calls) == 0
+        expect(bool(load_sensor_only)).to_be(True)
+        expect(len(mock_load.mock_calls)).to_equal(0)
 
         await icon.async_get_icons(
             hass, "entity_component", integrations={"media_player"}
         )
-        assert len(mock_load.mock_calls) == 1
+        expect(len(mock_load.mock_calls)).to_equal(1)

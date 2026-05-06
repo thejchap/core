@@ -1,6 +1,6 @@
 """Tests Home Assistant temperature helpers."""
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.const import (
     PRECISION_HALVES,
@@ -11,28 +11,54 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.temperature import display_temp
 
+from tests.hass_fixtures import hass
+
 TEMP = 24.636626
 
 
-def test_temperature_not_a_number(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path.
+
+    Required so imported fixtures resolved via ``Depends(...)`` actually
+    execute (Tryke only wires Depends resolution for modules that
+    statically declare at least one ``@fixture``).
+    """
+    return 0
+
+
+@test
+async def temperature_not_a_number(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that temperature is a number."""
     temp = "Temperature"
-    with pytest.raises(Exception) as exception:
+    caught: Exception | None = None
+    try:
         display_temp(hass, temp, UnitOfTemperature.CELSIUS, PRECISION_HALVES)
+    except Exception as exc:  # noqa: BLE001
+        caught = exc
+    expect(caught).not_.to_be_none()
+    expect(f"Temperature is not a number: {temp}" in str(caught)).to_be(True)
 
-    assert f"Temperature is not a number: {temp}" in str(exception.value)
 
-
-def test_celsius_halves(hass: HomeAssistant) -> None:
+@test
+async def celsius_halves(hass: HomeAssistant = Depends(hass)) -> None:
     """Test temperature to celsius rounding to halves."""
-    assert display_temp(hass, TEMP, UnitOfTemperature.CELSIUS, PRECISION_HALVES) == 24.5
+    expect(
+        display_temp(hass, TEMP, UnitOfTemperature.CELSIUS, PRECISION_HALVES)
+    ).to_equal(24.5)
 
 
-def test_celsius_tenths(hass: HomeAssistant) -> None:
+@test
+async def celsius_tenths(hass: HomeAssistant = Depends(hass)) -> None:
     """Test temperature to celsius rounding to tenths."""
-    assert display_temp(hass, TEMP, UnitOfTemperature.CELSIUS, PRECISION_TENTHS) == 24.6
+    expect(
+        display_temp(hass, TEMP, UnitOfTemperature.CELSIUS, PRECISION_TENTHS)
+    ).to_equal(24.6)
 
 
-def test_fahrenheit_wholes(hass: HomeAssistant) -> None:
+@test
+async def fahrenheit_wholes(hass: HomeAssistant = Depends(hass)) -> None:
     """Test temperature to fahrenheit rounding to wholes."""
-    assert display_temp(hass, TEMP, UnitOfTemperature.FAHRENHEIT, PRECISION_WHOLE) == -4
+    expect(
+        display_temp(hass, TEMP, UnitOfTemperature.FAHRENHEIT, PRECISION_WHOLE)
+    ).to_equal(-4)

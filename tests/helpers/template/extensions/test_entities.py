@@ -1,32 +1,44 @@
 """Test entity functions for Home Assistant templates."""
 
+from __future__ import annotations
+
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import device_registry, entity_registry, hass
 from tests.helpers.template.helpers import render
 
 
-def test_entity_name(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    device_registry: dr.DeviceRegistry,
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def entity_name(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
+    device_registry: dr.DeviceRegistry = Depends(device_registry),
 ) -> None:
     """Test entity_name method."""
-    assert render(hass, "{{ entity_name('sensor.fake') }}") is None
+    expect(render(hass, "{{ entity_name('sensor.fake') }}")).to_be(None)
 
     entry = entity_registry.async_get_or_create(
         "sensor", "test", "unique_1", original_name="Registry Sensor"
     )
-    assert render(hass, f"{{{{ entity_name('{entry.entity_id}') }}}}") == (
+    expect(render(hass, f"{{{{ entity_name('{entry.entity_id}') }}}}")).to_equal(
         "Registry Sensor"
     )
-    assert render(hass, f"{{{{ '{entry.entity_id}' | entity_name }}}}") == (
+    expect(render(hass, f"{{{{ '{entry.entity_id}' | entity_name }}}}")).to_equal(
         "Registry Sensor"
     )
 
     entity_registry.async_update_entity(entry.entity_id, name="My Custom Sensor")
-    assert render(hass, f"{{{{ entity_name('{entry.entity_id}') }}}}") == (
+    expect(render(hass, f"{{{{ entity_name('{entry.entity_id}') }}}}")).to_equal(
         "My Custom Sensor"
     )
 
@@ -34,7 +46,7 @@ def test_entity_name(
     hass.states.async_set(
         "light.no_unique_id", "on", {"friendly_name": "No Unique ID Light"}
     )
-    assert render(hass, "{{ entity_name('light.no_unique_id') }}") == (
+    expect(render(hass, "{{ entity_name('light.no_unique_id') }}")).to_equal(
         "No Unique ID Light"
     )
 
@@ -54,7 +66,7 @@ def test_entity_name(
         has_entity_name=True,
         original_name="Temperature",
     )
-    assert render(hass, f"{{{{ entity_name('{entry2.entity_id}') }}}}") == (
+    expect(render(hass, f"{{{{ entity_name('{entry2.entity_id}') }}}}")).to_equal(
         "Temperature"
     )
 
@@ -62,25 +74,34 @@ def test_entity_name(
     entity_registry.async_update_entity(
         entry2.entity_id, name="My Device Custom Sensor"
     )
-    assert render(hass, f"{{{{ entity_name('{entry2.entity_id}') }}}}") == (
+    expect(render(hass, f"{{{{ entity_name('{entry2.entity_id}') }}}}")).to_equal(
         "Custom Sensor"
     )
 
 
-def test_is_hidden_entity(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
+@test
+async def is_hidden_entity(
+    hass: HomeAssistant = Depends(hass),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test is_hidden_entity method."""
     hidden_entity = entity_registry.async_get_or_create(
         "sensor", "mock", "hidden", hidden_by=er.RegistryEntryHider.USER
     )
     visible_entity = entity_registry.async_get_or_create("sensor", "mock", "visible")
-    assert render(hass, f"{{{{ is_hidden_entity('{hidden_entity.entity_id}') }}}}")
+    expect(
+        bool(render(hass, f"{{{{ is_hidden_entity('{hidden_entity.entity_id}') }}}}"))
+    ).to_be(True)
 
-    assert not render(hass, f"{{{{ is_hidden_entity('{visible_entity.entity_id}') }}}}")
+    expect(
+        bool(render(hass, f"{{{{ is_hidden_entity('{visible_entity.entity_id}') }}}}"))
+    ).to_be(False)
 
-    assert not render(
-        hass,
-        f"{{{{ ['{visible_entity.entity_id}'] | select('is_hidden_entity') | first }}}}",
-    )
+    expect(
+        bool(
+            render(
+                hass,
+                f"{{{{ ['{visible_entity.entity_id}'] | select('is_hidden_entity') | first }}}}",
+            )
+        )
+    ).to_be(False)

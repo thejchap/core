@@ -1,5 +1,7 @@
 """The tests for the EntityFilter component."""
 
+from tryke import expect, test
+
 from homeassistant.helpers.entityfilter import (
     FILTER_SCHEMA,
     INCLUDE_EXCLUDE_FILTER_SCHEMA,
@@ -8,74 +10,79 @@ from homeassistant.helpers.entityfilter import (
 )
 
 
-def test_no_filters_case_1() -> None:
+@test
+def no_filters_case_1() -> None:
     """If include and exclude not included, pass everything."""
-    incl_dom = {}
-    incl_ent = {}
-    excl_dom = {}
-    excl_ent = {}
+    incl_dom: dict = {}
+    incl_ent: dict = {}
+    excl_dom: dict = {}
+    excl_ent: dict = {}
     testfilter = generate_filter(incl_dom, incl_ent, excl_dom, excl_ent)
 
     for value in ("sensor.test", "sun.sun", "light.test"):
-        assert testfilter(value)
+        expect(testfilter(value)).to_be(True)
 
 
-def test_includes_only_case_2() -> None:
+@test
+def includes_only_case_2() -> None:
     """If include specified, only pass if specified (Case 2)."""
     incl_dom = {"light", "sensor"}
     incl_ent = {"binary_sensor.working"}
-    excl_dom = {}
-    excl_ent = {}
+    excl_dom: dict = {}
+    excl_ent: dict = {}
     testfilter = generate_filter(incl_dom, incl_ent, excl_dom, excl_ent)
 
-    assert testfilter("sensor.test")
-    assert testfilter("light.test")
-    assert testfilter("binary_sensor.working")
-    assert testfilter("binary_sensor.notworking") is False
-    assert testfilter("sun.sun") is False
+    expect(testfilter("sensor.test")).to_be(True)
+    expect(testfilter("light.test")).to_be(True)
+    expect(testfilter("binary_sensor.working")).to_be(True)
+    expect(testfilter("binary_sensor.notworking")).to_be(False)
+    expect(testfilter("sun.sun")).to_be(False)
 
 
-def test_includes_only_with_glob_case_2() -> None:
+@test
+def includes_only_with_glob_case_2() -> None:
     """If include specified, only pass if specified (Case 2)."""
     incl_dom = {"light", "sensor"}
     incl_glob = {"cover.*_window"}
     incl_ent = {"binary_sensor.working"}
-    excl_dom = {}
-    excl_glob = {}
-    excl_ent = {}
+    excl_dom: dict = {}
+    excl_glob: dict = {}
+    excl_ent: dict = {}
     testfilter = generate_filter(
         incl_dom, incl_ent, excl_dom, excl_ent, incl_glob, excl_glob
     )
 
-    assert testfilter("sensor.test")
-    assert testfilter("light.test")
-    assert testfilter("cover.bedroom_window")
-    assert testfilter("binary_sensor.working")
-    assert testfilter("binary_sensor.notworking") is False
-    assert testfilter("sun.sun") is False
-    assert testfilter("cover.garage_door") is False
+    expect(testfilter("sensor.test")).to_be(True)
+    expect(testfilter("light.test")).to_be(True)
+    expect(testfilter("cover.bedroom_window")).to_be(True)
+    expect(testfilter("binary_sensor.working")).to_be(True)
+    expect(testfilter("binary_sensor.notworking")).to_be(False)
+    expect(testfilter("sun.sun")).to_be(False)
+    expect(testfilter("cover.garage_door")).to_be(False)
 
 
-def test_excludes_only_case_3() -> None:
+@test
+def excludes_only_case_3() -> None:
     """If exclude specified, pass all but specified (Case 3)."""
-    incl_dom = {}
-    incl_ent = {}
+    incl_dom: dict = {}
+    incl_ent: dict = {}
     excl_dom = {"light", "sensor"}
     excl_ent = {"binary_sensor.working"}
     testfilter = generate_filter(incl_dom, incl_ent, excl_dom, excl_ent)
 
-    assert testfilter("sensor.test") is False
-    assert testfilter("light.test") is False
-    assert testfilter("binary_sensor.working") is False
-    assert testfilter("binary_sensor.another")
-    assert testfilter("sun.sun") is True
+    expect(testfilter("sensor.test")).to_be(False)
+    expect(testfilter("light.test")).to_be(False)
+    expect(testfilter("binary_sensor.working")).to_be(False)
+    expect(testfilter("binary_sensor.another")).to_be(True)
+    expect(testfilter("sun.sun")).to_be(True)
 
 
-def test_excludes_only_with_glob_case_3() -> None:
+@test
+def excludes_only_with_glob_case_3() -> None:
     """If exclude specified, pass all but specified (Case 3)."""
-    incl_dom = {}
-    incl_glob = {}
-    incl_ent = {}
+    incl_dom: dict = {}
+    incl_glob: dict = {}
+    incl_ent: dict = {}
     excl_dom = {"light", "sensor"}
     excl_glob = {"cover.*_window"}
     excl_ent = {"binary_sensor.working"}
@@ -83,80 +90,84 @@ def test_excludes_only_with_glob_case_3() -> None:
         incl_dom, incl_ent, excl_dom, excl_ent, incl_glob, excl_glob
     )
 
-    assert testfilter("sensor.test") is False
-    assert testfilter("light.test") is False
-    assert testfilter("cover.bedroom_window") is False
-    assert testfilter("binary_sensor.working") is False
-    assert testfilter("binary_sensor.another")
-    assert testfilter("sun.sun") is True
-    assert testfilter("cover.garage_door")
+    expect(testfilter("sensor.test")).to_be(False)
+    expect(testfilter("light.test")).to_be(False)
+    expect(testfilter("cover.bedroom_window")).to_be(False)
+    expect(testfilter("binary_sensor.working")).to_be(False)
+    expect(testfilter("binary_sensor.another")).to_be(True)
+    expect(testfilter("sun.sun")).to_be(True)
+    expect(testfilter("cover.garage_door")).to_be(True)
 
 
-def test_with_include_domain_case4() -> None:
+@test
+def with_include_domain_case4() -> None:
     """Test case 4 - include and exclude specified, with included domain."""
     incl_dom = {"light", "sensor"}
     incl_ent = {"binary_sensor.working"}
-    excl_dom = {}
+    excl_dom: dict = {}
     excl_ent = {"light.ignoreme", "sensor.notworking"}
     testfilter = generate_filter(incl_dom, incl_ent, excl_dom, excl_ent)
 
-    assert testfilter("sensor.test")
-    assert testfilter("sensor.notworking") is False
-    assert testfilter("light.test")
-    assert testfilter("light.ignoreme") is False
-    assert testfilter("binary_sensor.working")
-    assert testfilter("binary_sensor.another") is False
-    assert testfilter("sun.sun") is False
+    expect(testfilter("sensor.test")).to_be(True)
+    expect(testfilter("sensor.notworking")).to_be(False)
+    expect(testfilter("light.test")).to_be(True)
+    expect(testfilter("light.ignoreme")).to_be(False)
+    expect(testfilter("binary_sensor.working")).to_be(True)
+    expect(testfilter("binary_sensor.another")).to_be(False)
+    expect(testfilter("sun.sun")).to_be(False)
 
 
-def test_with_include_domain_exclude_glob_case4() -> None:
+@test
+def with_include_domain_exclude_glob_case4() -> None:
     """Test case 4 - include and exclude specified, with included domain but excluded by glob."""
     incl_dom = {"light", "sensor"}
     incl_ent = {"binary_sensor.working"}
-    incl_glob = {}
-    excl_dom = {}
+    incl_glob: dict = {}
+    excl_dom: dict = {}
     excl_ent = {"light.ignoreme", "sensor.notworking"}
     excl_glob = {"sensor.busted"}
     testfilter = generate_filter(
         incl_dom, incl_ent, excl_dom, excl_ent, incl_glob, excl_glob
     )
 
-    assert testfilter("sensor.test")
-    assert testfilter("sensor.busted") is False
-    assert testfilter("sensor.notworking") is False
-    assert testfilter("light.test")
-    assert testfilter("light.ignoreme") is False
-    assert testfilter("binary_sensor.working")
-    assert testfilter("binary_sensor.another") is False
-    assert testfilter("sun.sun") is False
+    expect(testfilter("sensor.test")).to_be(True)
+    expect(testfilter("sensor.busted")).to_be(False)
+    expect(testfilter("sensor.notworking")).to_be(False)
+    expect(testfilter("light.test")).to_be(True)
+    expect(testfilter("light.ignoreme")).to_be(False)
+    expect(testfilter("binary_sensor.working")).to_be(True)
+    expect(testfilter("binary_sensor.another")).to_be(False)
+    expect(testfilter("sun.sun")).to_be(False)
 
 
-def test_with_include_glob_case4() -> None:
+@test
+def with_include_glob_case4() -> None:
     """Test case 4 - include and exclude specified, with included glob."""
-    incl_dom = {}
+    incl_dom: dict = {}
     incl_glob = {"light.*", "sensor.*"}
     incl_ent = {"binary_sensor.working"}
-    excl_dom = {}
-    excl_glob = {}
+    excl_dom: dict = {}
+    excl_glob: dict = {}
     excl_ent = {"light.ignoreme", "sensor.notworking"}
     testfilter = generate_filter(
         incl_dom, incl_ent, excl_dom, excl_ent, incl_glob, excl_glob
     )
 
-    assert testfilter("sensor.test")
-    assert testfilter("sensor.notworking") is False
-    assert testfilter("light.test")
-    assert testfilter("light.ignoreme") is False
-    assert testfilter("binary_sensor.working")
-    assert testfilter("binary_sensor.another") is False
-    assert testfilter("sun.sun") is False
+    expect(testfilter("sensor.test")).to_be(True)
+    expect(testfilter("sensor.notworking")).to_be(False)
+    expect(testfilter("light.test")).to_be(True)
+    expect(testfilter("light.ignoreme")).to_be(False)
+    expect(testfilter("binary_sensor.working")).to_be(True)
+    expect(testfilter("binary_sensor.another")).to_be(False)
+    expect(testfilter("sun.sun")).to_be(False)
 
 
-def test_with_include_domain_glob_filtering_case4() -> None:
+@test
+def with_include_domain_glob_filtering_case4() -> None:
     """Test case 4 - include and exclude specified, both have domains and globs."""
     incl_dom = {"light"}
     incl_glob = {"*working"}
-    incl_ent = {}
+    incl_ent: dict = {}
     excl_dom = {"binary_sensor"}
     excl_glob = {"*notworking"}
     excl_ent = {"light.ignoreme"}
@@ -164,17 +175,18 @@ def test_with_include_domain_glob_filtering_case4() -> None:
         incl_dom, incl_ent, excl_dom, excl_ent, incl_glob, excl_glob
     )
 
-    assert testfilter("sensor.working")
-    assert testfilter("sensor.notworking") is True  # include is stronger
-    assert testfilter("light.test")
-    assert testfilter("light.notworking") is True  # include is stronger
-    assert testfilter("light.ignoreme") is False
-    assert testfilter("binary_sensor.not_working") is True  # include is stronger
-    assert testfilter("binary_sensor.another") is False
-    assert testfilter("sun.sun") is False
+    expect(testfilter("sensor.working")).to_be(True)
+    expect(testfilter("sensor.notworking")).to_be(True)  # include is stronger
+    expect(testfilter("light.test")).to_be(True)
+    expect(testfilter("light.notworking")).to_be(True)  # include is stronger
+    expect(testfilter("light.ignoreme")).to_be(False)
+    expect(testfilter("binary_sensor.not_working")).to_be(True)  # include is stronger
+    expect(testfilter("binary_sensor.another")).to_be(False)
+    expect(testfilter("sun.sun")).to_be(False)
 
 
-def test_with_include_domain_glob_filtering_case4a_include_strong() -> None:
+@test
+def with_include_domain_glob_filtering_case4a_include_strong() -> None:
     """Test case 4 - include and exclude specified, both have domains and globs, and a specifically included entity."""
     incl_dom = {"light"}
     incl_glob = {"*working"}
@@ -186,83 +198,87 @@ def test_with_include_domain_glob_filtering_case4a_include_strong() -> None:
         incl_dom, incl_ent, excl_dom, excl_ent, incl_glob, excl_glob
     )
 
-    assert testfilter("sensor.working")
-    assert testfilter("sensor.notworking") is True  # include is stronger
-    assert testfilter("light.test")
-    assert testfilter("light.notworking") is True  # include is stronger
-    assert testfilter("light.ignoreme") is False
-    assert testfilter("binary_sensor.not_working") is True  # include is stronger
-    assert testfilter("binary_sensor.another") is False
-    assert testfilter("binary_sensor.specificly_included") is True
-    assert testfilter("sun.sun") is False
+    expect(testfilter("sensor.working")).to_be(True)
+    expect(testfilter("sensor.notworking")).to_be(True)  # include is stronger
+    expect(testfilter("light.test")).to_be(True)
+    expect(testfilter("light.notworking")).to_be(True)  # include is stronger
+    expect(testfilter("light.ignoreme")).to_be(False)
+    expect(testfilter("binary_sensor.not_working")).to_be(True)  # include is stronger
+    expect(testfilter("binary_sensor.another")).to_be(False)
+    expect(testfilter("binary_sensor.specificly_included")).to_be(True)
+    expect(testfilter("sun.sun")).to_be(False)
 
 
-def test_with_include_glob_filtering_case4a_include_strong() -> None:
+@test
+def with_include_glob_filtering_case4a_include_strong() -> None:
     """Test case 4 - include and exclude specified, both have globs, and a specifically included entity."""
-    incl_dom = {}
+    incl_dom: dict = {}
     incl_glob = {"*working"}
     incl_ent = {"binary_sensor.specificly_included"}
-    excl_dom = {}
+    excl_dom: dict = {}
     excl_glob = {"*broken", "*notworking", "binary_sensor.*"}
     excl_ent = {"light.ignoreme"}
     testfilter = generate_filter(
         incl_dom, incl_ent, excl_dom, excl_ent, incl_glob, excl_glob
     )
 
-    assert testfilter("sensor.working") is True
-    assert testfilter("sensor.notworking") is True  # include is stronger
-    assert testfilter("sensor.broken") is False
-    assert testfilter("light.test") is False
-    assert testfilter("light.notworking") is True  # include is stronger
-    assert testfilter("light.ignoreme") is False
-    assert testfilter("binary_sensor.not_working") is True  # include is stronger
-    assert testfilter("binary_sensor.another") is False
-    assert testfilter("binary_sensor.specificly_included") is True
-    assert testfilter("sun.sun") is False
+    expect(testfilter("sensor.working")).to_be(True)
+    expect(testfilter("sensor.notworking")).to_be(True)  # include is stronger
+    expect(testfilter("sensor.broken")).to_be(False)
+    expect(testfilter("light.test")).to_be(False)
+    expect(testfilter("light.notworking")).to_be(True)  # include is stronger
+    expect(testfilter("light.ignoreme")).to_be(False)
+    expect(testfilter("binary_sensor.not_working")).to_be(True)  # include is stronger
+    expect(testfilter("binary_sensor.another")).to_be(False)
+    expect(testfilter("binary_sensor.specificly_included")).to_be(True)
+    expect(testfilter("sun.sun")).to_be(False)
 
 
-def test_exclude_domain_case5() -> None:
+@test
+def exclude_domain_case5() -> None:
     """Test case 5 - include and exclude specified, with excluded domain."""
-    incl_dom = {}
+    incl_dom: dict = {}
     incl_ent = {"binary_sensor.working"}
     excl_dom = {"binary_sensor"}
     excl_ent = {"light.ignoreme", "sensor.notworking"}
     testfilter = generate_filter(incl_dom, incl_ent, excl_dom, excl_ent)
 
-    assert testfilter("sensor.test")
-    assert testfilter("sensor.notworking") is False
-    assert testfilter("light.test")
-    assert testfilter("light.ignoreme") is False
-    assert testfilter("binary_sensor.working")
-    assert testfilter("binary_sensor.another") is False
-    assert testfilter("sun.sun") is True
+    expect(testfilter("sensor.test")).to_be(True)
+    expect(testfilter("sensor.notworking")).to_be(False)
+    expect(testfilter("light.test")).to_be(True)
+    expect(testfilter("light.ignoreme")).to_be(False)
+    expect(testfilter("binary_sensor.working")).to_be(True)
+    expect(testfilter("binary_sensor.another")).to_be(False)
+    expect(testfilter("sun.sun")).to_be(True)
 
 
-def test_exclude_glob_case5() -> None:
+@test
+def exclude_glob_case5() -> None:
     """Test case 5 - include and exclude specified, with excluded glob."""
-    incl_dom = {}
-    incl_glob = {}
+    incl_dom: dict = {}
+    incl_glob: dict = {}
     incl_ent = {"binary_sensor.working"}
-    excl_dom = {}
+    excl_dom: dict = {}
     excl_glob = {"binary_sensor.*"}
     excl_ent = {"light.ignoreme", "sensor.notworking"}
     testfilter = generate_filter(
         incl_dom, incl_ent, excl_dom, excl_ent, incl_glob, excl_glob
     )
 
-    assert testfilter("sensor.test")
-    assert testfilter("sensor.notworking") is False
-    assert testfilter("light.test")
-    assert testfilter("light.ignoreme") is False
-    assert testfilter("binary_sensor.working")
-    assert testfilter("binary_sensor.another") is False
-    assert testfilter("sun.sun") is True
+    expect(testfilter("sensor.test")).to_be(True)
+    expect(testfilter("sensor.notworking")).to_be(False)
+    expect(testfilter("light.test")).to_be(True)
+    expect(testfilter("light.ignoreme")).to_be(False)
+    expect(testfilter("binary_sensor.working")).to_be(True)
+    expect(testfilter("binary_sensor.another")).to_be(False)
+    expect(testfilter("sun.sun")).to_be(True)
 
 
-def test_exclude_glob_case5_include_strong() -> None:
+@test
+def exclude_glob_case5_include_strong() -> None:
     """Test case 5 - include and exclude specified, with excluded glob, and a specifically included entity."""
-    incl_dom = {}
-    incl_glob = {}
+    incl_dom: dict = {}
+    incl_glob: dict = {}
     incl_ent = {"binary_sensor.working"}
     excl_dom = {"binary_sensor"}
     excl_glob = {"binary_sensor.*"}
@@ -271,35 +287,37 @@ def test_exclude_glob_case5_include_strong() -> None:
         incl_dom, incl_ent, excl_dom, excl_ent, incl_glob, excl_glob
     )
 
-    assert testfilter("sensor.test")
-    assert testfilter("sensor.notworking") is False
-    assert testfilter("light.test")
-    assert testfilter("light.ignoreme") is False
-    assert testfilter("binary_sensor.working")
-    assert testfilter("binary_sensor.another") is False
-    assert testfilter("sun.sun") is True
+    expect(testfilter("sensor.test")).to_be(True)
+    expect(testfilter("sensor.notworking")).to_be(False)
+    expect(testfilter("light.test")).to_be(True)
+    expect(testfilter("light.ignoreme")).to_be(False)
+    expect(testfilter("binary_sensor.working")).to_be(True)
+    expect(testfilter("binary_sensor.another")).to_be(False)
+    expect(testfilter("sun.sun")).to_be(True)
 
 
-def test_no_domain_case6() -> None:
+@test
+def no_domain_case6() -> None:
     """Test case 6 - include and exclude specified, with no domains."""
-    incl_dom = {}
+    incl_dom: dict = {}
     incl_ent = {"binary_sensor.working"}
-    excl_dom = {}
+    excl_dom: dict = {}
     excl_ent = {"light.ignoreme", "sensor.notworking"}
     testfilter = generate_filter(incl_dom, incl_ent, excl_dom, excl_ent)
 
-    assert testfilter("sensor.test") is False
-    assert testfilter("sensor.notworking") is False
-    assert testfilter("light.test") is False
-    assert testfilter("light.ignoreme") is False
-    assert testfilter("binary_sensor.working")
-    assert testfilter("binary_sensor.another") is False
-    assert testfilter("sun.sun") is False
+    expect(testfilter("sensor.test")).to_be(False)
+    expect(testfilter("sensor.notworking")).to_be(False)
+    expect(testfilter("light.test")).to_be(False)
+    expect(testfilter("light.ignoreme")).to_be(False)
+    expect(testfilter("binary_sensor.working")).to_be(True)
+    expect(testfilter("binary_sensor.another")).to_be(False)
+    expect(testfilter("sun.sun")).to_be(False)
 
 
-def test_filter_schema_empty() -> None:
+@test
+def filter_schema_empty() -> None:
     """Test filter schema."""
-    conf = {}
+    conf: dict = {}
     filt = FILTER_SCHEMA(conf)
     conf.update(
         {
@@ -311,11 +329,12 @@ def test_filter_schema_empty() -> None:
             "exclude_entity_globs": [],
         }
     )
-    assert filt.config == conf
-    assert filt.empty_filter
+    expect(filt.config).to_equal(conf)
+    expect(filt.empty_filter).to_be(True)
 
 
-def test_filter_schema() -> None:
+@test
+def filter_schema() -> None:
     """Test filter schema."""
     conf = {
         "include_domains": ["light"],
@@ -325,11 +344,12 @@ def test_filter_schema() -> None:
     }
     filt = FILTER_SCHEMA(conf)
     conf.update({"include_entity_globs": [], "exclude_entity_globs": []})
-    assert filt.config == conf
-    assert not filt.empty_filter
+    expect(filt.config).to_equal(conf)
+    expect(filt.empty_filter).to_be(False)
 
 
-def test_filter_schema_with_globs() -> None:
+@test
+def filter_schema_with_globs() -> None:
     """Test filter schema with glob options."""
     conf = {
         "include_domains": ["light"],
@@ -340,11 +360,12 @@ def test_filter_schema_with_globs() -> None:
         "exclude_entities": ["light.kitchen"],
     }
     filt = FILTER_SCHEMA(conf)
-    assert filt.config == conf
-    assert not filt.empty_filter
+    expect(filt.config).to_equal(conf)
+    expect(filt.empty_filter).to_be(False)
 
 
-def test_filter_schema_include_exclude() -> None:
+@test
+def filter_schema_include_exclude() -> None:
     """Test the include exclude filter schema."""
     conf = {
         "include": {
@@ -359,18 +380,21 @@ def test_filter_schema_include_exclude() -> None:
         },
     }
     filt = INCLUDE_EXCLUDE_FILTER_SCHEMA(conf)
-    assert filt.config == {
-        "include_domains": ["light"],
-        "include_entity_globs": ["sensor.kitchen_*"],
-        "include_entities": ["switch.kitchen"],
-        "exclude_domains": ["cover"],
-        "exclude_entity_globs": ["sensor.weather_*"],
-        "exclude_entities": ["light.kitchen"],
-    }
-    assert not filt.empty_filter
+    expect(filt.config).to_equal(
+        {
+            "include_domains": ["light"],
+            "include_entity_globs": ["sensor.kitchen_*"],
+            "include_entities": ["switch.kitchen"],
+            "exclude_domains": ["cover"],
+            "exclude_entity_globs": ["sensor.weather_*"],
+            "exclude_entities": ["light.kitchen"],
+        }
+    )
+    expect(filt.empty_filter).to_be(False)
 
 
-def test_explicitly_included() -> None:
+@test
+def explicitly_included() -> None:
     """Test if an entity is explicitly included."""
     conf = {
         "include": {
@@ -385,18 +409,19 @@ def test_explicitly_included() -> None:
         },
     }
     filt: EntityFilter = INCLUDE_EXCLUDE_FILTER_SCHEMA(conf)
-    assert not filt.explicitly_included("light.any")
-    assert not filt.explicitly_included("switch.other")
-    assert filt.explicitly_included("sensor.kitchen_4")
-    assert filt.explicitly_included("switch.kitchen")
+    expect(filt.explicitly_included("light.any")).to_be(False)
+    expect(filt.explicitly_included("switch.other")).to_be(False)
+    expect(filt.explicitly_included("sensor.kitchen_4")).to_be(True)
+    expect(filt.explicitly_included("switch.kitchen")).to_be(True)
 
-    assert not filt.explicitly_excluded("light.any")
-    assert not filt.explicitly_excluded("switch.other")
-    assert filt.explicitly_excluded("sensor.weather_5")
-    assert filt.explicitly_excluded("light.kitchen")
+    expect(filt.explicitly_excluded("light.any")).to_be(False)
+    expect(filt.explicitly_excluded("switch.other")).to_be(False)
+    expect(filt.explicitly_excluded("sensor.weather_5")).to_be(True)
+    expect(filt.explicitly_excluded("light.kitchen")).to_be(True)
 
 
-def test_get_filter() -> None:
+@test
+def get_filter() -> None:
     """Test we can get the underlying filter."""
     conf = {
         "include": {
@@ -412,13 +437,14 @@ def test_get_filter() -> None:
     }
     filt: EntityFilter = INCLUDE_EXCLUDE_FILTER_SCHEMA(conf)
     underlying_filter = filt.get_filter()
-    assert underlying_filter("light.any")
-    assert not underlying_filter("switch.other")
-    assert underlying_filter("sensor.kitchen_4")
-    assert underlying_filter("switch.kitchen")
+    expect(underlying_filter("light.any")).to_be(True)
+    expect(underlying_filter("switch.other")).to_be(False)
+    expect(underlying_filter("sensor.kitchen_4")).to_be(True)
+    expect(underlying_filter("switch.kitchen")).to_be(True)
 
 
-def test_complex_include_exclude_filter() -> None:
+@test
+def complex_include_exclude_filter() -> None:
     """Test a complex include exclude filter."""
     conf = {
         "include": {
@@ -478,4 +504,4 @@ def test_complex_include_exclude_filter() -> None:
         },
     }
     filt: EntityFilter = INCLUDE_EXCLUDE_FILTER_SCHEMA(conf)
-    assert filt("switch.espresso_keuken") is True
+    expect(filt("switch.espresso_keuken")).to_be(True)

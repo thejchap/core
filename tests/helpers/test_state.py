@@ -3,7 +3,7 @@
 import asyncio
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.lock import LockState
 from homeassistant.components.sun import STATE_ABOVE_HORIZON, STATE_BELOW_HORIZON
@@ -21,9 +21,17 @@ from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import state
 
 from tests.common import async_mock_service
+from tests.hass_fixtures import hass
 
 
-async def test_call_to_component(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def call_to_component(hass: HomeAssistant = Depends(hass)) -> None:
     """Test calls to components state reproduction functions."""
     with patch(
         "homeassistant.components.media_player.reproduce_state.async_reproduce_states"
@@ -56,7 +64,8 @@ async def test_call_to_component(hass: HomeAssistant) -> None:
             )
 
 
-async def test_reproduce_with_no_entity(hass: HomeAssistant) -> None:
+@test
+async def reproduce_with_no_entity(hass: HomeAssistant = Depends(hass)) -> None:
     """Test reproduce_state with no entity."""
     calls = async_mock_service(hass, "light", SERVICE_TURN_ON)
 
@@ -64,11 +73,12 @@ async def test_reproduce_with_no_entity(hass: HomeAssistant) -> None:
 
     await hass.async_block_till_done()
 
-    assert len(calls) == 0
-    assert hass.states.get("light.test") is None
+    expect(len(calls)).to_equal(0)
+    expect(hass.states.get("light.test")).to_be_none()
 
 
-async def test_reproduce_turn_on(hass: HomeAssistant) -> None:
+@test
+async def reproduce_turn_on(hass: HomeAssistant = Depends(hass)) -> None:
     """Test reproduce_state with SERVICE_TURN_ON."""
     calls = async_mock_service(hass, "light", SERVICE_TURN_ON)
 
@@ -78,14 +88,15 @@ async def test_reproduce_turn_on(hass: HomeAssistant) -> None:
 
     await hass.async_block_till_done()
 
-    assert len(calls) > 0
+    expect(len(calls) > 0).to_be(True)
     last_call = calls[-1]
-    assert last_call.domain == "light"
-    assert last_call.service == SERVICE_TURN_ON
-    assert last_call.data.get("entity_id") == "light.test"
+    expect(last_call.domain).to_equal("light")
+    expect(last_call.service).to_equal(SERVICE_TURN_ON)
+    expect(last_call.data.get("entity_id")).to_equal("light.test")
 
 
-async def test_reproduce_turn_off(hass: HomeAssistant) -> None:
+@test
+async def reproduce_turn_off(hass: HomeAssistant = Depends(hass)) -> None:
     """Test reproduce_state with SERVICE_TURN_OFF."""
     calls = async_mock_service(hass, "light", SERVICE_TURN_OFF)
 
@@ -95,14 +106,15 @@ async def test_reproduce_turn_off(hass: HomeAssistant) -> None:
 
     await hass.async_block_till_done()
 
-    assert len(calls) > 0
+    expect(len(calls) > 0).to_be(True)
     last_call = calls[-1]
-    assert last_call.domain == "light"
-    assert last_call.service == SERVICE_TURN_OFF
-    assert last_call.data.get("entity_id") == "light.test"
+    expect(last_call.domain).to_equal("light")
+    expect(last_call.service).to_equal(SERVICE_TURN_OFF)
+    expect(last_call.data.get("entity_id")).to_equal("light.test")
 
 
-async def test_reproduce_complex_data(hass: HomeAssistant) -> None:
+@test
+async def reproduce_complex_data(hass: HomeAssistant = Depends(hass)) -> None:
     """Test reproduce_state with complex service data."""
     calls = async_mock_service(hass, "light", SERVICE_TURN_ON)
 
@@ -116,14 +128,15 @@ async def test_reproduce_complex_data(hass: HomeAssistant) -> None:
 
     await hass.async_block_till_done()
 
-    assert len(calls) > 0
+    expect(len(calls) > 0).to_be(True)
     last_call = calls[-1]
-    assert last_call.domain == "light"
-    assert last_call.service == SERVICE_TURN_ON
-    assert last_call.data.get("rgb_color") == complex_data
+    expect(last_call.domain).to_equal("light")
+    expect(last_call.service).to_equal(SERVICE_TURN_ON)
+    expect(last_call.data.get("rgb_color")).to_equal(complex_data)
 
 
-async def test_reproduce_bad_state(hass: HomeAssistant) -> None:
+@test
+async def reproduce_bad_state(hass: HomeAssistant = Depends(hass)) -> None:
     """Test reproduce_state with bad state."""
     calls = async_mock_service(hass, "light", SERVICE_TURN_ON)
 
@@ -133,11 +146,12 @@ async def test_reproduce_bad_state(hass: HomeAssistant) -> None:
 
     await hass.async_block_till_done()
 
-    assert len(calls) == 0
-    assert hass.states.get("light.test").state == "off"
+    expect(len(calls)).to_equal(0)
+    expect(hass.states.get("light.test").state).to_equal("off")
 
 
-async def test_as_number_states(hass: HomeAssistant) -> None:
+@test
+async def as_number_states(hass: HomeAssistant = Depends(hass)) -> None:
     """Test state_as_number with states."""
     zero_states = (
         STATE_OFF,
@@ -154,21 +168,24 @@ async def test_as_number_states(hass: HomeAssistant) -> None:
         STATE_HOME,
     )
     for _state in zero_states:
-        assert state.state_as_number(State("domain.test", _state, {})) == 0
+        expect(state.state_as_number(State("domain.test", _state, {}))).to_equal(0)
     for _state in one_states:
-        assert state.state_as_number(State("domain.test", _state, {})) == 1
+        expect(state.state_as_number(State("domain.test", _state, {}))).to_equal(1)
 
 
-async def test_as_number_coercion(hass: HomeAssistant) -> None:
+@test
+async def as_number_coercion(hass: HomeAssistant = Depends(hass)) -> None:
     """Test state_as_number with number."""
     for _state in ("0", "0.0", 0, 0.0):
-        assert state.state_as_number(State("domain.test", _state, {})) == 0.0
+        expect(state.state_as_number(State("domain.test", _state, {}))).to_equal(0.0)
     for _state in ("1", "1.0", 1, 1.0):
-        assert state.state_as_number(State("domain.test", _state, {})) == 1.0
+        expect(state.state_as_number(State("domain.test", _state, {}))).to_equal(1.0)
 
 
-async def test_as_number_invalid_cases(hass: HomeAssistant) -> None:
+@test
+async def as_number_invalid_cases(hass: HomeAssistant = Depends(hass)) -> None:
     """Test state_as_number with invalid cases."""
     for _state in ("", "foo", "foo.bar", None, False, True, object, object()):
-        with pytest.raises(ValueError):
-            state.state_as_number(State("domain.test", _state, {}))
+        expect(
+            lambda s=_state: state.state_as_number(State("domain.test", s, {}))
+        ).to_raise(ValueError)

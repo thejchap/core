@@ -4,7 +4,7 @@ import json
 import os
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components import hassio
 from homeassistant.const import __version__ as current_version
@@ -12,22 +12,33 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.hassio import is_hassio
 from homeassistant.helpers.system_info import async_get_system_info
 
+from tests.hass_fixtures import LogCapture, caplog, hass
 
-async def test_get_system_info(hass: HomeAssistant) -> None:
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def get_system_info(hass: HomeAssistant = Depends(hass)) -> None:
     """Test the get system info."""
     info = await async_get_system_info(hass)
-    assert isinstance(info, dict)
-    assert info["version"] == current_version
-    assert info["user"] is not None
-    assert json.dumps(info) is not None
+    expect(isinstance(info, dict)).to_be(True)
+    expect(info["version"]).to_equal(current_version)
+    expect(info["user"]).not_.to_be_none()
+    expect(json.dumps(info) is not None).to_be(True)
 
 
-async def test_get_system_info_supervisor_not_available(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def get_system_info_supervisor_not_available(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test the get system info when supervisor is not available."""
     hass.config.components.add("hassio")
-    assert is_hassio(hass) is True
+    expect(is_hassio(hass)).to_be(True)
     with (
         patch("platform.system", return_value="Linux"),
         patch("homeassistant.helpers.system_info.is_docker_env", return_value=True),
@@ -37,17 +48,20 @@ async def test_get_system_info_supervisor_not_available(
         patch("homeassistant.helpers.system_info.cached_get_user", return_value="root"),
     ):
         info = await async_get_system_info(hass)
-        assert isinstance(info, dict)
-        assert info["version"] == current_version
-        assert info["user"] is not None
-        assert json.dumps(info) is not None
-        assert info["installation_type"] == "Home Assistant Supervised"
-        assert "No Home Assistant Supervisor info available" in caplog.text
+        expect(isinstance(info, dict)).to_be(True)
+        expect(info["version"]).to_equal(current_version)
+        expect(info["user"]).not_.to_be_none()
+        expect(json.dumps(info) is not None).to_be(True)
+        expect(info["installation_type"]).to_equal("Home Assistant Supervised")
+        expect("No Home Assistant Supervisor info available" in caplog.text).to_be(True)
 
 
-async def test_get_system_info_supervisor_not_loaded(hass: HomeAssistant) -> None:
+@test
+async def get_system_info_supervisor_not_loaded(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test the get system info when supervisor is not loaded."""
-    assert is_hassio(hass) is False
+    expect(is_hassio(hass)).to_be(False)
     with (
         patch("platform.system", return_value="Linux"),
         patch("homeassistant.helpers.system_info.is_docker_env", return_value=True),
@@ -56,46 +70,153 @@ async def test_get_system_info_supervisor_not_loaded(hass: HomeAssistant) -> Non
         patch.dict(os.environ, {"SUPERVISOR": "127.0.0.1"}),
     ):
         info = await async_get_system_info(hass)
-        assert isinstance(info, dict)
-        assert info["version"] == current_version
-        assert info["user"] is not None
-        assert json.dumps(info) is not None
-        assert info["installation_type"] == "Unsupported Third Party Container"
+        expect(isinstance(info, dict)).to_be(True)
+        expect(info["version"]).to_equal(current_version)
+        expect(info["user"]).not_.to_be_none()
+        expect(json.dumps(info) is not None).to_be(True)
+        expect(info["installation_type"]).to_equal("Unsupported Third Party Container")
 
 
-@pytest.mark.parametrize(
-    ("is_docker_env", "is_official", "is_venv", "user", "expected_installation_type"),
-    [
-        # Docker environment true, venv flag is ignored in this case
-        (True, True, True, "root", "Home Assistant Container"),
-        (True, True, True, "user", "Unsupported Third Party Container"),
-        (True, False, True, "root", "Unsupported Third Party Container"),
-        (True, False, True, "user", "Unsupported Third Party Container"),
-        (True, True, False, "root", "Home Assistant Container"),
-        (True, True, False, "user", "Unsupported Third Party Container"),
-        (True, False, False, "root", "Unsupported Third Party Container"),
-        (True, False, False, "user", "Unsupported Third Party Container"),
-        # Docker environment false, unknown if not venv, otherwise Home Assistant Core
-        (False, True, True, "root", "Home Assistant Core"),
-        (False, True, True, "user", "Home Assistant Core"),
-        (False, False, True, "root", "Home Assistant Core"),
-        (False, False, True, "user", "Home Assistant Core"),
-        (False, True, False, "root", "Unknown"),
-        (False, True, False, "user", "Unknown"),
-        (False, False, False, "root", "Unknown"),
-        (False, False, False, "user", "Unknown"),
-    ],
+@test.cases(
+    test.case(
+        "True-True-True-root-Home Assistant Container",
+        is_docker_env=True,
+        is_official=True,
+        is_venv=True,
+        user="root",
+        expected_installation_type="Home Assistant Container",
+    ),
+    test.case(
+        "True-True-True-user-Unsupported Third Party Container",
+        is_docker_env=True,
+        is_official=True,
+        is_venv=True,
+        user="user",
+        expected_installation_type="Unsupported Third Party Container",
+    ),
+    test.case(
+        "True-False-True-root-Unsupported Third Party Container",
+        is_docker_env=True,
+        is_official=False,
+        is_venv=True,
+        user="root",
+        expected_installation_type="Unsupported Third Party Container",
+    ),
+    test.case(
+        "True-False-True-user-Unsupported Third Party Container",
+        is_docker_env=True,
+        is_official=False,
+        is_venv=True,
+        user="user",
+        expected_installation_type="Unsupported Third Party Container",
+    ),
+    test.case(
+        "True-True-False-root-Home Assistant Container",
+        is_docker_env=True,
+        is_official=True,
+        is_venv=False,
+        user="root",
+        expected_installation_type="Home Assistant Container",
+    ),
+    test.case(
+        "True-True-False-user-Unsupported Third Party Container",
+        is_docker_env=True,
+        is_official=True,
+        is_venv=False,
+        user="user",
+        expected_installation_type="Unsupported Third Party Container",
+    ),
+    test.case(
+        "True-False-False-root-Unsupported Third Party Container",
+        is_docker_env=True,
+        is_official=False,
+        is_venv=False,
+        user="root",
+        expected_installation_type="Unsupported Third Party Container",
+    ),
+    test.case(
+        "True-False-False-user-Unsupported Third Party Container",
+        is_docker_env=True,
+        is_official=False,
+        is_venv=False,
+        user="user",
+        expected_installation_type="Unsupported Third Party Container",
+    ),
+    test.case(
+        "False-True-True-root-Home Assistant Core",
+        is_docker_env=False,
+        is_official=True,
+        is_venv=True,
+        user="root",
+        expected_installation_type="Home Assistant Core",
+    ),
+    test.case(
+        "False-True-True-user-Home Assistant Core",
+        is_docker_env=False,
+        is_official=True,
+        is_venv=True,
+        user="user",
+        expected_installation_type="Home Assistant Core",
+    ),
+    test.case(
+        "False-False-True-root-Home Assistant Core",
+        is_docker_env=False,
+        is_official=False,
+        is_venv=True,
+        user="root",
+        expected_installation_type="Home Assistant Core",
+    ),
+    test.case(
+        "False-False-True-user-Home Assistant Core",
+        is_docker_env=False,
+        is_official=False,
+        is_venv=True,
+        user="user",
+        expected_installation_type="Home Assistant Core",
+    ),
+    test.case(
+        "False-True-False-root-Unknown",
+        is_docker_env=False,
+        is_official=True,
+        is_venv=False,
+        user="root",
+        expected_installation_type="Unknown",
+    ),
+    test.case(
+        "False-True-False-user-Unknown",
+        is_docker_env=False,
+        is_official=True,
+        is_venv=False,
+        user="user",
+        expected_installation_type="Unknown",
+    ),
+    test.case(
+        "False-False-False-root-Unknown",
+        is_docker_env=False,
+        is_official=False,
+        is_venv=False,
+        user="root",
+        expected_installation_type="Unknown",
+    ),
+    test.case(
+        "False-False-False-user-Unknown",
+        is_docker_env=False,
+        is_official=False,
+        is_venv=False,
+        user="user",
+        expected_installation_type="Unknown",
+    ),
 )
-async def test_non_hassio_installation_type(
-    hass: HomeAssistant,
-    user: str,
+async def non_hassio_installation_type(
     is_docker_env: bool,
     is_official: bool,
     is_venv: bool,
+    user: str,
     expected_installation_type: str,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test non-Hass.io installation types."""
-    assert is_hassio(hass) is False
+    expect(is_hassio(hass)).to_be(False)
     with (
         patch("platform.system", return_value="Linux"),
         patch(
@@ -117,12 +238,18 @@ async def test_non_hassio_installation_type(
         ),
     ):
         info = await async_get_system_info(hass)
-        assert info["installation_type"] == expected_installation_type
+        expect(info["installation_type"]).to_equal(expected_installation_type)
 
 
-@pytest.mark.parametrize("error", [KeyError, OSError])
-async def test_getuser_oserror(hass: HomeAssistant, error: Exception) -> None:
+@test.cases(
+    test.case("KeyError", error=KeyError),
+    test.case("OSError", error=OSError),
+)
+async def getuser_oserror(
+    error: type[Exception],
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test getuser oserror."""
     with patch("homeassistant.helpers.system_info.cached_get_user", side_effect=error):
         info = await async_get_system_info(hass)
-        assert info["user"] is None
+        expect(info["user"]).to_be_none()

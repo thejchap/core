@@ -2,10 +2,11 @@
 
 from datetime import UTC, datetime, timedelta
 from functools import partial
+import re
 from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import (
@@ -23,11 +24,29 @@ from homeassistant.helpers import (
 from homeassistant.util.dt import utcnow
 
 from tests.common import ANY, async_capture_events, flush_store
+from tests.hass_fixtures import (
+    area_registry,
+    floor_registry,
+    freezer,
+    hass,
+    hass_storage,
+    hass_unloaded,
+    label_registry,
+)
 
 
-@pytest.fixture
-async def mock_temperature_humidity_entity(hass: HomeAssistant) -> None:
-    """Mock temperature and humidity sensors."""
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+def _install_mock_temperature_humidity_entity(hass: HomeAssistant) -> None:
+    """Mock temperature and humidity sensors.
+
+    Plain helper rather than an ``@fixture`` so it does not auto-apply
+    to every test in the module (module-level Tryke fixtures do).
+    """
     hass.states.async_set(
         "sensor.mock_temperature",
         "20",
@@ -46,51 +65,56 @@ async def mock_temperature_humidity_entity(hass: HomeAssistant) -> None:
     )
 
 
-async def test_list_areas(area_registry: ar.AreaRegistry) -> None:
+@test
+async def list_areas(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+) -> None:
     """Make sure that we can read areas."""
     area_registry.async_create("mock")
 
     areas = area_registry.async_list_areas()
 
-    assert len(areas) == len(area_registry.areas)
+    expect(len(areas)).to_equal(len(area_registry.areas))
 
 
-async def test_create_area(
-    hass: HomeAssistant,
-    freezer: FrozenDateTimeFactory,
-    area_registry: ar.AreaRegistry,
-    mock_temperature_humidity_entity: None,
+@test
+async def create_area(
+    hass: HomeAssistant = Depends(hass),
+    freezer: FrozenDateTimeFactory = Depends(freezer),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """Make sure that we can create an area."""
+    _install_mock_temperature_humidity_entity(hass)
     update_events = async_capture_events(hass, ar.EVENT_AREA_REGISTRY_UPDATED)
 
     # Create area with only mandatory parameters
     area = area_registry.async_create("mock")
 
-    assert area == ar.AreaEntry(
-        aliases=set(),
-        floor_id=None,
-        icon=None,
-        id=ANY,
-        labels=set(),
-        name="mock",
-        picture=None,
-        created_at=utcnow(),
-        modified_at=utcnow(),
-        temperature_entity_id=None,
-        humidity_entity_id=None,
+    expect(area).to_equal(
+        ar.AreaEntry(
+            aliases=set(),
+            floor_id=None,
+            icon=None,
+            id=ANY,
+            labels=set(),
+            name="mock",
+            picture=None,
+            created_at=utcnow(),
+            modified_at=utcnow(),
+            temperature_entity_id=None,
+            humidity_entity_id=None,
+        )
     )
-    assert len(area_registry.areas) == 1
+    expect(len(area_registry.areas)).to_equal(1)
 
     freezer.tick(timedelta(minutes=5))
 
     await hass.async_block_till_done()
 
-    assert len(update_events) == 1
-    assert update_events[-1].data == {
-        "action": "create",
-        "area_id": area.id,
-    }
+    expect(len(update_events)).to_equal(1)
+    expect(update_events[-1].data).to_equal(
+        {"action": "create", "area_id": area.id}
+    )
 
     # Create area with all parameters
     area2 = area_registry.async_create(
@@ -102,65 +126,70 @@ async def test_create_area(
         humidity_entity_id="sensor.mock_humidity",
     )
 
-    assert area2 == ar.AreaEntry(
-        aliases={"alias_1", "alias_2"},
-        floor_id=None,
-        icon=None,
-        id=ANY,
-        labels={"label1", "label2"},
-        name="mock 2",
-        picture="/image/example.png",
-        created_at=utcnow(),
-        modified_at=utcnow(),
-        temperature_entity_id="sensor.mock_temperature",
-        humidity_entity_id="sensor.mock_humidity",
+    expect(area2).to_equal(
+        ar.AreaEntry(
+            aliases={"alias_1", "alias_2"},
+            floor_id=None,
+            icon=None,
+            id=ANY,
+            labels={"label1", "label2"},
+            name="mock 2",
+            picture="/image/example.png",
+            created_at=utcnow(),
+            modified_at=utcnow(),
+            temperature_entity_id="sensor.mock_temperature",
+            humidity_entity_id="sensor.mock_humidity",
+        )
     )
-    assert len(area_registry.areas) == 2
-    assert area.created_at != area2.created_at
-    assert area.modified_at != area2.modified_at
+    expect(len(area_registry.areas)).to_equal(2)
+    expect(area.created_at).not_.to_equal(area2.created_at)
+    expect(area.modified_at).not_.to_equal(area2.modified_at)
 
     await hass.async_block_till_done()
 
-    assert len(update_events) == 2
-    assert update_events[-1].data == {
-        "action": "create",
-        "area_id": area2.id,
-    }
+    expect(len(update_events)).to_equal(2)
+    expect(update_events[-1].data).to_equal(
+        {"action": "create", "area_id": area2.id}
+    )
 
 
-async def test_create_area_with_name_already_in_use(
-    hass: HomeAssistant, area_registry: ar.AreaRegistry
+@test
+async def create_area_with_name_already_in_use(
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """Make sure that we can't create an area with a name already in use."""
     update_events = async_capture_events(hass, ar.EVENT_AREA_REGISTRY_UPDATED)
     area_registry.async_create("mock")
 
-    with pytest.raises(ValueError) as e_info:
-        area_registry.async_create("mock")
-    assert str(e_info.value) == "The name mock (mock) is already in use"
+    expect(lambda: area_registry.async_create("mock")).to_raise(
+        ValueError, match=r"The name mock \(mock\) is already in use"
+    )
 
     await hass.async_block_till_done()
 
-    assert len(area_registry.areas) == 1
-    assert len(update_events) == 1
+    expect(len(area_registry.areas)).to_equal(1)
+    expect(len(update_events)).to_equal(1)
 
 
-async def test_create_area_with_id_already_in_use(
-    area_registry: ar.AreaRegistry,
+@test
+async def create_area_with_id_already_in_use(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """Make sure that we can't create an area with a name already in use."""
     area1 = area_registry.async_create("mock")
 
     updated_area1 = area_registry.async_update(area1.id, name="New Name")
-    assert updated_area1.id == area1.id
+    expect(updated_area1.id).to_equal(area1.id)
 
     area2 = area_registry.async_create("mock")
-    assert area2.id == "mock_2"
+    expect(area2.id).to_equal("mock_2")
 
 
-async def test_delete_area(
-    hass: HomeAssistant,
-    area_registry: ar.AreaRegistry,
+@test
+async def delete_area(
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """Make sure that we can delete an area."""
     update_events = async_capture_events(hass, ar.EVENT_AREA_REGISTRY_UPDATED)
@@ -168,46 +197,47 @@ async def test_delete_area(
 
     area_registry.async_delete(area.id)
 
-    assert not area_registry.areas
+    expect(area_registry.areas).to_be_falsy()
 
     await hass.async_block_till_done()
 
-    assert len(update_events) == 2
-    assert update_events[0].data == {
-        "action": "create",
-        "area_id": area.id,
-    }
-    assert update_events[1].data == {
-        "action": "remove",
-        "area_id": area.id,
-    }
+    expect(len(update_events)).to_equal(2)
+    expect(update_events[0].data).to_equal(
+        {"action": "create", "area_id": area.id}
+    )
+    expect(update_events[1].data).to_equal(
+        {"action": "remove", "area_id": area.id}
+    )
 
 
-async def test_delete_non_existing_area(area_registry: ar.AreaRegistry) -> None:
+@test
+async def delete_non_existing_area(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+) -> None:
     """Make sure that we can't delete an area that doesn't exist."""
     area_registry.async_create("mock")
 
-    with pytest.raises(KeyError):
-        await area_registry.async_delete("")
+    expect(lambda: area_registry.async_delete("")).to_raise(KeyError)
 
-    assert len(area_registry.areas) == 1
+    expect(len(area_registry.areas)).to_equal(1)
 
 
-async def test_update_area(
-    hass: HomeAssistant,
-    area_registry: ar.AreaRegistry,
-    floor_registry: fr.FloorRegistry,
-    label_registry: lr.LabelRegistry,
-    freezer: FrozenDateTimeFactory,
-    mock_temperature_humidity_entity: None,
+@test
+async def update_area(
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
+    label_registry: lr.LabelRegistry = Depends(label_registry),
+    freezer: FrozenDateTimeFactory = Depends(freezer),
 ) -> None:
     """Make sure that we can read areas."""
+    _install_mock_temperature_humidity_entity(hass)
     created_at = datetime.fromisoformat("2024-01-01T01:00:00+00:00")
     freezer.move_to(created_at)
     update_events = async_capture_events(hass, ar.EVENT_AREA_REGISTRY_UPDATED)
     floor_registry.async_create("first")
     area = area_registry.async_create("mock")
-    assert area.modified_at == created_at
+    expect(area.modified_at).to_equal(created_at)
 
     modified_at = datetime.fromisoformat("2024-02-01T01:00:00+00:00")
     freezer.move_to(modified_at)
@@ -224,62 +254,67 @@ async def test_update_area(
         humidity_entity_id="sensor.mock_humidity",
     )
 
-    assert updated_area != area
-    assert updated_area == ar.AreaEntry(
-        aliases={"alias_1", "alias_2"},
-        floor_id="first",
-        icon="mdi:garage",
-        id=ANY,
-        labels={"label1", "label2"},
-        name="mock1",
-        picture="/image/example.png",
-        created_at=created_at,
-        modified_at=modified_at,
-        temperature_entity_id="sensor.mock_temperature",
-        humidity_entity_id="sensor.mock_humidity",
+    expect(updated_area).not_.to_equal(area)
+    expect(updated_area).to_equal(
+        ar.AreaEntry(
+            aliases={"alias_1", "alias_2"},
+            floor_id="first",
+            icon="mdi:garage",
+            id=ANY,
+            labels={"label1", "label2"},
+            name="mock1",
+            picture="/image/example.png",
+            created_at=created_at,
+            modified_at=modified_at,
+            temperature_entity_id="sensor.mock_temperature",
+            humidity_entity_id="sensor.mock_humidity",
+        )
     )
-    assert len(area_registry.areas) == 1
+    expect(len(area_registry.areas)).to_equal(1)
 
     await hass.async_block_till_done()
 
-    assert len(update_events) == 2
-    assert update_events[0].data == {
-        "action": "create",
-        "area_id": area.id,
-    }
-    assert update_events[1].data == {
-        "action": "update",
-        "area_id": area.id,
-    }
+    expect(len(update_events)).to_equal(2)
+    expect(update_events[0].data).to_equal(
+        {"action": "create", "area_id": area.id}
+    )
+    expect(update_events[1].data).to_equal(
+        {"action": "update", "area_id": area.id}
+    )
 
 
-async def test_update_area_with_same_name(area_registry: ar.AreaRegistry) -> None:
+@test
+async def update_area_with_same_name(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+) -> None:
     """Make sure that we can reapply the same name to the area."""
     area = area_registry.async_create("mock")
 
     updated_area = area_registry.async_update(area.id, name="mock")
 
-    assert updated_area == area
-    assert len(area_registry.areas) == 1
+    expect(updated_area).to_equal(area)
+    expect(len(area_registry.areas)).to_equal(1)
 
 
-async def test_update_area_with_same_name_change_case(
-    area_registry: ar.AreaRegistry,
+@test
+async def update_area_with_same_name_change_case(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """Make sure that we can reapply the same name with a different case to the area."""
     area = area_registry.async_create("mock")
 
     updated_area = area_registry.async_update(area.id, name="Mock")
 
-    assert updated_area.name == "Mock"
-    assert updated_area.id == area.id
-    assert updated_area.normalized_name == area.normalized_name
-    assert len(area_registry.areas) == 1
+    expect(updated_area.name).to_equal("Mock")
+    expect(updated_area.id).to_equal(area.id)
+    expect(updated_area.normalized_name).to_equal(area.normalized_name)
+    expect(len(area_registry.areas)).to_equal(1)
 
 
-async def test_update_area_with_name_already_in_use(
-    area_registry: ar.AreaRegistry,
-    floor_registry: fr.FloorRegistry,
+@test
+async def update_area_with_name_already_in_use(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure that we can't update an area with a name already in use."""
     floor = floor_registry.async_create("mock")
@@ -287,104 +322,113 @@ async def test_update_area_with_name_already_in_use(
     area1 = area_registry.async_create("mock1", floor_id=floor_id)
     area2 = area_registry.async_create("mock2")
 
-    with pytest.raises(ValueError) as e_info:
-        area_registry.async_update(area1.id, name="mock2")
-    assert str(e_info.value) == "The name mock2 (mock2) is already in use"
+    expect(
+        lambda: area_registry.async_update(area1.id, name="mock2")
+    ).to_raise(ValueError, match=r"The name mock2 \(mock2\) is already in use")
 
-    assert area1.name == "mock1"
-    assert area2.name == "mock2"
-    assert len(area_registry.areas) == 2
+    expect(area1.name).to_equal("mock1")
+    expect(area2.name).to_equal("mock2")
+    expect(len(area_registry.areas)).to_equal(2)
 
-    assert area_registry.areas.get_areas_for_floor(floor_id) == [area1]
+    expect(area_registry.areas.get_areas_for_floor(floor_id)).to_equal([area1])
 
 
-async def test_update_area_with_normalized_name_already_in_use(
-    area_registry: ar.AreaRegistry,
+@test
+async def update_area_with_normalized_name_already_in_use(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """Make sure that we can't update an area with a normalized name already in use."""
     area1 = area_registry.async_create("mock1")
     area2 = area_registry.async_create("Moc k2")
 
-    with pytest.raises(ValueError) as e_info:
-        area_registry.async_update(area1.id, name="mock2")
-    assert str(e_info.value) == "The name mock2 (mock2) is already in use"
+    expect(
+        lambda: area_registry.async_update(area1.id, name="mock2")
+    ).to_raise(ValueError, match=r"The name mock2 \(mock2\) is already in use")
 
-    assert area1.name == "mock1"
-    assert area2.name == "Moc k2"
-    assert len(area_registry.areas) == 2
+    expect(area1.name).to_equal("mock1")
+    expect(area2.name).to_equal("Moc k2")
+    expect(len(area_registry.areas)).to_equal(2)
 
 
-@pytest.mark.parametrize(
-    ("create_kwargs", "error_message"),
-    [
-        (
-            {"temperature_entity_id": "sensor.invalid"},
-            "Entity sensor.invalid does not exist",
-        ),
-        (
-            {"temperature_entity_id": "light.kitchen"},
-            "Entity light.kitchen is not a temperature sensor",
-        ),
-        (
-            {"temperature_entity_id": "sensor.random"},
-            "Entity sensor.random is not a temperature sensor",
-        ),
-        (
-            {"humidity_entity_id": "sensor.invalid"},
-            "Entity sensor.invalid does not exist",
-        ),
-        (
-            {"humidity_entity_id": "light.kitchen"},
-            "Entity light.kitchen is not a humidity sensor",
-        ),
-        (
-            {"humidity_entity_id": "sensor.random"},
-            "Entity sensor.random is not a humidity sensor",
-        ),
-    ],
+@test.cases(
+    test.case(
+        "temperature_invalid_entity",
+        create_kwargs={"temperature_entity_id": "sensor.invalid"},
+        error_message="Entity sensor.invalid does not exist",
+    ),
+    test.case(
+        "temperature_wrong_domain",
+        create_kwargs={"temperature_entity_id": "light.kitchen"},
+        error_message="Entity light.kitchen is not a temperature sensor",
+    ),
+    test.case(
+        "temperature_wrong_class",
+        create_kwargs={"temperature_entity_id": "sensor.random"},
+        error_message="Entity sensor.random is not a temperature sensor",
+    ),
+    test.case(
+        "humidity_invalid_entity",
+        create_kwargs={"humidity_entity_id": "sensor.invalid"},
+        error_message="Entity sensor.invalid does not exist",
+    ),
+    test.case(
+        "humidity_wrong_domain",
+        create_kwargs={"humidity_entity_id": "light.kitchen"},
+        error_message="Entity light.kitchen is not a humidity sensor",
+    ),
+    test.case(
+        "humidity_wrong_class",
+        create_kwargs={"humidity_entity_id": "sensor.random"},
+        error_message="Entity sensor.random is not a humidity sensor",
+    ),
 )
-async def test_update_area_entity_validation(
-    hass: HomeAssistant,
-    area_registry: ar.AreaRegistry,
-    mock_temperature_humidity_entity: None,
+async def update_area_entity_validation(
     create_kwargs: dict[str, Any],
     error_message: str,
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """Make sure that we can't update an area with an invalid entity."""
+    _install_mock_temperature_humidity_entity(hass)
     area = area_registry.async_create("mock")
     hass.states.async_set("light.kitchen", "on", {})
     hass.states.async_set("sensor.random", "3", {})
 
-    with pytest.raises(ValueError) as e_info:
-        area_registry.async_update(area.id, **create_kwargs)
-    assert str(e_info.value) == error_message
+    expect(
+        lambda: area_registry.async_update(area.id, **create_kwargs)
+    ).to_raise(ValueError, match=re.escape(error_message))
 
-    assert area.temperature_entity_id is None
-    assert area.humidity_entity_id is None
+    expect(area.temperature_entity_id).to_be_none()
+    expect(area.humidity_entity_id).to_be_none()
 
 
-async def test_load_area(hass: HomeAssistant, area_registry: ar.AreaRegistry) -> None:
+@test
+async def load_area(
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+) -> None:
     """Make sure that we can load/save data correctly."""
     area1 = area_registry.async_create("mock1")
     area2 = area_registry.async_create("mock2")
 
-    assert len(area_registry.areas) == 2
+    expect(len(area_registry.areas)).to_equal(2)
 
     registry2 = ar.AreaRegistry(hass)
     await flush_store(area_registry._store)
     await registry2.async_load()
 
-    assert list(area_registry.areas) == list(registry2.areas)
+    expect(list(area_registry.areas)).to_equal(list(registry2.areas))
 
     area1_registry2 = registry2.async_get_or_create("mock1")
-    assert area1_registry2.id == area1.id
+    expect(area1_registry2.id).to_equal(area1.id)
     area2_registry2 = registry2.async_get_or_create("mock2")
-    assert area2_registry2.id == area2.id
+    expect(area2_registry2.id).to_equal(area2.id)
 
 
-@pytest.mark.parametrize("load_registries", [False])
-async def test_loading_area_from_storage(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def loading_area_from_storage(
+    hass: HomeAssistant = Depends(hass_unloaded),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test loading stored areas on start."""
     created_at = datetime.fromisoformat("2024-01-01T01:00:00+00:00")
@@ -414,26 +458,29 @@ async def test_loading_area_from_storage(
     await ar.async_load(hass)
     registry = ar.async_get(hass)
 
-    assert len(registry.areas) == 1
+    expect(len(registry.areas)).to_equal(1)
     area = registry.areas["12345A"]
-    assert area == ar.AreaEntry(
-        aliases={"alias_1", "alias_2"},
-        floor_id="first_floor",
-        icon="mdi:garage",
-        id="12345A",
-        labels={"mock-label1", "mock-label2"},
-        name="mock",
-        picture="blah",
-        created_at=created_at,
-        modified_at=modified_at,
-        temperature_entity_id="sensor.mock_temperature",
-        humidity_entity_id="sensor.mock_humidity",
+    expect(area).to_equal(
+        ar.AreaEntry(
+            aliases={"alias_1", "alias_2"},
+            floor_id="first_floor",
+            icon="mdi:garage",
+            id="12345A",
+            labels={"mock-label1", "mock-label2"},
+            name="mock",
+            picture="blah",
+            created_at=created_at,
+            modified_at=modified_at,
+            temperature_entity_id="sensor.mock_temperature",
+            humidity_entity_id="sensor.mock_humidity",
+        )
     )
 
 
-@pytest.mark.parametrize("load_registries", [False])
-async def test_migration_from_1_1(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def migration_from_1_1(
+    hass: HomeAssistant = Depends(hass_unloaded),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test migration from version 1.1."""
     hass_storage[ar.STORAGE_KEY] = {
@@ -452,193 +499,226 @@ async def test_migration_from_1_1(
 
     # Test data was loaded
     entry = registry.async_get_or_create("AAA")
-    assert entry.id == "12345A"
+    expect(entry.id).to_equal("12345A")
 
     # Check sort order
-    assert list(registry.async_list_areas()) == [
-        ar.AreaEntry(
-            name="AAA",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id=None,
-            humidity_entity_id=None,
-            icon=None,
-            id="12345A",
-            labels=set(),
-            picture=None,
-            temperature_entity_id=None,
-        ),
-        ar.AreaEntry(
-            name="bbb",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id=None,
-            humidity_entity_id=None,
-            icon=None,
-            id="12345C",
-            labels=set(),
-            picture=None,
-            temperature_entity_id=None,
-        ),
-        ar.AreaEntry(
-            name="CCC",
-            created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
-            aliases=set(),
-            floor_id=None,
-            humidity_entity_id=None,
-            icon=None,
-            id="12345B",
-            labels=set(),
-            picture=None,
-            temperature_entity_id=None,
-        ),
-    ]
+    expect(list(registry.async_list_areas())).to_equal(
+        [
+            ar.AreaEntry(
+                name="AAA",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id=None,
+                humidity_entity_id=None,
+                icon=None,
+                id="12345A",
+                labels=set(),
+                picture=None,
+                temperature_entity_id=None,
+            ),
+            ar.AreaEntry(
+                name="bbb",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id=None,
+                humidity_entity_id=None,
+                icon=None,
+                id="12345C",
+                labels=set(),
+                picture=None,
+                temperature_entity_id=None,
+            ),
+            ar.AreaEntry(
+                name="CCC",
+                created_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                modified_at=datetime(1970, 1, 1, 0, 0, tzinfo=UTC),
+                aliases=set(),
+                floor_id=None,
+                humidity_entity_id=None,
+                icon=None,
+                id="12345B",
+                labels=set(),
+                picture=None,
+                temperature_entity_id=None,
+            ),
+        ]
+    )
 
     # Check we store migrated data
     await flush_store(registry._store)
-    assert hass_storage[ar.STORAGE_KEY] == {
-        "version": ar.STORAGE_VERSION_MAJOR,
-        "minor_version": ar.STORAGE_VERSION_MINOR,
-        "key": ar.STORAGE_KEY,
-        "data": {
-            "areas": [
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": None,
-                    "humidity_entity_id": None,
-                    "icon": None,
-                    "id": "12345A",
-                    "labels": [],
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "AAA",
-                    "picture": None,
-                    "temperature_entity_id": None,
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": None,
-                    "humidity_entity_id": None,
-                    "icon": None,
-                    "id": "12345C",
-                    "labels": [],
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "bbb",
-                    "picture": None,
-                    "temperature_entity_id": None,
-                },
-                {
-                    "aliases": [],
-                    "created_at": "1970-01-01T00:00:00+00:00",
-                    "floor_id": None,
-                    "humidity_entity_id": None,
-                    "icon": None,
-                    "id": "12345B",
-                    "labels": [],
-                    "modified_at": "1970-01-01T00:00:00+00:00",
-                    "name": "CCC",
-                    "picture": None,
-                    "temperature_entity_id": None,
-                },
-            ]
-        },
-    }
+    expect(hass_storage[ar.STORAGE_KEY]).to_equal(
+        {
+            "version": ar.STORAGE_VERSION_MAJOR,
+            "minor_version": ar.STORAGE_VERSION_MINOR,
+            "key": ar.STORAGE_KEY,
+            "data": {
+                "areas": [
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": None,
+                        "humidity_entity_id": None,
+                        "icon": None,
+                        "id": "12345A",
+                        "labels": [],
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "AAA",
+                        "picture": None,
+                        "temperature_entity_id": None,
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": None,
+                        "humidity_entity_id": None,
+                        "icon": None,
+                        "id": "12345C",
+                        "labels": [],
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "bbb",
+                        "picture": None,
+                        "temperature_entity_id": None,
+                    },
+                    {
+                        "aliases": [],
+                        "created_at": "1970-01-01T00:00:00+00:00",
+                        "floor_id": None,
+                        "humidity_entity_id": None,
+                        "icon": None,
+                        "id": "12345B",
+                        "labels": [],
+                        "modified_at": "1970-01-01T00:00:00+00:00",
+                        "name": "CCC",
+                        "picture": None,
+                        "temperature_entity_id": None,
+                    },
+                ]
+            },
+        }
+    )
 
 
-async def test_async_get_or_create(area_registry: ar.AreaRegistry) -> None:
+@test
+async def async_get_or_create(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+) -> None:
     """Make sure we can get the area by name."""
     area = area_registry.async_get_or_create("Mock1")
     area2 = area_registry.async_get_or_create("mock1")
     area3 = area_registry.async_get_or_create("mock   1")
 
-    assert area == area2
-    assert area == area3
-    assert area2 == area3
+    expect(area).to_equal(area2)
+    expect(area).to_equal(area3)
+    expect(area2).to_equal(area3)
 
 
-async def test_async_get_area_by_name(area_registry: ar.AreaRegistry) -> None:
+@test
+async def async_get_area_by_name(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+) -> None:
     """Make sure we can get the area by name."""
     area_registry.async_create("Mock1")
 
-    assert len(area_registry.areas) == 1
+    expect(len(area_registry.areas)).to_equal(1)
 
-    assert area_registry.async_get_area_by_name("M o c k 1").normalized_name == "mock1"
+    expect(
+        area_registry.async_get_area_by_name("M o c k 1").normalized_name
+    ).to_equal("mock1")
 
 
-async def test_async_get_areas_by_alias(
-    area_registry: ar.AreaRegistry,
+@test
+async def async_get_areas_by_alias(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """Make sure we can get the areas by alias."""
     area1 = area_registry.async_create("Mock1", aliases=("alias_1", "alias_2"))
     area2 = area_registry.async_create("Mock2", aliases=("alias_1", "alias_3"))
 
-    assert len(area_registry.areas) == 2
+    expect(len(area_registry.areas)).to_equal(2)
 
-    assert area_registry.async_get_areas_by_alias("A l i a s_1") == [area1, area2]
-    assert area_registry.async_get_areas_by_alias("A l i a s_2") == [area1]
-    assert area_registry.async_get_areas_by_alias("A l i a s_3")
+    expect(area_registry.async_get_areas_by_alias("A l i a s_1")).to_equal(
+        [area1, area2]
+    )
+    expect(area_registry.async_get_areas_by_alias("A l i a s_2")).to_equal([area1])
+    expect(area_registry.async_get_areas_by_alias("A l i a s_3")).to_be_truthy()
 
 
-async def test_async_get_areas_by_alias_collisions(
-    area_registry: ar.AreaRegistry,
+@test
+async def async_get_areas_by_alias_collisions(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """Make sure we can get the areas by alias when the aliases have collisions."""
     area = area_registry.async_create("Mock1")
-    assert area_registry.async_get_areas_by_alias("A l i a s 1") == []
+    expect(area_registry.async_get_areas_by_alias("A l i a s 1")).to_equal([])
 
     # Add an alias
     updated_area = area_registry.async_update(area.id, aliases={"alias1"})
-    assert area_registry.async_get_areas_by_alias("A l i a s 1") == [updated_area]
+    expect(area_registry.async_get_areas_by_alias("A l i a s 1")).to_equal(
+        [updated_area]
+    )
 
     # Add a colliding alias
     updated_area = area_registry.async_update(area.id, aliases={"alias1", "alias  1"})
-    assert area_registry.async_get_areas_by_alias("A l i a s 1") == [updated_area]
+    expect(area_registry.async_get_areas_by_alias("A l i a s 1")).to_equal(
+        [updated_area]
+    )
 
     # Add a colliding alias
     updated_area = area_registry.async_update(
         area.id, aliases={"alias1", "alias 1", "alias  1"}
     )
-    assert area_registry.async_get_areas_by_alias("A l i a s 1") == [updated_area]
+    expect(area_registry.async_get_areas_by_alias("A l i a s 1")).to_equal(
+        [updated_area]
+    )
 
     # Remove a colliding alias
     updated_area = area_registry.async_update(area.id, aliases={"alias1", "alias  1"})
-    assert area_registry.async_get_areas_by_alias("A l i a s 1") == [updated_area]
+    expect(area_registry.async_get_areas_by_alias("A l i a s 1")).to_equal(
+        [updated_area]
+    )
 
     # Remove a colliding alias
     updated_area = area_registry.async_update(area.id, aliases={"alias1"})
-    assert area_registry.async_get_areas_by_alias("A l i a s 1") == [updated_area]
+    expect(area_registry.async_get_areas_by_alias("A l i a s 1")).to_equal(
+        [updated_area]
+    )
 
     # Remove all aliases
     updated_area = area_registry.async_update(area.id, aliases={})
-    assert area_registry.async_get_areas_by_alias("A l i a s 1") == []
+    expect(area_registry.async_get_areas_by_alias("A l i a s 1")).to_equal([])
 
 
-async def test_async_get_area_by_name_not_found(area_registry: ar.AreaRegistry) -> None:
+@test
+async def async_get_area_by_name_not_found(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+) -> None:
     """Make sure we return None for non-existent areas."""
     area_registry.async_create("Mock1")
 
-    assert len(area_registry.areas) == 1
+    expect(len(area_registry.areas)).to_equal(1)
 
-    assert area_registry.async_get_area_by_name("non_exist") is None
+    expect(area_registry.async_get_area_by_name("non_exist")).to_be_none()
 
 
-async def test_async_get_area(area_registry: ar.AreaRegistry) -> None:
+@test
+async def async_get_area(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+) -> None:
     """Make sure we can get the area by id."""
     area = area_registry.async_create("Mock1")
 
-    assert len(area_registry.areas) == 1
+    expect(len(area_registry.areas)).to_equal(1)
 
-    assert area_registry.async_get_area(area.id).normalized_name == "mock1"
+    expect(area_registry.async_get_area(area.id).normalized_name).to_equal("mock1")
 
 
-async def test_removing_floors(
-    hass: HomeAssistant,
-    area_registry: ar.AreaRegistry,
-    floor_registry: fr.FloorRegistry,
+@test
+async def removing_floors(
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Make sure we can clear floors."""
     first_floor = floor_registry.async_create("First floor")
@@ -651,19 +731,21 @@ async def test_removing_floors(
 
     floor_registry.async_delete(first_floor.floor_id)
     await hass.async_block_till_done()
-    assert area_registry.async_get_area(kitchen.id).floor_id is None
-    assert area_registry.async_get_area(bedroom.id).floor_id == second_floor.floor_id
+    expect(area_registry.async_get_area(kitchen.id).floor_id).to_be_none()
+    expect(area_registry.async_get_area(bedroom.id).floor_id).to_equal(
+        second_floor.floor_id
+    )
 
     floor_registry.async_delete(second_floor.floor_id)
     await hass.async_block_till_done()
-    assert area_registry.async_get_area(kitchen.id).floor_id is None
-    assert area_registry.async_get_area(bedroom.id).floor_id is None
+    expect(area_registry.async_get_area(kitchen.id).floor_id).to_be_none()
+    expect(area_registry.async_get_area(bedroom.id).floor_id).to_be_none()
 
 
-@pytest.mark.usefixtures("hass")
-async def test_entries_for_floor(
-    area_registry: ar.AreaRegistry,
-    floor_registry: fr.FloorRegistry,
+@test
+async def entries_for_floor(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+    floor_registry: fr.FloorRegistry = Depends(floor_registry),
 ) -> None:
     """Test getting area entries by floor."""
     first_floor = floor_registry.async_create("First floor")
@@ -679,21 +761,22 @@ async def test_entries_for_floor(
     bedroom = area_registry.async_update(bedroom.id, floor_id=second_floor.floor_id)
 
     entries = ar.async_entries_for_floor(area_registry, first_floor.floor_id)
-    assert len(entries) == 2
-    assert entries == [kitchen, living_room]
+    expect(len(entries)).to_equal(2)
+    expect(entries).to_equal([kitchen, living_room])
 
     entries = ar.async_entries_for_floor(area_registry, second_floor.floor_id)
-    assert len(entries) == 1
-    assert entries == [bedroom]
+    expect(len(entries)).to_equal(1)
+    expect(entries).to_equal([bedroom])
 
-    assert not ar.async_entries_for_floor(area_registry, "unknown")
-    assert not ar.async_entries_for_floor(area_registry, "")
+    expect(ar.async_entries_for_floor(area_registry, "unknown")).to_be_falsy()
+    expect(ar.async_entries_for_floor(area_registry, "")).to_be_falsy()
 
 
-async def test_removing_labels(
-    hass: HomeAssistant,
-    area_registry: ar.AreaRegistry,
-    label_registry: lr.LabelRegistry,
+@test
+async def removing_labels(
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+    label_registry: lr.LabelRegistry = Depends(label_registry),
 ) -> None:
     """Make sure we can clear labels."""
     label1 = label_registry.async_create("Label 1")
@@ -707,28 +790,34 @@ async def test_removing_labels(
     bedroom = area_registry.async_create("Bedroom")
     bedroom = area_registry.async_update(bedroom.id, labels={label2.label_id})
 
-    assert area_registry.async_get_area(kitchen.id).labels == {
-        label1.label_id,
-        label2.label_id,
-    }
-    assert area_registry.async_get_area(bedroom.id).labels == {label2.label_id}
+    expect(area_registry.async_get_area(kitchen.id).labels).to_equal(
+        {label1.label_id, label2.label_id}
+    )
+    expect(area_registry.async_get_area(bedroom.id).labels).to_equal(
+        {label2.label_id}
+    )
 
     label_registry.async_delete(label1.label_id)
     await hass.async_block_till_done()
 
-    assert area_registry.async_get_area(kitchen.id).labels == {label2.label_id}
-    assert area_registry.async_get_area(bedroom.id).labels == {label2.label_id}
+    expect(area_registry.async_get_area(kitchen.id).labels).to_equal(
+        {label2.label_id}
+    )
+    expect(area_registry.async_get_area(bedroom.id).labels).to_equal(
+        {label2.label_id}
+    )
 
     label_registry.async_delete(label2.label_id)
     await hass.async_block_till_done()
 
-    assert not area_registry.async_get_area(kitchen.id).labels
-    assert not area_registry.async_get_area(bedroom.id).labels
+    expect(area_registry.async_get_area(kitchen.id).labels).to_be_falsy()
+    expect(area_registry.async_get_area(bedroom.id).labels).to_be_falsy()
 
 
-@pytest.mark.usefixtures("hass")
-async def test_entries_for_label(
-    area_registry: ar.AreaRegistry, label_registry: lr.LabelRegistry
+@test
+async def entries_for_label(
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+    label_registry: lr.LabelRegistry = Depends(label_registry),
 ) -> None:
     """Test getting area entries by label."""
     label1 = label_registry.async_create("Label 1")
@@ -744,49 +833,64 @@ async def test_entries_for_label(
     bedroom = area_registry.async_update(bedroom.id, labels={label2.label_id})
 
     entries = ar.async_entries_for_label(area_registry, label1.label_id)
-    assert len(entries) == 2
-    assert entries == [kitchen, living_room]
+    expect(len(entries)).to_equal(2)
+    expect(entries).to_equal([kitchen, living_room])
 
     entries = ar.async_entries_for_label(area_registry, label2.label_id)
-    assert len(entries) == 2
-    assert entries == [kitchen, bedroom]
+    expect(len(entries)).to_equal(2)
+    expect(entries).to_equal([kitchen, bedroom])
 
-    assert not ar.async_entries_for_label(area_registry, "unknown")
-    assert not ar.async_entries_for_label(area_registry, "")
+    expect(ar.async_entries_for_label(area_registry, "unknown")).to_be_falsy()
+    expect(ar.async_entries_for_label(area_registry, "")).to_be_falsy()
 
 
-async def test_async_get_or_create_thread_checks(
-    hass: HomeAssistant, area_registry: ar.AreaRegistry
+@test
+async def async_get_or_create_thread_checks(
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """We raise when trying to create in the wrong thread."""
-    with pytest.raises(
-        RuntimeError,
-        match="Detected code that calls area_registry.async_create from a thread.",
-    ):
-        await hass.async_add_executor_job(area_registry.async_create, "Mock1")
+    await _assert_thread_check_raises(
+        lambda: hass.async_add_executor_job(area_registry.async_create, "Mock1"),
+        "async_create",
+    )
 
 
-async def test_async_update_thread_checks(
-    hass: HomeAssistant, area_registry: ar.AreaRegistry
+@test
+async def async_update_thread_checks(
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """We raise when trying to update in the wrong thread."""
     area = area_registry.async_create("Mock1")
-    with pytest.raises(
-        RuntimeError,
-        match="Detected code that calls area_registry.async_update from a thread.",
-    ):
-        await hass.async_add_executor_job(
+    await _assert_thread_check_raises(
+        lambda: hass.async_add_executor_job(
             partial(area_registry.async_update, area.id, name="Mock2")
-        )
+        ),
+        "async_update",
+    )
 
 
-async def test_async_delete_thread_checks(
-    hass: HomeAssistant, area_registry: ar.AreaRegistry
+@test
+async def async_delete_thread_checks(
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
 ) -> None:
     """We raise when trying to delete in the wrong thread."""
     area = area_registry.async_create("Mock1")
-    with pytest.raises(
-        RuntimeError,
-        match="Detected code that calls area_registry.async_delete from a thread.",
-    ):
-        await hass.async_add_executor_job(area_registry.async_delete, area.id)
+    await _assert_thread_check_raises(
+        lambda: hass.async_add_executor_job(area_registry.async_delete, area.id),
+        "async_delete",
+    )
+
+
+async def _assert_thread_check_raises(coro_factory, method_name: str) -> None:
+    """Assert the awaitable raises the registry thread-check RuntimeError."""
+    try:
+        await coro_factory()
+    except RuntimeError as err:
+        expect(str(err)).to_contain(
+            f"Detected code that calls area_registry.{method_name} from a thread"
+        )
+        return
+    raise AssertionError("Expected RuntimeError")

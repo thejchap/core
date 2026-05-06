@@ -5,15 +5,24 @@ from datetime import datetime, timedelta
 from astral import LocationInfo
 import astral.sun
 from freezegun import freeze_time
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.const import SUN_EVENT_SUNRISE, SUN_EVENT_SUNSET
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import sun
 from homeassistant.util import dt as dt_util
 
+from tests.hass_fixtures import hass
 
-def test_next_events(hass: HomeAssistant) -> None:
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def next_events(hass: HomeAssistant = Depends(hass)) -> None:
     """Test retrieving next sun events."""
     utc_now = datetime(2016, 11, 1, 8, 0, 0, tzinfo=dt_util.UTC)
 
@@ -78,15 +87,20 @@ def test_next_events(hass: HomeAssistant) -> None:
         mod += 1
 
     with freeze_time(utc_now):
-        assert next_dawn == sun.get_astral_event_next(hass, "dawn")
-        assert next_dusk == sun.get_astral_event_next(hass, "dusk")
-        assert next_midnight == sun.get_astral_event_next(hass, "midnight")
-        assert next_noon == sun.get_astral_event_next(hass, "noon")
-        assert next_rising == sun.get_astral_event_next(hass, SUN_EVENT_SUNRISE)
-        assert next_setting == sun.get_astral_event_next(hass, SUN_EVENT_SUNSET)
+        expect(sun.get_astral_event_next(hass, "dawn")).to_equal(next_dawn)
+        expect(sun.get_astral_event_next(hass, "dusk")).to_equal(next_dusk)
+        expect(sun.get_astral_event_next(hass, "midnight")).to_equal(next_midnight)
+        expect(sun.get_astral_event_next(hass, "noon")).to_equal(next_noon)
+        expect(sun.get_astral_event_next(hass, SUN_EVENT_SUNRISE)).to_equal(
+            next_rising
+        )
+        expect(sun.get_astral_event_next(hass, SUN_EVENT_SUNSET)).to_equal(
+            next_setting
+        )
 
 
-def test_date_events(hass: HomeAssistant) -> None:
+@test
+async def date_events(hass: HomeAssistant = Depends(hass)) -> None:
     """Test retrieving next sun events."""
     utc_now = datetime(2016, 11, 1, 8, 0, 0, tzinfo=dt_util.UTC)
 
@@ -103,15 +117,20 @@ def test_date_events(hass: HomeAssistant) -> None:
     sunrise = astral.sun.sunrise(location.observer, utc_today)
     sunset = astral.sun.sunset(location.observer, utc_today)
 
-    assert dawn == sun.get_astral_event_date(hass, "dawn", utc_today)
-    assert dusk == sun.get_astral_event_date(hass, "dusk", utc_today)
-    assert midnight == sun.get_astral_event_date(hass, "midnight", utc_today)
-    assert noon == sun.get_astral_event_date(hass, "noon", utc_today)
-    assert sunrise == sun.get_astral_event_date(hass, SUN_EVENT_SUNRISE, utc_today)
-    assert sunset == sun.get_astral_event_date(hass, SUN_EVENT_SUNSET, utc_today)
+    expect(sun.get_astral_event_date(hass, "dawn", utc_today)).to_equal(dawn)
+    expect(sun.get_astral_event_date(hass, "dusk", utc_today)).to_equal(dusk)
+    expect(sun.get_astral_event_date(hass, "midnight", utc_today)).to_equal(midnight)
+    expect(sun.get_astral_event_date(hass, "noon", utc_today)).to_equal(noon)
+    expect(sun.get_astral_event_date(hass, SUN_EVENT_SUNRISE, utc_today)).to_equal(
+        sunrise
+    )
+    expect(sun.get_astral_event_date(hass, SUN_EVENT_SUNSET, utc_today)).to_equal(
+        sunset
+    )
 
 
-def test_date_events_default_date(hass: HomeAssistant) -> None:
+@test
+async def date_events_default_date(hass: HomeAssistant = Depends(hass)) -> None:
     """Test retrieving next sun events."""
     utc_now = datetime(2016, 11, 1, 8, 0, 0, tzinfo=dt_util.UTC)
 
@@ -129,15 +148,22 @@ def test_date_events_default_date(hass: HomeAssistant) -> None:
     sunset = astral.sun.sunset(location.observer, date=utc_today)
 
     with freeze_time(utc_now):
-        assert dawn == sun.get_astral_event_date(hass, "dawn", utc_today)
-        assert dusk == sun.get_astral_event_date(hass, "dusk", utc_today)
-        assert midnight == sun.get_astral_event_date(hass, "midnight", utc_today)
-        assert noon == sun.get_astral_event_date(hass, "noon", utc_today)
-        assert sunrise == sun.get_astral_event_date(hass, SUN_EVENT_SUNRISE, utc_today)
-        assert sunset == sun.get_astral_event_date(hass, SUN_EVENT_SUNSET, utc_today)
+        expect(sun.get_astral_event_date(hass, "dawn", utc_today)).to_equal(dawn)
+        expect(sun.get_astral_event_date(hass, "dusk", utc_today)).to_equal(dusk)
+        expect(sun.get_astral_event_date(hass, "midnight", utc_today)).to_equal(
+            midnight
+        )
+        expect(sun.get_astral_event_date(hass, "noon", utc_today)).to_equal(noon)
+        expect(
+            sun.get_astral_event_date(hass, SUN_EVENT_SUNRISE, utc_today)
+        ).to_equal(sunrise)
+        expect(sun.get_astral_event_date(hass, SUN_EVENT_SUNSET, utc_today)).to_equal(
+            sunset
+        )
 
 
-def test_date_events_accepts_datetime(hass: HomeAssistant) -> None:
+@test
+async def date_events_accepts_datetime(hass: HomeAssistant = Depends(hass)) -> None:
     """Test retrieving next sun events."""
     utc_now = datetime(2016, 11, 1, 8, 0, 0, tzinfo=dt_util.UTC)
 
@@ -154,43 +180,48 @@ def test_date_events_accepts_datetime(hass: HomeAssistant) -> None:
     sunrise = astral.sun.sunrise(location.observer, date=utc_today)
     sunset = astral.sun.sunset(location.observer, date=utc_today)
 
-    assert dawn == sun.get_astral_event_date(hass, "dawn", utc_now)
-    assert dusk == sun.get_astral_event_date(hass, "dusk", utc_now)
-    assert midnight == sun.get_astral_event_date(hass, "midnight", utc_now)
-    assert noon == sun.get_astral_event_date(hass, "noon", utc_now)
-    assert sunrise == sun.get_astral_event_date(hass, SUN_EVENT_SUNRISE, utc_now)
-    assert sunset == sun.get_astral_event_date(hass, SUN_EVENT_SUNSET, utc_now)
+    expect(sun.get_astral_event_date(hass, "dawn", utc_now)).to_equal(dawn)
+    expect(sun.get_astral_event_date(hass, "dusk", utc_now)).to_equal(dusk)
+    expect(sun.get_astral_event_date(hass, "midnight", utc_now)).to_equal(midnight)
+    expect(sun.get_astral_event_date(hass, "noon", utc_now)).to_equal(noon)
+    expect(sun.get_astral_event_date(hass, SUN_EVENT_SUNRISE, utc_now)).to_equal(
+        sunrise
+    )
+    expect(sun.get_astral_event_date(hass, SUN_EVENT_SUNSET, utc_now)).to_equal(sunset)
 
 
-def test_is_up(hass: HomeAssistant) -> None:
+@test
+async def is_up(hass: HomeAssistant = Depends(hass)) -> None:
     """Test retrieving next sun events."""
     utc_now = datetime(2016, 11, 1, 12, 0, 0, tzinfo=dt_util.UTC)
     with freeze_time(utc_now):
-        assert not sun.is_up(hass)
+        expect(sun.is_up(hass)).to_be(False)
 
     utc_now = datetime(2016, 11, 1, 18, 0, 0, tzinfo=dt_util.UTC)
     with freeze_time(utc_now):
-        assert sun.is_up(hass)
+        expect(sun.is_up(hass)).to_be(True)
 
 
-def test_norway_in_june(hass: HomeAssistant) -> None:
+@test
+async def norway_in_june(hass: HomeAssistant = Depends(hass)) -> None:
     """Test location in Norway where the sun doesn't set in summer."""
     hass.config.latitude = 69.6
     hass.config.longitude = 18.8
 
     june = datetime(2016, 6, 1, tzinfo=dt_util.UTC)
 
-    assert sun.get_astral_event_next(hass, SUN_EVENT_SUNRISE, june) == datetime(
-        2016, 7, 24, 22, 59, 45, 689645, tzinfo=dt_util.UTC
+    expect(sun.get_astral_event_next(hass, SUN_EVENT_SUNRISE, june)).to_equal(
+        datetime(2016, 7, 24, 22, 59, 45, 689645, tzinfo=dt_util.UTC)
     )
-    assert sun.get_astral_event_next(hass, SUN_EVENT_SUNSET, june) == datetime(
-        2016, 7, 25, 22, 17, 13, 503932, tzinfo=dt_util.UTC
+    expect(sun.get_astral_event_next(hass, SUN_EVENT_SUNSET, june)).to_equal(
+        datetime(2016, 7, 25, 22, 17, 13, 503932, tzinfo=dt_util.UTC)
     )
-    assert sun.get_astral_event_date(hass, SUN_EVENT_SUNRISE, june) is None
-    assert sun.get_astral_event_date(hass, SUN_EVENT_SUNSET, june) is None
+    expect(sun.get_astral_event_date(hass, SUN_EVENT_SUNRISE, june)).to_be_none()
+    expect(sun.get_astral_event_date(hass, SUN_EVENT_SUNSET, june)).to_be_none()
 
 
-def test_impossible_elevation(hass: HomeAssistant) -> None:
+@test
+async def impossible_elevation(hass: HomeAssistant = Depends(hass)) -> None:
     """Test altitude where the sun can't set."""
     hass.config.latitude = 69.6
     hass.config.longitude = 18.8
@@ -198,5 +229,6 @@ def test_impossible_elevation(hass: HomeAssistant) -> None:
 
     june = datetime(2016, 6, 1, tzinfo=dt_util.UTC)
 
-    with pytest.raises(ValueError):
-        sun.get_astral_event_next(hass, SUN_EVENT_SUNRISE, june)
+    expect(lambda: sun.get_astral_event_next(hass, SUN_EVENT_SUNRISE, june)).to_raise(
+        ValueError
+    )

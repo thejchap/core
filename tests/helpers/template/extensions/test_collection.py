@@ -1,297 +1,297 @@
 """Test collection extension."""
 
+from __future__ import annotations
+
 from typing import Any
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import TemplateError
 
+from tests.hass_fixtures import hass
 from tests.helpers.template.helpers import render
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ([1, 2, 3], True),
-        ({"a": 1}, False),
-        ({1, 2, 3}, False),
-        ((1, 2, 3), False),
-        ("abc", False),
-        ("", False),
-        (5, False),
-        (None, False),
-        ({"foo": "bar", "baz": "qux"}, False),
-    ],
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test.cases(
+    test.case("list", value=[1, 2, 3], expected=True),
+    test.case("dict", value={"a": 1}, expected=False),
+    test.case("set", value={1, 2, 3}, expected=False),
+    test.case("tuple", value=(1, 2, 3), expected=False),
+    test.case("str", value="abc", expected=False),
+    test.case("empty_str", value="", expected=False),
+    test.case("int", value=5, expected=False),
+    test.case("none", value=None, expected=False),
+    test.case("dict2", value={"foo": "bar", "baz": "qux"}, expected=False),
 )
-def test_is_list(hass: HomeAssistant, value: Any, expected: bool) -> None:
+async def is_list(
+    value: Any,
+    expected: bool,
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test list test."""
-    assert render(hass, "{{ value is list }}", {"value": value}) == expected
+    expect(render(hass, "{{ value is list }}", {"value": value})).to_equal(expected)
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ([1, 2, 3], False),
-        ({"a": 1}, False),
-        ({1, 2, 3}, True),
-        ((1, 2, 3), False),
-        ("abc", False),
-        ("", False),
-        (5, False),
-        (None, False),
-        ({"foo": "bar", "baz": "qux"}, False),
-    ],
+@test.cases(
+    test.case("list", value=[1, 2, 3], expected=False),
+    test.case("dict", value={"a": 1}, expected=False),
+    test.case("set", value={1, 2, 3}, expected=True),
+    test.case("tuple", value=(1, 2, 3), expected=False),
+    test.case("str", value="abc", expected=False),
+    test.case("empty_str", value="", expected=False),
+    test.case("int", value=5, expected=False),
+    test.case("none", value=None, expected=False),
+    test.case("dict2", value={"foo": "bar", "baz": "qux"}, expected=False),
 )
-def test_is_set(hass: HomeAssistant, value: Any, expected: bool) -> None:
+async def is_set(
+    value: Any,
+    expected: bool,
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test set test."""
-    assert render(hass, "{{ value is set }}", {"value": value}) == expected
+    expect(render(hass, "{{ value is set }}", {"value": value})).to_equal(expected)
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ([1, 2, 3], False),
-        ({"a": 1}, False),
-        ({1, 2, 3}, False),
-        ((1, 2, 3), True),
-        ("abc", False),
-        ("", False),
-        (5, False),
-        (None, False),
-        ({"foo": "bar", "baz": "qux"}, False),
-    ],
+@test.cases(
+    test.case("list", value=[1, 2, 3], expected=False),
+    test.case("dict", value={"a": 1}, expected=False),
+    test.case("set", value={1, 2, 3}, expected=False),
+    test.case("tuple", value=(1, 2, 3), expected=True),
+    test.case("str", value="abc", expected=False),
+    test.case("empty_str", value="", expected=False),
+    test.case("int", value=5, expected=False),
+    test.case("none", value=None, expected=False),
+    test.case("dict2", value={"foo": "bar", "baz": "qux"}, expected=False),
 )
-def test_is_tuple(hass: HomeAssistant, value: Any, expected: bool) -> None:
+async def is_tuple(
+    value: Any,
+    expected: bool,
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test tuple test."""
-    assert render(hass, "{{ value is tuple }}", {"value": value}) == expected
+    expect(render(hass, "{{ value is tuple }}", {"value": value})).to_equal(expected)
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ([1, 2, 3], {"expected0": {1, 2, 3}}),
-        ({"a": 1}, {"expected1": {"a"}}),
-        ({1, 2, 3}, {"expected2": {1, 2, 3}}),
-        ((1, 2, 3), {"expected3": {1, 2, 3}}),
-        ("abc", {"expected4": {"a", "b", "c"}}),
-        ("", {"expected5": set()}),
-        (range(3), {"expected6": {0, 1, 2}}),
-        ({"foo": "bar", "baz": "qux"}, {"expected7": {"foo", "baz"}}),
-    ],
+@test.cases(
+    test.case("list", value=[1, 2, 3], expected={1, 2, 3}),
+    test.case("dict", value={"a": 1}, expected={"a"}),
+    test.case("set", value={1, 2, 3}, expected={1, 2, 3}),
+    test.case("tuple", value=(1, 2, 3), expected={1, 2, 3}),
+    test.case("str", value="abc", expected={"a", "b", "c"}),
+    test.case("empty_str", value="", expected=set()),
+    test.case("range", value=range(3), expected={0, 1, 2}),
+    test.case("dict2", value={"foo": "bar", "baz": "qux"}, expected={"foo", "baz"}),
 )
-def test_set(hass: HomeAssistant, value: Any, expected: bool) -> None:
+async def set_conversion(
+    value: Any,
+    expected: set[Any],
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test set conversion."""
-    assert (
-        render(hass, "{{ set(value) }}", {"value": value}) == list(expected.values())[0]
-    )
+    expect(render(hass, "{{ set(value) }}", {"value": value})).to_equal(expected)
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ([1, 2, 3], {"expected0": (1, 2, 3)}),
-        ({"a": 1}, {"expected1": ("a",)}),
-        ({1, 2, 3}, {"expected2": (1, 2, 3)}),  # Note: set order is not guaranteed
-        ((1, 2, 3), {"expected3": (1, 2, 3)}),
-        ("abc", {"expected4": ("a", "b", "c")}),
-        ("", {"expected5": ()}),
-        (range(3), {"expected6": (0, 1, 2)}),
-        ({"foo": "bar", "baz": "qux"}, {"expected7": ("foo", "baz")}),
-    ],
+@test.cases(
+    test.case("list", value=[1, 2, 3], expected=(1, 2, 3)),
+    test.case("dict", value={"a": 1}, expected=("a",)),
+    test.case("set", value={1, 2, 3}, expected=(1, 2, 3)),
+    test.case("tuple", value=(1, 2, 3), expected=(1, 2, 3)),
+    test.case("str", value="abc", expected=("a", "b", "c")),
+    test.case("empty_str", value="", expected=()),
+    test.case("range", value=range(3), expected=(0, 1, 2)),
+    test.case(
+        "dict2", value={"foo": "bar", "baz": "qux"}, expected=("foo", "baz")
+    ),
 )
-def test_tuple(hass: HomeAssistant, value: Any, expected: bool) -> None:
+async def tuple_conversion(
+    value: Any,
+    expected: tuple[Any, ...],
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test tuple conversion."""
     result = render(hass, "{{ tuple(value) }}", {"value": value})
-    expected_value = list(expected.values())[0]
     if isinstance(value, set):  # Sets don't have predictable order
-        assert set(result) == set(expected_value)
+        expect(set(result)).to_equal(set(expected))
     else:
-        assert result == expected_value
+        expect(result).to_equal(expected)
 
 
-@pytest.mark.parametrize(
-    ("cola", "colb", "expected"),
-    [
-        ([1, 2], [3, 4], [(1, 3), (2, 4)]),
-        ([1, 2], [3, 4, 5], [(1, 3), (2, 4)]),
-        ([1, 2, 3, 4], [3, 4], [(1, 3), (2, 4)]),
-    ],
+@test.cases(
+    test.case("equal_len", cola=[1, 2], colb=[3, 4], expected=[(1, 3), (2, 4)]),
+    test.case("b_longer", cola=[1, 2], colb=[3, 4, 5], expected=[(1, 3), (2, 4)]),
+    test.case("a_longer", cola=[1, 2, 3, 4], colb=[3, 4], expected=[(1, 3), (2, 4)]),
 )
-def test_zip(hass: HomeAssistant, cola, colb, expected) -> None:
+async def zip_test(
+    cola: list[int],
+    colb: list[int],
+    expected: list[tuple[int, int]],
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test zip."""
     for tpl in (
         "{{ zip(cola, colb) | list }}",
         "[{% for a, b in zip(cola, colb) %}({{a}}, {{b}}), {% endfor %}]",
     ):
-        assert render(hass, tpl, {"cola": cola, "colb": colb}) == expected
+        expect(render(hass, tpl, {"cola": cola, "colb": colb})).to_equal(expected)
 
 
-@pytest.mark.parametrize(
-    ("col", "expected"),
-    [
-        ([(1, 3), (2, 4)], [(1, 2), (3, 4)]),
-        (["ax", "by", "cz"], [("a", "b", "c"), ("x", "y", "z")]),
-    ],
+@test.cases(
+    test.case("ints", col=[(1, 3), (2, 4)], expected=[(1, 2), (3, 4)]),
+    test.case(
+        "strs", col=["ax", "by", "cz"], expected=[("a", "b", "c"), ("x", "y", "z")]
+    ),
 )
-def test_unzip(hass: HomeAssistant, col, expected) -> None:
+async def unzip(
+    col: list[Any],
+    expected: list[tuple[Any, ...]],
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test unzipping using zip."""
     for tpl in (
         "{{ zip(*col) | list }}",
         "{% set a, b = zip(*col) %}[{{a}}, {{b}}]",
     ):
-        assert render(hass, tpl, {"col": col}) == expected
+        expect(render(hass, tpl, {"col": col})).to_equal(expected)
 
 
-def test_shuffle(hass: HomeAssistant) -> None:
+@test
+async def shuffle(hass: HomeAssistant = Depends(hass)) -> None:
     """Test shuffle."""
-    # Test basic shuffle
     result = render(hass, "{{ shuffle([1, 2, 3, 4, 5]) }}")
-    assert len(result) == 5
-    assert set(result) == {1, 2, 3, 4, 5}
+    expect(len(result)).to_equal(5)
+    expect(set(result)).to_equal({1, 2, 3, 4, 5})
 
-    # Test shuffle with seed
     result1 = render(hass, "{{ shuffle([1, 2, 3, 4, 5], seed=42) }}")
     result2 = render(hass, "{{ shuffle([1, 2, 3, 4, 5], seed=42) }}")
-    assert result1 == result2  # Same seed should give same result
+    expect(result1).to_equal(result2)  # Same seed should give same result
 
-    # Test shuffle with different seed
     result3 = render(hass, "{{ shuffle([1, 2, 3, 4, 5], seed=123) }}")
-    # Different seeds should usually give different results
-    # (but we can't guarantee it for small lists)
-    assert len(result3) == 5
-    assert set(result3) == {1, 2, 3, 4, 5}
+    expect(len(result3)).to_equal(5)
+    expect(set(result3)).to_equal({1, 2, 3, 4, 5})
 
 
-def test_flatten(hass: HomeAssistant) -> None:
+@test
+async def flatten(hass: HomeAssistant = Depends(hass)) -> None:
     """Test flatten."""
-    # Test basic flattening
-    assert render(hass, "{{ flatten([[1, 2], [3, 4]]) }}") == [1, 2, 3, 4]
+    expect(render(hass, "{{ flatten([[1, 2], [3, 4]]) }}")).to_equal([1, 2, 3, 4])
 
-    # Test nested flattening
     expected = [1, 2, 3, 4, 5, 6, 7, 8]
-    assert (
-        render(hass, "{{ flatten([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]) }}") == expected
+    expect(
+        render(hass, "{{ flatten([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]) }}")
+    ).to_equal(expected)
+
+    expect(
+        render(hass, "{{ flatten([[[1, 2], [3, 4]], [[5, 6], [7, 8]]], levels=1) }}")
+    ).to_equal([[1, 2], [3, 4], [5, 6], [7, 8]])
+
+    expect(render(hass, "{{ flatten([[1, 'a'], [2, 'b']]) }}")).to_equal(
+        [1, "a", 2, "b"]
     )
 
-    # Test flattening with levels
-    assert render(
-        hass, "{{ flatten([[[1, 2], [3, 4]], [[5, 6], [7, 8]]], levels=1) }}"
-    ) == [[1, 2], [3, 4], [5, 6], [7, 8]]
+    expect(render(hass, "{{ flatten([]) }}")).to_equal([])
 
-    # Test mixed types
-    assert render(hass, "{{ flatten([[1, 'a'], [2, 'b']]) }}") == [1, "a", 2, "b"]
-
-    # Test empty list
-    assert render(hass, "{{ flatten([]) }}") == []
-
-    # Test single level
-    assert render(hass, "{{ flatten([1, 2, 3]) }}") == [1, 2, 3]
+    expect(render(hass, "{{ flatten([1, 2, 3]) }}")).to_equal([1, 2, 3])
 
 
-def test_intersect(hass: HomeAssistant) -> None:
+@test
+async def intersect(hass: HomeAssistant = Depends(hass)) -> None:
     """Test intersect."""
-    # Test basic intersection
     result = render(hass, "{{ [1, 2, 3, 4] | intersect([3, 4, 5, 6]) | sort }}")
-    assert result == [3, 4]
+    expect(result).to_equal([3, 4])
 
-    # Test no intersection
     result = render(hass, "{{ [1, 2] | intersect([3, 4]) }}")
-    assert result == []
+    expect(result).to_equal([])
 
-    # Test string intersection
     result = render(hass, "{{ ['a', 'b', 'c'] | intersect(['b', 'c', 'd']) | sort }}")
-    assert result == ["b", "c"]
+    expect(result).to_equal(["b", "c"])
 
-    # Test empty list intersection
     result = render(hass, "{{ [] | intersect([1, 2, 3]) }}")
-    assert result == []
+    expect(result).to_equal([])
 
 
-def test_difference(hass: HomeAssistant) -> None:
+@test
+async def difference(hass: HomeAssistant = Depends(hass)) -> None:
     """Test difference."""
-    # Test basic difference
     result = render(hass, "{{ [1, 2, 3, 4] | difference([3, 4, 5, 6]) | sort }}")
-    assert result == [1, 2]
+    expect(result).to_equal([1, 2])
 
-    # Test no difference
     result = render(hass, "{{ [1, 2] | difference([1, 2, 3, 4]) }}")
-    assert result == []
+    expect(result).to_equal([])
 
-    # Test string difference
     result = render(hass, "{{ ['a', 'b', 'c'] | difference(['b', 'c', 'd']) | sort }}")
-    assert result == ["a"]
+    expect(result).to_equal(["a"])
 
-    # Test empty list difference
     result = render(hass, "{{ [] | difference([1, 2, 3]) }}")
-    assert result == []
+    expect(result).to_equal([])
 
 
-def test_union(hass: HomeAssistant) -> None:
+@test
+async def union(hass: HomeAssistant = Depends(hass)) -> None:
     """Test union."""
-    # Test basic union
     result = render(hass, "{{ [1, 2, 3] | union([3, 4, 5]) | sort }}")
-    assert result == [1, 2, 3, 4, 5]
+    expect(result).to_equal([1, 2, 3, 4, 5])
 
-    # Test string union
     result = render(hass, "{{ ['a', 'b'] | union(['b', 'c']) | sort }}")
-    assert result == ["a", "b", "c"]
+    expect(result).to_equal(["a", "b", "c"])
 
-    # Test empty list union
     result = render(hass, "{{ [] | union([1, 2, 3]) | sort }}")
-    assert result == [1, 2, 3]
+    expect(result).to_equal([1, 2, 3])
 
-    # Test duplicate elements
     result = render(hass, "{{ [1, 1, 2, 2] | union([2, 2, 3, 3]) | sort }}")
-    assert result == [1, 2, 3]
+    expect(result).to_equal([1, 2, 3])
 
 
-def test_symmetric_difference(hass: HomeAssistant) -> None:
+@test
+async def symmetric_difference(hass: HomeAssistant = Depends(hass)) -> None:
     """Test symmetric_difference."""
-    # Test basic symmetric difference
     result = render(
         hass, "{{ [1, 2, 3, 4] | symmetric_difference([3, 4, 5, 6]) | sort }}"
     )
-    assert result == [1, 2, 5, 6]
+    expect(result).to_equal([1, 2, 5, 6])
 
-    # Test no symmetric difference (identical sets)
     result = render(hass, "{{ [1, 2, 3] | symmetric_difference([1, 2, 3]) }}")
-    assert result == []
+    expect(result).to_equal([])
 
-    # Test string symmetric difference
     result = render(
         hass, "{{ ['a', 'b', 'c'] | symmetric_difference(['b', 'c', 'd']) | sort }}"
     )
-    assert result == ["a", "d"]
+    expect(result).to_equal(["a", "d"])
 
-    # Test empty list symmetric difference
     result = render(hass, "{{ [] | symmetric_difference([1, 2, 3]) | sort }}")
-    assert result == [1, 2, 3]
+    expect(result).to_equal([1, 2, 3])
 
 
-def test_collection_functions_as_tests(hass: HomeAssistant) -> None:
+@test
+async def collection_functions_as_tests(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that type checking functions work as tests."""
-    # Test various type checking functions
-    assert render(hass, "{{ [1,2,3] is list }}")
-    assert render(hass, "{{ set([1,2,3]) is set }}")
-    assert render(hass, "{{ (1,2,3) is tuple }}")
+    expect(render(hass, "{{ [1,2,3] is list }}")).to_be(True)
+    expect(render(hass, "{{ set([1,2,3]) is set }}")).to_be(True)
+    expect(render(hass, "{{ (1,2,3) is tuple }}")).to_be(True)
 
 
-def test_collection_error_handling(hass: HomeAssistant) -> None:
+@test
+async def collection_error_handling(hass: HomeAssistant = Depends(hass)) -> None:
     """Test error handling in collection functions."""
 
-    # Test flatten with non-iterable
-    with pytest.raises(TemplateError, match="flatten expected a list"):
-        render(hass, "{{ flatten(123) }}")
+    expect(lambda: render(hass, "{{ flatten(123) }}")).to_raise(
+        TemplateError, match="flatten expected a list"
+    )
 
-    # Test intersect with non-iterable
-    with pytest.raises(TemplateError, match="intersect expected a list"):
-        render(hass, "{{ [1, 2] | intersect(123) }}")
+    expect(lambda: render(hass, "{{ [1, 2] | intersect(123) }}")).to_raise(
+        TemplateError, match="intersect expected a list"
+    )
 
-    # Test difference with non-iterable
-    with pytest.raises(TemplateError, match="difference expected a list"):
-        render(hass, "{{ [1, 2] | difference(123) }}")
+    expect(lambda: render(hass, "{{ [1, 2] | difference(123) }}")).to_raise(
+        TemplateError, match="difference expected a list"
+    )
 
-    # Test shuffle with no arguments
-    with pytest.raises(TemplateError, match="shuffle expected at least 1 argument"):
-        render(hass, "{{ shuffle() }}")
+    expect(lambda: render(hass, "{{ shuffle() }}")).to_raise(
+        TemplateError, match="shuffle expected at least 1 argument"
+    )

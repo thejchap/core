@@ -1,19 +1,29 @@
 """Test device template functions."""
 
-import pytest
+from __future__ import annotations
+
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.template import TemplateError
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import device_registry, entity_registry, hass
 from tests.helpers.template.helpers import assert_result_info, render_to_info
 
 
-async def test_device_entities(
-    hass: HomeAssistant,
-    device_registry: dr.DeviceRegistry,
-    entity_registry: er.EntityRegistry,
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def device_entities(
+    hass: HomeAssistant = Depends(hass),
+    device_registry: dr.DeviceRegistry = Depends(device_registry),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test device_entities function."""
     config_entry = MockConfigEntry(domain="light")
@@ -22,11 +32,11 @@ async def test_device_entities(
     # Test non existing device ids
     info = render_to_info(hass, "{{ device_entities('abc123') }}")
     assert_result_info(info, [])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     info = render_to_info(hass, "{{ device_entities(56) }}")
     assert_result_info(info, [])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test device without entities
     device_entry = device_registry.async_get_or_create(
@@ -35,7 +45,7 @@ async def test_device_entities(
     )
     info = render_to_info(hass, f"{{{{ device_entities('{device_entry.id}') }}}}")
     assert_result_info(info, [])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test device with single entity, which has no state
     entity_registry.async_get_or_create(
@@ -47,7 +57,7 @@ async def test_device_entities(
     )
     info = render_to_info(hass, f"{{{{ device_entities('{device_entry.id}') }}}}")
     assert_result_info(info, ["light.hue_5678"], [])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
     info = render_to_info(
         hass,
         (
@@ -56,7 +66,7 @@ async def test_device_entities(
         ),
     )
     assert_result_info(info, "", ["light.hue_5678"])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test device with single entity, with state
     hass.states.async_set("light.hue_5678", "happy")
@@ -68,7 +78,7 @@ async def test_device_entities(
         ),
     )
     assert_result_info(info, "light.hue_5678", ["light.hue_5678"])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test device with multiple entities, which have a state
     entity_registry.async_get_or_create(
@@ -81,7 +91,7 @@ async def test_device_entities(
     hass.states.async_set("light.hue_abcd", "camper")
     info = render_to_info(hass, f"{{{{ device_entities('{device_entry.id}') }}}}")
     assert_result_info(info, ["light.hue_5678", "light.hue_abcd"], [])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
     info = render_to_info(
         hass,
         (
@@ -92,13 +102,14 @@ async def test_device_entities(
     assert_result_info(
         info, "light.hue_5678, light.hue_abcd", ["light.hue_5678", "light.hue_abcd"]
     )
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
 
-async def test_device_id(
-    hass: HomeAssistant,
-    device_registry: dr.DeviceRegistry,
-    entity_registry: er.EntityRegistry,
+@test
+async def device_id(
+    hass: HomeAssistant = Depends(hass),
+    device_registry: dr.DeviceRegistry = Depends(device_registry),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test device_id function."""
     config_entry = MockConfigEntry(domain="light")
@@ -118,7 +129,7 @@ async def test_device_id(
 
     info = render_to_info(hass, "{{ 'sensor.fail' | device_id }}")
     assert_result_info(info, None)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     info = render_to_info(hass, "{{ 56 | device_id }}")
     assert_result_info(info, None)
@@ -130,21 +141,22 @@ async def test_device_id(
         hass, f"{{{{ device_id('{entity_entry_no_device.entity_id}') }}}}"
     )
     assert_result_info(info, None)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     info = render_to_info(hass, f"{{{{ device_id('{entity_entry.entity_id}') }}}}")
     assert_result_info(info, device_entry.id)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     info = render_to_info(hass, "{{ device_id('test') }}")
     assert_result_info(info, device_entry.id)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
 
-async def test_device_name(
-    hass: HomeAssistant,
-    device_registry: dr.DeviceRegistry,
-    entity_registry: er.EntityRegistry,
+@test
+async def device_name(
+    hass: HomeAssistant = Depends(hass),
+    device_registry: dr.DeviceRegistry = Depends(device_registry),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test device_name function."""
     config_entry = MockConfigEntry(domain="light")
@@ -153,17 +165,17 @@ async def test_device_name(
     # Test non existing entity id
     info = render_to_info(hass, "{{ device_name('sensor.fake') }}")
     assert_result_info(info, None)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test non existing device id
     info = render_to_info(hass, "{{ device_name('1234567890') }}")
     assert_result_info(info, None)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test wrong value type
     info = render_to_info(hass, "{{ device_name(56) }}")
     assert_result_info(info, None)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test device with single entity
     device_entry = device_registry.async_get_or_create(
@@ -180,11 +192,11 @@ async def test_device_name(
     )
     info = render_to_info(hass, f"{{{{ device_name('{device_entry.id}') }}}}")
     assert_result_info(info, device_entry.name)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     info = render_to_info(hass, f"{{{{ device_name('{entity_entry.entity_id}') }}}}")
     assert_result_info(info, device_entry.name)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test device after renaming
     device_entry = device_registry.async_update_device(
@@ -194,17 +206,18 @@ async def test_device_name(
 
     info = render_to_info(hass, f"{{{{ device_name('{device_entry.id}') }}}}")
     assert_result_info(info, device_entry.name_by_user)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     info = render_to_info(hass, f"{{{{ device_name('{entity_entry.entity_id}') }}}}")
     assert_result_info(info, device_entry.name_by_user)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
 
-async def test_device_attr(
-    hass: HomeAssistant,
-    device_registry: dr.DeviceRegistry,
-    entity_registry: er.EntityRegistry,
+@test
+async def device_attr(
+    hass: HomeAssistant = Depends(hass),
+    device_registry: dr.DeviceRegistry = Depends(device_registry),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test device_attr and is_device_attr functions."""
     config_entry = MockConfigEntry(domain="light")
@@ -213,30 +226,28 @@ async def test_device_attr(
     # Test non existing device ids (device_attr)
     info = render_to_info(hass, "{{ device_attr('abc123', 'id') }}")
     assert_result_info(info, None)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     info = render_to_info(hass, "{{ device_attr(56, 'id') }}")
-    with pytest.raises(TemplateError):
-        assert_result_info(info, None)
+    expect(lambda: assert_result_info(info, None)).to_raise(TemplateError)
 
     # Test non existing device ids (is_device_attr)
     info = render_to_info(hass, "{{ is_device_attr('abc123', 'id', 'test') }}")
     assert_result_info(info, False)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     info = render_to_info(hass, "{{ is_device_attr(56, 'id', 'test') }}")
-    with pytest.raises(TemplateError):
-        assert_result_info(info, False)
+    expect(lambda: assert_result_info(info, False)).to_raise(TemplateError)
 
     # Test non existing entity id (device_attr)
     info = render_to_info(hass, "{{ device_attr('entity.test', 'id') }}")
     assert_result_info(info, None)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test non existing entity id (is_device_attr)
     info = render_to_info(hass, "{{ is_device_attr('entity.test', 'id', 'test') }}")
     assert_result_info(info, False)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     device_entry = device_registry.async_get_or_create(
         config_entry_id=config_entry.entry_id,
@@ -252,68 +263,68 @@ async def test_device_attr(
         hass, f"{{{{ device_attr('{device_entry.id}', 'invalid_attr') }}}}"
     )
     assert_result_info(info, None)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test non existent device attribute (is_device_attr)
     info = render_to_info(
         hass, f"{{{{ is_device_attr('{device_entry.id}', 'invalid_attr', 'test') }}}}"
     )
     assert_result_info(info, False)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test None device attribute (device_attr)
     info = render_to_info(
         hass, f"{{{{ device_attr('{device_entry.id}', 'manufacturer') }}}}"
     )
     assert_result_info(info, None)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test None device attribute mismatch (is_device_attr)
     info = render_to_info(
         hass, f"{{{{ is_device_attr('{device_entry.id}', 'manufacturer', 'test') }}}}"
     )
     assert_result_info(info, False)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test None device attribute match (is_device_attr)
     info = render_to_info(
         hass, f"{{{{ is_device_attr('{device_entry.id}', 'manufacturer', None) }}}}"
     )
     assert_result_info(info, True)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test valid device attribute match (device_attr)
     info = render_to_info(hass, f"{{{{ device_attr('{device_entry.id}', 'model') }}}}")
     assert_result_info(info, "test")
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test valid device attribute match (device_attr)
     info = render_to_info(
         hass, f"{{{{ device_attr('{entity_entry.entity_id}', 'model') }}}}"
     )
     assert_result_info(info, "test")
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test valid device attribute mismatch (is_device_attr)
     info = render_to_info(
         hass, f"{{{{ is_device_attr('{device_entry.id}', 'model', 'fail') }}}}"
     )
     assert_result_info(info, False)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test valid device attribute match (is_device_attr)
     info = render_to_info(
         hass, f"{{{{ is_device_attr('{device_entry.id}', 'model', 'test') }}}}"
     )
     assert_result_info(info, True)
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test filter syntax (device_attr)
     info = render_to_info(
         hass, f"{{{{ '{entity_entry.entity_id}' | device_attr('model') }}}}"
     )
     assert_result_info(info, "test")
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)
 
     # Test test syntax (is_device_attr)
     info = render_to_info(
@@ -324,4 +335,4 @@ async def test_device_attr(
         ),
     )
     assert_result_info(info, [device_entry.id])
-    assert info.rate_limit is None
+    expect(info.rate_limit).to_be(None)

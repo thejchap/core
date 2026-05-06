@@ -1,6 +1,6 @@
 """Test template helper functions."""
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import (
@@ -11,40 +11,51 @@ from homeassistant.helpers import (
 from homeassistant.helpers.template.helpers import raise_no_default, resolve_area_id
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import area_registry, device_registry, entity_registry, hass
 
 
-def test_raise_no_default() -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+def raise_no_default_helper() -> None:
     """Test raise_no_default raises ValueError with correct message."""
-    with pytest.raises(
+    expect(lambda: raise_no_default("test", "invalid")).to_raise(
         ValueError,
-        match="Template error: test got invalid input 'invalid' when rendering or compiling template '' but no default was specified",
-    ):
-        raise_no_default("test", "invalid")
+        match=(
+            "Template error: test got invalid input 'invalid' when rendering or"
+            " compiling template '' but no default was specified"
+        ),
+    )
 
 
-async def test_resolve_area_id(
-    hass: HomeAssistant,
-    area_registry: ar.AreaRegistry,
-    device_registry: dr.DeviceRegistry,
-    entity_registry: er.EntityRegistry,
+@test
+async def resolve_area_id_test(
+    hass: HomeAssistant = Depends(hass),
+    area_registry: ar.AreaRegistry = Depends(area_registry),
+    device_registry: dr.DeviceRegistry = Depends(device_registry),
+    entity_registry: er.EntityRegistry = Depends(entity_registry),
 ) -> None:
     """Test resolve_area_id function."""
     config_entry = MockConfigEntry(domain="light")
     config_entry.add_to_hass(hass)
 
     # Test non existing entity id
-    assert resolve_area_id(hass, "sensor.fake") is None
+    expect(resolve_area_id(hass, "sensor.fake")).to_be(None)
 
     # Test non existing device id (hex value)
-    assert resolve_area_id(hass, "123abc") is None
+    expect(resolve_area_id(hass, "123abc")).to_be(None)
 
     # Test non existing area name
-    assert resolve_area_id(hass, "fake area name") is None
+    expect(resolve_area_id(hass, "fake area name")).to_be(None)
 
     # Test wrong value type
-    assert resolve_area_id(hass, 56) is None
+    expect(resolve_area_id(hass, 56)).to_be(None)
 
-    area_entry_entity_id = area_registry.async_get_or_create("sensor.fake")
+    area_registry.async_get_or_create("sensor.fake")
 
     # Test device with single entity, which has no area
     device_entry = device_registry.async_get_or_create(
@@ -58,8 +69,8 @@ async def test_resolve_area_id(
         config_entry=config_entry,
         device_id=device_entry.id,
     )
-    assert resolve_area_id(hass, device_entry.id) is None
-    assert resolve_area_id(hass, entity_entry.entity_id) is None
+    expect(resolve_area_id(hass, device_entry.id)).to_be(None)
+    expect(resolve_area_id(hass, entity_entry.entity_id)).to_be(None)
 
     # Test device ID, entity ID and area name as input with area name that looks like
     # a device ID
@@ -71,12 +82,12 @@ async def test_resolve_area_id(
         entity_entry.entity_id, area_id=area_entry_hex.id
     )
 
-    assert resolve_area_id(hass, device_entry.id) == area_entry_hex.id
-    assert resolve_area_id(hass, entity_entry.entity_id) == area_entry_hex.id
-    assert resolve_area_id(hass, area_entry_hex.name) == area_entry_hex.id
+    expect(resolve_area_id(hass, device_entry.id)).to_equal(area_entry_hex.id)
+    expect(resolve_area_id(hass, entity_entry.entity_id)).to_equal(area_entry_hex.id)
+    expect(resolve_area_id(hass, area_entry_hex.name)).to_equal(area_entry_hex.id)
 
-    # Test device ID, entity ID and area name as input with area name that looks like an
-    # entity ID
+    # Test device ID, entity ID and area name as input with area name that looks like
+    # an entity ID
     area_entry_entity_id = area_registry.async_get_or_create("sensor.fake")
     device_entry = device_registry.async_update_device(
         device_entry.id, area_id=area_entry_entity_id.id
@@ -85,9 +96,13 @@ async def test_resolve_area_id(
         entity_entry.entity_id, area_id=area_entry_entity_id.id
     )
 
-    assert resolve_area_id(hass, device_entry.id) == area_entry_entity_id.id
-    assert resolve_area_id(hass, entity_entry.entity_id) == area_entry_entity_id.id
-    assert resolve_area_id(hass, area_entry_entity_id.name) == area_entry_entity_id.id
+    expect(resolve_area_id(hass, device_entry.id)).to_equal(area_entry_entity_id.id)
+    expect(resolve_area_id(hass, entity_entry.entity_id)).to_equal(
+        area_entry_entity_id.id
+    )
+    expect(resolve_area_id(hass, area_entry_entity_id.name)).to_equal(
+        area_entry_entity_id.id
+    )
 
     # Make sure that when entity doesn't have an area but its device does, that's what
     # gets returned
@@ -95,12 +110,14 @@ async def test_resolve_area_id(
         entity_entry.entity_id, area_id=None
     )
 
-    assert resolve_area_id(hass, entity_entry.entity_id) == area_entry_entity_id.id
+    expect(resolve_area_id(hass, entity_entry.entity_id)).to_equal(
+        area_entry_entity_id.id
+    )
 
     # Test area alias
     area_with_alias = area_registry.async_get_or_create("Living Room")
     area_registry.async_update(area_with_alias.id, aliases={"lounge", "family room"})
 
-    assert resolve_area_id(hass, "Living Room") == area_with_alias.id
-    assert resolve_area_id(hass, "lounge") == area_with_alias.id
-    assert resolve_area_id(hass, "family room") == area_with_alias.id
+    expect(resolve_area_id(hass, "Living Room")).to_equal(area_with_alias.id)
+    expect(resolve_area_id(hass, "lounge")).to_equal(area_with_alias.id)
+    expect(resolve_area_id(hass, "family room")).to_equal(area_with_alias.id)
