@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from goodwe import InverterError
 from goodwe.const import GOODWE_UDP_PORT
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.goodwe.const import (
     CONF_MODEL_FAMILY,
@@ -15,22 +16,33 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import TEST_SERIAL
+from ._fixtures import TEST_SERIAL, mock_inverter
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 TEST_HOST = "1.2.3.4"
 TEST_PORT = GOODWE_UDP_PORT
 
 
-async def test_manual_setup(hass: HomeAssistant, mock_inverter: MagicMock) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def manual_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _inverter: MagicMock = Depends(mock_inverter),
+) -> None:
     """Test manually setting up."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     with (
         patch(
@@ -42,18 +54,23 @@ async def test_manual_setup(hass: HomeAssistant, mock_inverter: MagicMock) -> No
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_PORT: TEST_PORT,
-        CONF_MODEL_FAMILY: "MagicMock",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_NAME)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_PORT: TEST_PORT,
+            CONF_MODEL_FAMILY: "MagicMock",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_manual_setup_already_exists(
-    hass: HomeAssistant, mock_inverter: MagicMock
+@test
+async def manual_setup_already_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _inverter: MagicMock = Depends(mock_inverter),
 ) -> None:
     """Test manually setting up and the device already exists."""
     entry = MockConfigEntry(
@@ -65,9 +82,9 @@ async def test_manual_setup_already_exists(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     with patch("homeassistant.components.goodwe.async_setup_entry", return_value=True):
         result = await hass.config_entries.flow.async_configure(
@@ -75,18 +92,22 @@ async def test_manual_setup_already_exists(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_manual_setup_device_offline(hass: HomeAssistant) -> None:
+@test
+async def manual_setup_device_offline(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test manually setting up, device offline."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     with patch(
         "homeassistant.components.goodwe.config_flow.connect",
@@ -97,5 +118,5 @@ async def test_manual_setup_device_offline(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {CONF_HOST: "connection_error"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({CONF_HOST: "connection_error"})
