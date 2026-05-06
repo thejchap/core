@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock
 
 from aiohttp import ClientError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.namecheapdns.const import DOMAIN, UPDATE_URL
 from homeassistant.components.namecheapdns.helpers import AuthFailed
@@ -19,317 +19,351 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
 
-from .conftest import TEST_USER_INPUT
+from ._fixtures import (
+    TEST_USER_INPUT,
+    config_entry,
+    mock_namecheap,
+    mock_setup_entry,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    aioclient_mock,
+    hass as hass_fixture,
+    issue_registry,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
 
 
-@pytest.mark.usefixtures("mock_namecheap")
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Trigger executor (module-level autouse) — only primes mock_network."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _namecheap: AsyncMock = Depends(mock_namecheap),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], TEST_USER_INPUT
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "home.example.com"
-    assert result["data"] == TEST_USER_INPUT
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("home.example.com")
+    expect(result["data"]).to_equal(TEST_USER_INPUT)
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "text_error"),
-    [
-        (ValueError, "unknown"),
-        (False, "update_failed"),
-        (ClientError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("value_error", side_effect=ValueError, text_error="unknown"),
+    test.case("update_failed", side_effect=False, text_error="update_failed"),
+    test.case("client_error", side_effect=ClientError, text_error="cannot_connect"),
 )
-async def test_form_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_namecheap: AsyncMock,
+async def form_errors(
     side_effect: Exception | bool,
     text_error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    namecheap: AsyncMock = Depends(mock_namecheap),
 ) -> None:
     """Test we handle errors."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    mock_namecheap.side_effect = [side_effect]
+    namecheap.side_effect = [side_effect]
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], TEST_USER_INPUT
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": text_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": text_error})
 
-    mock_namecheap.side_effect = None
+    namecheap.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], TEST_USER_INPUT
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "home.example.com"
-    assert result["data"] == TEST_USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("home.example.com")
+    expect(result["data"]).to_equal(TEST_USER_INPUT)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_namecheap")
-async def test_import(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    issue_registry: ir.IssueRegistry,
+@test
+async def import_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _namecheap: AsyncMock = Depends(mock_namecheap),
+    issues: ir.IssueRegistry = Depends(issue_registry),
 ) -> None:
     """Test import flow."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_IMPORT},
         data=TEST_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "home.example.com"
-    assert result["data"] == TEST_USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert issue_registry.async_get_issue(
-        domain=HOMEASSISTANT_DOMAIN,
-        issue_id=f"deprecated_yaml_{DOMAIN}",
-    )
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("home.example.com")
+    expect(result["data"]).to_equal(TEST_USER_INPUT)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    expect(
+        issues.async_get_issue(
+            domain=HOMEASSISTANT_DOMAIN,
+            issue_id=f"deprecated_yaml_{DOMAIN}",
+        )
+        is not None
+    ).to_be(True)
 
 
-async def test_import_exception(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    issue_registry: ir.IssueRegistry,
-    mock_namecheap: AsyncMock,
+@test
+async def import_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    issues: ir.IssueRegistry = Depends(issue_registry),
+    namecheap: AsyncMock = Depends(mock_namecheap),
 ) -> None:
     """Test import flow failed."""
-    mock_namecheap.side_effect = [False]
+    namecheap.side_effect = [False]
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_IMPORT},
         data=TEST_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "update_failed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("update_failed")
 
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(len(setup_entry.mock_calls)).to_equal(0)
 
-    assert issue_registry.async_get_issue(
-        domain=DOMAIN,
-        issue_id="deprecated_yaml_import_issue_error",
-    )
+    expect(
+        issues.async_get_issue(
+            domain=DOMAIN,
+            issue_id="deprecated_yaml_import_issue_error",
+        )
+        is not None
+    ).to_be(True)
 
 
-@pytest.mark.usefixtures("mock_namecheap")
-async def test_init_import_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+@test
+async def init_import_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _namecheap: AsyncMock = Depends(mock_namecheap),
 ) -> None:
     """Test yaml triggers import flow."""
-
     await async_setup_component(
         hass,
         DOMAIN,
         {DOMAIN: TEST_USER_INPUT},
     )
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_namecheap")
-async def test_reconfigure(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
+@test
+async def reconfigure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    _namecheap: AsyncMock = Depends(mock_namecheap),
 ) -> None:
     """Test reconfigure flow."""
-    config_entry.add_to_hass(hass)
-    result = await config_entry.start_reconfigure_flow(hass)
+    entry.add_to_hass(hass)
+    result = await entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_PASSWORD: "new-password"}
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert config_entry.data[CONF_PASSWORD] == "new-password"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(entry.data[CONF_PASSWORD]).to_equal("new-password")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "text_error"),
-    [
-        (ValueError, "unknown"),
-        (False, "update_failed"),
-        (ClientError, "cannot_connect"),
-        (AuthFailed, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("value_error", side_effect=ValueError, text_error="unknown"),
+    test.case("update_failed", side_effect=False, text_error="update_failed"),
+    test.case("client_error", side_effect=ClientError, text_error="cannot_connect"),
+    test.case("auth_failed", side_effect=AuthFailed, text_error="invalid_auth"),
 )
-async def test_reconfigure_errors(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    mock_namecheap: AsyncMock,
+async def reconfigure_errors(
     side_effect: Exception | bool,
     text_error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    namecheap: AsyncMock = Depends(mock_namecheap),
 ) -> None:
     """Test we handle errors."""
+    entry.add_to_hass(hass)
+    result = await entry.start_reconfigure_flow(hass)
 
-    config_entry.add_to_hass(hass)
-    result = await config_entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-
-    mock_namecheap.side_effect = [side_effect]
+    namecheap.side_effect = [side_effect]
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_PASSWORD: "new-password"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": text_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": text_error})
 
-    mock_namecheap.side_effect = None
+    namecheap.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_PASSWORD: "new-password"}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
-    assert config_entry.data[CONF_PASSWORD] == "new-password"
+    expect(entry.data[CONF_PASSWORD]).to_equal("new-password")
 
 
-@pytest.mark.usefixtures("mock_namecheap")
-async def test_reauth(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    aioclient_mock: AiohttpClientMocker,
+@test
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    _namecheap: AsyncMock = Depends(mock_namecheap),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
 ) -> None:
     """Test reauth flow."""
-    aioclient_mock.get(
+    aioclient.get(
         UPDATE_URL,
         params=TEST_USER_INPUT,
         text="<interface-response><ErrCount>0</ErrCount></interface-response>",
     )
-    config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    entry.add_to_hass(hass)
+    expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.LOADED
+    expect(entry.state).to_be(ConfigEntryState.LOADED)
 
-    result = await config_entry.start_reauth_flow(hass)
+    result = await entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_PASSWORD: "new-password"}
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert config_entry.data[CONF_PASSWORD] == "new-password"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.data[CONF_PASSWORD]).to_equal("new-password")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "text_error"),
-    [
-        (ValueError, "unknown"),
-        (False, "update_failed"),
-        (ClientError, "cannot_connect"),
-        (AuthFailed, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("value_error", side_effect=ValueError, text_error="unknown"),
+    test.case("update_failed", side_effect=False, text_error="update_failed"),
+    test.case("client_error", side_effect=ClientError, text_error="cannot_connect"),
+    test.case("auth_failed", side_effect=AuthFailed, text_error="invalid_auth"),
 )
-async def test_reauth_errors(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    mock_namecheap: AsyncMock,
+async def reauth_errors(
     side_effect: Exception | bool,
     text_error: str,
-    aioclient_mock: AiohttpClientMocker,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    namecheap: AsyncMock = Depends(mock_namecheap),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
 ) -> None:
     """Test we handle errors."""
-    aioclient_mock.get(
+    aioclient.get(
         UPDATE_URL,
         params=TEST_USER_INPUT,
         text="<interface-response><ErrCount>0</ErrCount></interface-response>",
     )
-    config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    entry.add_to_hass(hass)
+    expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.LOADED
+    expect(entry.state).to_be(ConfigEntryState.LOADED)
 
-    result = await config_entry.start_reauth_flow(hass)
+    result = await entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_namecheap.side_effect = [side_effect]
+    namecheap.side_effect = [side_effect]
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_PASSWORD: "new-password"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": text_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": text_error})
 
-    mock_namecheap.side_effect = None
+    namecheap.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_PASSWORD: "new-password"}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
-    assert config_entry.data[CONF_PASSWORD] == "new-password"
+    expect(entry.data[CONF_PASSWORD]).to_equal("new-password")
 
 
-async def test_initiate_reauth_flow(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    aioclient_mock: AiohttpClientMocker,
+@test
+async def initiate_reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
 ) -> None:
     """Test authentication error initiates reauth flow."""
-
-    aioclient_mock.get(
+    aioclient.get(
         UPDATE_URL,
         params=TEST_USER_INPUT,
-        text="<interface-response><ErrCount>1</ErrCount><errors><Err1>Passwords do not match</Err1></errors></interface-response>",
+        text=(
+            "<interface-response><ErrCount>1</ErrCount><errors>"
+            "<Err1>Passwords do not match</Err1></errors></interface-response>"
+        ),
     )
-    config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(config_entry.entry_id)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.SETUP_ERROR
+    expect(entry.state).to_be(ConfigEntryState.SETUP_ERROR)
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
 
     flow = flows[0]
-    assert flow.get("step_id") == "reauth_confirm"
-    assert flow.get("handler") == DOMAIN
+    expect(flow.get("step_id")).to_equal("reauth_confirm")
+    expect(flow.get("handler")).to_equal(DOMAIN)
 
-    assert "context" in flow
-    assert flow["context"].get("source") == SOURCE_REAUTH
-    assert flow["context"].get("entry_id") == config_entry.entry_id
+    expect("context" in flow).to_be(True)
+    expect(flow["context"].get("source")).to_equal(SOURCE_REAUTH)
+    expect(flow["context"].get("entry_id")).to_equal(entry.entry_id)
