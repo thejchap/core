@@ -1,6 +1,10 @@
 """Test the PrusaLink config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
+
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.prusalink.config_flow import InvalidAuth
@@ -8,14 +12,27 @@ from homeassistant.components.prusalink.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_version_api as mock_version_api_fx
 
-async def test_form(hass: HomeAssistant, mock_version_api) -> None:
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_version: dict[str, str] = Depends(mock_version_api_fx),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with patch(
         "homeassistant.components.prusalink.async_setup_entry",
@@ -31,17 +48,23 @@ async def test_form(hass: HomeAssistant, mock_version_api) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "PrusaXL"
-    assert result2["data"] == {
-        "host": "http://1.1.1.1",
-        "username": "abcdefg",
-        "password": "abcdefg",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("PrusaXL")
+    expect(result2["data"]).to_equal(
+        {
+            "host": "http://1.1.1.1",
+            "username": "abcdefg",
+            "password": "abcdefg",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_mk3(hass: HomeAssistant, mock_version_api) -> None:
+@test
+async def form_mk3(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_version_api: dict[str, str] = Depends(mock_version_api_fx),
+) -> None:
     """Test it works for MK2/MK3."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -65,11 +88,12 @@ async def test_form_mk3(hass: HomeAssistant, mock_version_api) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -88,11 +112,12 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_unknown(hass: HomeAssistant) -> None:
+@test
+async def form_unknown(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -111,11 +136,15 @@ async def test_form_unknown(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_form_too_low_version(hass: HomeAssistant, mock_version_api) -> None:
+@test
+async def form_too_low_version(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_version_api: dict[str, str] = Depends(mock_version_api_fx),
+) -> None:
     """Test we handle too low API version."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -132,11 +161,15 @@ async def test_form_too_low_version(hass: HomeAssistant, mock_version_api) -> No
         },
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "not_supported"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "not_supported"})
 
 
-async def test_form_invalid_version_2(hass: HomeAssistant, mock_version_api) -> None:
+@test
+async def form_invalid_version_2(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_version_api: dict[str, str] = Depends(mock_version_api_fx),
+) -> None:
     """Test we handle invalid version."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -153,12 +186,14 @@ async def test_form_invalid_version_2(hass: HomeAssistant, mock_version_api) -> 
         },
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "not_supported"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "not_supported"})
 
 
-async def test_form_invalid_mk3_server_version(
-    hass: HomeAssistant, mock_version_api
+@test
+async def form_invalid_mk3_server_version(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_version_api: dict[str, str] = Depends(mock_version_api_fx),
 ) -> None:
     """Test we handle invalid version for MK2/MK3."""
     result = await hass.config_entries.flow.async_init(
@@ -178,11 +213,12 @@ async def test_form_invalid_mk3_server_version(
         },
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "not_supported"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "not_supported"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -201,5 +237,5 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
