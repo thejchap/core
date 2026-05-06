@@ -108,6 +108,8 @@ async def hass(
             )
         if orig_exception_handler is not None:
             orig_exception_handler(loop, context)
+        else:
+            loop.default_exception_handler(context)
 
     async with async_test_home_assistant(
         loop, load_registries, config_dir=hass_config_dir
@@ -178,6 +180,8 @@ async def hass_unloaded(
             )
         if orig_exception_handler is not None:
             orig_exception_handler(loop, context)
+        else:
+            loop.default_exception_handler(context)
 
     async with async_test_home_assistant(
         loop, False, config_dir=hass_config_dir
