@@ -1,0 +1,1 @@
+"""Tryke fixtures for downloader."""
