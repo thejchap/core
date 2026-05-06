@@ -1,39 +1,53 @@
 """Test the AirPatrol integration setup."""
 
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
-from airpatrol.api import AirPatrolAPI, AirPatrolAuthenticationError
+from airpatrol.api import AirPatrolAuthenticationError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, State
 
+from ._fixtures import get_client, get_data, mock_config_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_load_unload_config_entry(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    get_client: AirPatrolAPI,
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+async def load_unload_config_entry(
+    _network: None = Depends(mock_network),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    get_client: AsyncMock = Depends(get_client),
 ) -> None:
     """Test loading and unloading the config entry."""
-    # Add the config entry to hass first
     mock_config_entry.add_to_hass(hass)
 
-    # Load the config entry
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
-    assert mock_config_entry.state is ConfigEntryState.LOADED
+    expect(mock_config_entry.state).to_be(ConfigEntryState.LOADED)
 
-    assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
+    expect(
+        await hass.config_entries.async_unload(mock_config_entry.entry_id)
+    ).to_be(True)
     await hass.async_block_till_done()
-    assert mock_config_entry.state is ConfigEntryState.NOT_LOADED
+    expect(mock_config_entry.state).to_be(ConfigEntryState.NOT_LOADED)
 
 
-async def test_update_data_refresh_token_success(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    get_client: AirPatrolAPI,
-    get_data,
+@test
+async def update_data_refresh_token_success(
+    _network: None = Depends(mock_network),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    get_client: AsyncMock = Depends(get_client),
+    get_data: list[dict[str, Any]] = Depends(get_data),
 ) -> None:
     """Test data update with expired token and successful token refresh."""
     get_client.get_data.side_effect = [
@@ -46,15 +60,16 @@ async def test_update_data_refresh_token_success(
     await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
-    assert get_client.get_data.call_count == 2
+    expect(get_client.get_data.call_count).to_equal(2)
+    expect(hass.states.get("climate.living_room")).not_.to_be(None)
 
-    assert hass.states.get("climate.living_room")
 
-
-async def test_update_data_auth_failure(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    get_client: AirPatrolAPI,
+@test
+async def update_data_auth_failure(
+    _network: None = Depends(mock_network),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    get_client: AsyncMock = Depends(get_client),
 ) -> None:
     """Test permanent authentication failure."""
     mock_config_entry.add_to_hass(hass)
@@ -69,8 +84,8 @@ async def test_update_data_auth_failure(
         await hass.async_block_till_done()
 
         state: State | None = hass.states.get("climate.living_room")
-        assert state is None
+        expect(state).to_be(None)
 
         entry = hass.config_entries.async_get_entry(mock_config_entry.entry_id)
-        assert entry.state is ConfigEntryState.SETUP_ERROR
-        assert entry.reason == "Authentication with AirPatrol failed"
+        expect(entry.state).to_be(ConfigEntryState.SETUP_ERROR)
+        expect(entry.reason).to_equal("Authentication with AirPatrol failed")
