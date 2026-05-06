@@ -1,8 +1,11 @@
 """Test Steam config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 import steam
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.steam_online.const import CONF_ACCOUNTS, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -24,8 +27,23 @@ from . import (
     patch_user_interface_null,
 )
 
+from tests.hass_fixtures import (
+    entity_registry as entity_registry_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
 
-async def test_flow_user(hass: HomeAssistant) -> None:
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def flow_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user initialized flow."""
     with (
         patch_interface(),
@@ -42,61 +60,81 @@ async def test_flow_user(hass: HomeAssistant) -> None:
             result["flow_id"],
             user_input=CONF_DATA,
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == ACCOUNT_NAME_1
-        assert result["data"] == CONF_DATA
-        assert result["options"] == CONF_OPTIONS
-        assert result["result"].unique_id == ACCOUNT_1
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(ACCOUNT_NAME_1)
+        expect(result["data"]).to_equal(CONF_DATA)
+        expect(result["options"]).to_equal(CONF_OPTIONS)
+        expect(result["result"].unique_id).to_equal(ACCOUNT_1)
 
 
-async def test_flow_user_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def flow_user_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user initialized flow with unreachable server."""
     with patch_interface() as servicemock:
         servicemock.side_effect = steam.api.HTTPTimeoutError
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=CONF_DATA
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
-        assert result["errors"]["base"] == "cannot_connect"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
+        expect(result["errors"]["base"]).to_equal("cannot_connect")
 
 
-async def test_flow_user_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def flow_user_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user initialized flow with invalid authentication."""
     with patch_interface() as servicemock:
         servicemock.side_effect = steam.api.HTTPError("403")
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=CONF_DATA
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
-        assert result["errors"]["base"] == "invalid_auth"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
+        expect(result["errors"]["base"]).to_equal("invalid_auth")
 
 
-async def test_flow_user_invalid_account(hass: HomeAssistant) -> None:
+@test
+async def flow_user_invalid_account(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user initialized flow with invalid account ID."""
     with patch_user_interface_null():
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=CONF_DATA
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
-        assert result["errors"]["base"] == "invalid_account"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
+        expect(result["errors"]["base"]).to_equal("invalid_account")
 
 
-async def test_flow_user_unknown(hass: HomeAssistant) -> None:
+@test
+async def flow_user_unknown(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user initialized flow with unknown error."""
     with patch_interface() as servicemock:
         servicemock.side_effect = Exception
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=CONF_DATA
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
-        assert result["errors"]["base"] == "unknown"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
+        expect(result["errors"]["base"]).to_equal("unknown")
 
 
-async def test_flow_user_already_configured(hass: HomeAssistant) -> None:
+@test
+async def flow_user_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user initialized flow with duplicate account."""
     create_entry(hass)
     with patch_interface():
@@ -104,34 +142,42 @@ async def test_flow_user_already_configured(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": SOURCE_USER}, data=CONF_DATA
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_flow_reauth(hass: HomeAssistant) -> None:
+@test
+async def flow_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth step."""
     entry = create_entry(hass)
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
     with patch_interface():
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={},
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
         new_conf = CONF_DATA | {CONF_API_KEY: "1234567890"}
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input=new_conf,
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "reauth_successful"
-        assert entry.data == new_conf
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("reauth_successful")
+        expect(entry.data).to_equal(new_conf)
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test updating options."""
     entry = create_entry(hass)
     with (
@@ -145,8 +191,8 @@ async def test_options_flow(hass: HomeAssistant) -> None:
         result = await hass.config_entries.options.async_init(entry.entry_id)
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -154,12 +200,15 @@ async def test_options_flow(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == CONF_OPTIONS_2
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(CONF_OPTIONS_2)
 
 
-async def test_options_flow_deselect(
-    hass: HomeAssistant, entity_registry: er.EntityRegistry
+@test
+async def options_flow_deselect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fixture),
 ) -> None:
     """Test deselecting user."""
     entry = create_entry(hass)
@@ -181,8 +230,8 @@ async def test_options_flow_deselect(
             return_value=True,
         ),
     ):
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -190,20 +239,24 @@ async def test_options_flow_deselect(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_ACCOUNTS: {}}
-    assert len(entity_registry.entities) == 0
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({CONF_ACCOUNTS: {}})
+    expect(len(entity_registry.entities)).to_equal(0)
 
 
-async def test_options_flow_timeout(hass: HomeAssistant) -> None:
+@test
+async def options_flow_timeout(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test updating options timeout getting friends list."""
     entry = create_entry(hass)
     with patch_interface() as servicemock:
         servicemock.side_effect = steam.api.HTTPTimeoutError
         result = await hass.config_entries.options.async_init(entry.entry_id)
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -211,18 +264,22 @@ async def test_options_flow_timeout(hass: HomeAssistant) -> None:
         )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == CONF_OPTIONS
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(CONF_OPTIONS)
 
 
-async def test_options_flow_unauthorized(hass: HomeAssistant) -> None:
+@test
+async def options_flow_unauthorized(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test updating options when user's friends list is not public."""
     entry = create_entry(hass)
     with patch_interface_private():
         result = await hass.config_entries.options.async_init(entry.entry_id)
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -230,5 +287,5 @@ async def test_options_flow_unauthorized(hass: HomeAssistant) -> None:
         )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == CONF_OPTIONS
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(CONF_OPTIONS)
