@@ -6,6 +6,7 @@ from iaqualink.exception import (
     AqualinkServiceException,
     AqualinkServiceUnauthorizedException,
 )
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.iaqualink import DOMAIN, config_flow
 from homeassistant.config_entries import SOURCE_DHCP, SOURCE_USER
@@ -14,7 +15,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
+from ._fixtures import config_data, config_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 DHCP_DISCOVERY = DhcpServiceInfo(
     ip="192.168.1.23",
@@ -23,23 +27,34 @@ DHCP_DISCOVERY = DhcpServiceInfo(
 )
 
 
-async def test_already_configured(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    config_data: dict[str, str],
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    _data: dict[str, str] = Depends(config_data),
 ) -> None:
     """Test config flow when iaqualink component is already setup."""
-    config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
 
 
-async def test_without_config(hass: HomeAssistant) -> None:
+@test
+async def without_config(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow with no configuration."""
     flow = config_flow.AqualinkFlowHandler()
     flow.hass = hass
@@ -47,13 +62,16 @@ async def test_without_config(hass: HomeAssistant) -> None:
 
     result = await flow.async_step_user()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
 
-async def test_dhcp_discovery_starts_user_flow(
-    hass: HomeAssistant, config_data: dict[str, str]
+@test
+async def dhcp_discovery_starts_user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    data: dict[str, str] = Depends(config_data),
 ) -> None:
     """Test DHCP discovery starts the user flow."""
     result = await hass.config_entries.flow.async_init(
@@ -62,10 +80,10 @@ async def test_dhcp_discovery_starts_user_flow(
         data=DHCP_DISCOVERY,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
-    assert result["description_placeholders"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
+    expect(result["description_placeholders"]).to_be(None)
 
     with (
         patch(
@@ -79,17 +97,20 @@ async def test_dhcp_discovery_starts_user_flow(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            config_data,
+            data,
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == config_data[CONF_USERNAME]
-    assert result["data"] == config_data
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(data[CONF_USERNAME])
+    expect(result["data"]).to_equal(data)
 
 
-async def test_with_invalid_credentials(
-    hass: HomeAssistant, config_data: dict[str, str]
+@test
+async def with_invalid_credentials(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    data: dict[str, str] = Depends(config_data),
 ) -> None:
     """Test config flow with invalid username and/or password."""
     flow = config_flow.AqualinkFlowHandler()
@@ -100,15 +121,18 @@ async def test_with_invalid_credentials(
         "homeassistant.components.iaqualink.config_flow.AqualinkClient.login",
         side_effect=AqualinkServiceUnauthorizedException,
     ):
-        result = await flow.async_step_user(config_data)
+        result = await flow.async_step_user(data)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_service_exception(
-    hass: HomeAssistant, config_data: dict[str, str]
+@test
+async def service_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    data: dict[str, str] = Depends(config_data),
 ) -> None:
     """Test config flow encountering service exception."""
     flow = config_flow.AqualinkFlowHandler()
@@ -118,15 +142,18 @@ async def test_service_exception(
         "homeassistant.components.iaqualink.config_flow.AqualinkClient.login",
         side_effect=AqualinkServiceException,
     ):
-        result = await flow.async_step_user(config_data)
+        result = await flow.async_step_user(data)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_with_existing_config(
-    hass: HomeAssistant, config_data: dict[str, str]
+@test
+async def with_existing_config(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    data: dict[str, str] = Depends(config_data),
 ) -> None:
     """Test config flow with existing configuration."""
     flow = config_flow.AqualinkFlowHandler()
@@ -136,19 +163,21 @@ async def test_with_existing_config(
         "homeassistant.components.iaqualink.config_flow.AqualinkClient.login",
         return_value=None,
     ):
-        result = await flow.async_step_user(config_data)
+        result = await flow.async_step_user(data)
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == config_data["username"]
-    assert result["data"] == config_data
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(data["username"])
+    expect(result["data"]).to_equal(data)
 
 
-async def test_dhcp_discovery_aborts_if_already_configured(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
+@test
+async def dhcp_discovery_aborts_if_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test DHCP discovery aborts if iaqualink is already configured."""
-    config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -156,16 +185,21 @@ async def test_dhcp_discovery_aborts_if_already_configured(
         data=DHCP_DISCOVERY,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
 
 
-async def test_reauth_success(hass: HomeAssistant, config_data: dict[str, str]) -> None:
+@test
+async def reauth_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    data: dict[str, str] = Depends(config_data),
+) -> None:
     """Test successful reauthentication."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        title=config_data[CONF_USERNAME],
-        data=config_data,
+        title=data[CONF_USERNAME],
+        data=data,
     )
     entry.add_to_hass(hass)
 
@@ -173,9 +207,9 @@ async def test_reauth_success(hass: HomeAssistant, config_data: dict[str, str]) 
 
     result = await entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -193,24 +227,29 @@ async def test_reauth_success(hass: HomeAssistant, config_data: dict[str, str]) 
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.title == new_username
-    assert dict(entry.data) == {
-        **config_data,
-        CONF_USERNAME: new_username,
-        CONF_PASSWORD: "new_password",
-    }
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.title).to_equal(new_username)
+    expect(dict(entry.data)).to_equal(
+        {
+            **data,
+            CONF_USERNAME: new_username,
+            CONF_PASSWORD: "new_password",
+        }
+    )
 
 
-async def test_reconfigure_success(
-    hass: HomeAssistant, config_data: dict[str, str]
+@test
+async def reconfigure_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    data: dict[str, str] = Depends(config_data),
 ) -> None:
     """Test successful reconfiguration."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        title=config_data[CONF_USERNAME],
-        data=config_data,
+        title=data[CONF_USERNAME],
+        data=data,
     )
     entry.add_to_hass(hass)
 
@@ -218,9 +257,9 @@ async def test_reconfigure_success(
 
     result = await entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -238,21 +277,26 @@ async def test_reconfigure_success(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert entry.title == new_username
-    assert dict(entry.data) == {
-        **config_data,
-        CONF_USERNAME: new_username,
-        CONF_PASSWORD: "new_password",
-    }
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(entry.title).to_equal(new_username)
+    expect(dict(entry.data)).to_equal(
+        {
+            **data,
+            CONF_USERNAME: new_username,
+            CONF_PASSWORD: "new_password",
+        }
+    )
 
 
-async def test_reauth_invalid_auth(
-    hass: HomeAssistant, config_data: dict[str, str]
+@test
+async def reauth_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    data: dict[str, str] = Depends(config_data),
 ) -> None:
     """Test reauthentication with invalid credentials."""
-    entry = MockConfigEntry(domain=DOMAIN, data=config_data)
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
@@ -263,19 +307,22 @@ async def test_reauth_invalid_auth(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_USERNAME: config_data[CONF_USERNAME], CONF_PASSWORD: "bad_password"},
+            {CONF_USERNAME: data[CONF_USERNAME], CONF_PASSWORD: "bad_password"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_reauth_cannot_connect(
-    hass: HomeAssistant, config_data: dict[str, str]
+@test
+async def reauth_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    data: dict[str, str] = Depends(config_data),
 ) -> None:
     """Test reauthentication when the service cannot be reached."""
-    entry = MockConfigEntry(domain=DOMAIN, data=config_data)
+    entry = MockConfigEntry(domain=DOMAIN, data=data)
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
@@ -286,9 +333,9 @@ async def test_reauth_cannot_connect(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_USERNAME: config_data[CONF_USERNAME], CONF_PASSWORD: "new_password"},
+            {CONF_USERNAME: data[CONF_USERNAME], CONF_PASSWORD: "new_password"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
