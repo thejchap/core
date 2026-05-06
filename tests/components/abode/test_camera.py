@@ -2,34 +2,61 @@
 
 from unittest.mock import patch
 
+import requests_mock
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.abode.const import DOMAIN
 from homeassistant.components.camera import DOMAIN as CAMERA_DOMAIN, CameraState
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
+from ._fixtures import requests_mock_fixture
 from .common import setup_platform
 
+from tests.hass_fixtures import (
+    entity_registry as entity_registry_fixture,
+    hass as hass_fixture,
+)
 
-async def test_entity_registry(
-    hass: HomeAssistant, entity_registry: er.EntityRegistry
+
+@fixture
+def _abode_setup(
+    _requests: requests_mock.Mocker = Depends(requests_mock_fixture),
+) -> None:
+    """Wire the autouse Abode HTTP mocks for tryke."""
+
+
+@test
+async def entity_registry(
+    _trigger: None = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fixture),
 ) -> None:
     """Tests that the devices are registered in the entity registry."""
     await setup_platform(hass, CAMERA_DOMAIN)
 
     entry = entity_registry.async_get("camera.test_cam")
-    assert entry.unique_id == "d0a3a1c316891ceb00c20118aae2a133"
+    expect(entry.unique_id).to_equal("d0a3a1c316891ceb00c20118aae2a133")
 
 
-async def test_attributes(hass: HomeAssistant) -> None:
+@test
+async def attributes(
+    _trigger: None = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the camera attributes are correct."""
     await setup_platform(hass, CAMERA_DOMAIN)
 
     state = hass.states.get("camera.test_cam")
-    assert state.state == CameraState.IDLE
+    expect(state.state).to_equal(CameraState.IDLE)
 
 
-async def test_capture_image(hass: HomeAssistant) -> None:
+@test
+async def capture_image(
+    _trigger: None = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the camera capture image service."""
     await setup_platform(hass, CAMERA_DOMAIN)
 
@@ -44,7 +71,11 @@ async def test_capture_image(hass: HomeAssistant) -> None:
         mock_capture.assert_called_once()
 
 
-async def test_camera_on(hass: HomeAssistant) -> None:
+@test
+async def camera_on(
+    _trigger: None = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the camera turn on service."""
     await setup_platform(hass, CAMERA_DOMAIN)
 
@@ -59,7 +90,11 @@ async def test_camera_on(hass: HomeAssistant) -> None:
         mock_capture.assert_called_once_with(False)
 
 
-async def test_camera_off(hass: HomeAssistant) -> None:
+@test
+async def camera_off(
+    _trigger: None = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the camera turn off service."""
     await setup_platform(hass, CAMERA_DOMAIN)
 

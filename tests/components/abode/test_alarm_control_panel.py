@@ -2,6 +2,9 @@
 
 from unittest.mock import PropertyMock, patch
 
+import requests_mock
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.abode import ATTR_DEVICE_ID
 from homeassistant.components.alarm_control_panel import (
     DOMAIN as ALARM_DOMAIN,
@@ -18,36 +21,60 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
+from ._fixtures import requests_mock_fixture
 from .common import setup_platform
+
+from tests.hass_fixtures import (
+    entity_registry as entity_registry_fixture,
+    hass as hass_fixture,
+)
 
 DEVICE_ID = "alarm_control_panel.abode_alarm"
 
 
-async def test_entity_registry(
-    hass: HomeAssistant, entity_registry: er.EntityRegistry
+@fixture
+def _abode_setup(
+    _requests: requests_mock.Mocker = Depends(requests_mock_fixture),
+) -> None:
+    """Wire the autouse Abode HTTP mocks for tryke."""
+
+
+@test
+async def entity_registry(
+    _trigger: None = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fixture),
 ) -> None:
     """Tests that the devices are registered in the entity registry."""
     await setup_platform(hass, ALARM_DOMAIN)
 
     entry = entity_registry.async_get(DEVICE_ID)
     # Abode alarm device unique_id is the MAC address
-    assert entry.unique_id == "001122334455"
+    expect(entry.unique_id).to_equal("001122334455")
 
 
-async def test_attributes(hass: HomeAssistant) -> None:
+@test
+async def attributes(
+    _trigger: None = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the alarm control panel attributes are correct."""
     await setup_platform(hass, ALARM_DOMAIN)
 
     state = hass.states.get(DEVICE_ID)
-    assert state.state == AlarmControlPanelState.DISARMED
-    assert state.attributes.get(ATTR_DEVICE_ID) == "area_1"
-    assert not state.attributes.get("battery_backup")
-    assert not state.attributes.get("cellular_backup")
-    assert state.attributes.get(ATTR_FRIENDLY_NAME) == "Abode Alarm"
-    assert state.attributes.get(ATTR_SUPPORTED_FEATURES) == 3
+    expect(state.state).to_equal(AlarmControlPanelState.DISARMED)
+    expect(state.attributes.get(ATTR_DEVICE_ID)).to_equal("area_1")
+    expect(state.attributes.get("battery_backup")).to_be_falsy()
+    expect(state.attributes.get("cellular_backup")).to_be_falsy()
+    expect(state.attributes.get(ATTR_FRIENDLY_NAME)).to_equal("Abode Alarm")
+    expect(state.attributes.get(ATTR_SUPPORTED_FEATURES)).to_equal(3)
 
 
-async def test_set_alarm_away(hass: HomeAssistant) -> None:
+@test
+async def set_alarm_away(
+    _trigger: None = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the alarm control panel can be set to away."""
     with patch(
         "jaraco.abode.event_controller.EventController.add_device_callback"
@@ -75,10 +102,14 @@ async def test_set_alarm_away(hass: HomeAssistant) -> None:
             await hass.async_block_till_done()
 
             state = hass.states.get(DEVICE_ID)
-            assert state.state == AlarmControlPanelState.ARMED_AWAY
+            expect(state.state).to_equal(AlarmControlPanelState.ARMED_AWAY)
 
 
-async def test_set_alarm_home(hass: HomeAssistant) -> None:
+@test
+async def set_alarm_home(
+    _trigger: None = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the alarm control panel can be set to home."""
     with patch(
         "jaraco.abode.event_controller.EventController.add_device_callback"
@@ -105,10 +136,14 @@ async def test_set_alarm_home(hass: HomeAssistant) -> None:
             await hass.async_block_till_done()
 
             state = hass.states.get(DEVICE_ID)
-            assert state.state == AlarmControlPanelState.ARMED_HOME
+            expect(state.state).to_equal(AlarmControlPanelState.ARMED_HOME)
 
 
-async def test_set_alarm_standby(hass: HomeAssistant) -> None:
+@test
+async def set_alarm_standby(
+    _trigger: None = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the alarm control panel can be set to standby."""
     with patch(
         "jaraco.abode.event_controller.EventController.add_device_callback"
@@ -134,10 +169,14 @@ async def test_set_alarm_standby(hass: HomeAssistant) -> None:
             await hass.async_block_till_done()
 
             state = hass.states.get(DEVICE_ID)
-            assert state.state == AlarmControlPanelState.DISARMED
+            expect(state.state).to_equal(AlarmControlPanelState.DISARMED)
 
 
-async def test_state_unknown(hass: HomeAssistant) -> None:
+@test
+async def state_unknown(
+    _trigger: None = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test an unknown alarm control panel state."""
     with patch(
         "jaraco.abode.devices.alarm.Alarm.mode", new_callable=PropertyMock
@@ -148,4 +187,4 @@ async def test_state_unknown(hass: HomeAssistant) -> None:
         mock_mode.return_value = None
 
         state = hass.states.get(DEVICE_ID)
-        assert state.state == "unknown"
+        expect(state.state).to_equal("unknown")

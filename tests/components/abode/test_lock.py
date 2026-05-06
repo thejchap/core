@@ -4,7 +4,8 @@ import json
 from unittest.mock import patch
 
 from jaraco.abode.helpers import urls as URL
-from requests_mock import Mocker
+import requests_mock as requests_mock_lib
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.abode import ATTR_DEVICE_ID
 from homeassistant.components.lock import DOMAIN as LOCK_DOMAIN, LockState
@@ -17,37 +18,61 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
+from ._fixtures import requests_mock_fixture
 from .common import setup_platform
 
 from tests.common import async_load_fixture
+from tests.hass_fixtures import (
+    entity_registry as entity_registry_fixture,
+    hass as hass_fixture,
+)
 
 DEVICE_ID = "lock.test_lock"
 
 
-async def test_entity_registry(
-    hass: HomeAssistant, entity_registry: er.EntityRegistry
+@fixture
+def _abode_setup(
+    _requests: requests_mock_lib.Mocker = Depends(requests_mock_fixture),
+) -> requests_mock_lib.Mocker:
+    """Wire the autouse Abode HTTP mocks for tryke and expose the mocker."""
+    return _requests
+
+
+@test
+async def entity_registry(
+    _trigger: requests_mock_lib.Mocker = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fixture),
 ) -> None:
     """Tests that the devices are registered in the entity registry."""
     await setup_platform(hass, LOCK_DOMAIN)
 
     entry = entity_registry.async_get(DEVICE_ID)
-    assert entry.unique_id == "51cab3b545d2o34ed7fz02731bda5324"
+    expect(entry.unique_id).to_equal("51cab3b545d2o34ed7fz02731bda5324")
 
 
-async def test_attributes(hass: HomeAssistant) -> None:
+@test
+async def attributes(
+    _trigger: requests_mock_lib.Mocker = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the lock attributes are correct."""
     await setup_platform(hass, LOCK_DOMAIN)
 
     state = hass.states.get(DEVICE_ID)
-    assert state.state == LockState.LOCKED
-    assert state.attributes.get(ATTR_DEVICE_ID) == "ZW:00000004"
-    assert not state.attributes.get("battery_low")
-    assert not state.attributes.get("no_response")
-    assert state.attributes.get("device_type") == "Door Lock"
-    assert state.attributes.get(ATTR_FRIENDLY_NAME) == "Test Lock"
+    expect(state.state).to_equal(LockState.LOCKED)
+    expect(state.attributes.get(ATTR_DEVICE_ID)).to_equal("ZW:00000004")
+    expect(state.attributes.get("battery_low")).to_be_falsy()
+    expect(state.attributes.get("no_response")).to_be_falsy()
+    expect(state.attributes.get("device_type")).to_equal("Door Lock")
+    expect(state.attributes.get(ATTR_FRIENDLY_NAME)).to_equal("Test Lock")
 
 
-async def test_lock(hass: HomeAssistant) -> None:
+@test
+async def lock(
+    _trigger: requests_mock_lib.Mocker = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the lock can be locked."""
     await setup_platform(hass, LOCK_DOMAIN)
 
@@ -59,7 +84,11 @@ async def test_lock(hass: HomeAssistant) -> None:
         mock_lock.assert_called_once()
 
 
-async def test_unlock(hass: HomeAssistant) -> None:
+@test
+async def unlock(
+    _trigger: requests_mock_lib.Mocker = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the lock can be unlocked."""
     await setup_platform(hass, LOCK_DOMAIN)
 
@@ -71,8 +100,10 @@ async def test_unlock(hass: HomeAssistant) -> None:
         mock_unlock.assert_called_once()
 
 
-async def test_retrofit_lock_discovered(
-    hass: HomeAssistant, requests_mock: Mocker
+@test
+async def retrofit_lock_discovered(
+    requests_mock: requests_mock_lib.Mocker = Depends(_abode_setup),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test retrofit locks are discovered as lock entities."""
     devices = json.loads(await async_load_fixture(hass, "devices.json", "abode"))
@@ -87,5 +118,5 @@ async def test_retrofit_lock_discovered(
     await setup_platform(hass, LOCK_DOMAIN)
 
     state = hass.states.get(DEVICE_ID)
-    assert state is not None
-    assert state.state == LockState.LOCKED
+    expect(state).not_.to_be(None)
+    expect(state.state).to_equal(LockState.LOCKED)
