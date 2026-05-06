@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.switchbot_cloud.config_flow import (
@@ -14,11 +14,20 @@ from homeassistant.const import CONF_API_KEY, CONF_API_TOKEN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_setup_entry
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
 
 async def _fill_out_form_and_assert_entry_created(
-    hass: HomeAssistant, flow_id: str, mock_setup_entry: AsyncMock
+    hass: HomeAssistant, flow_id: str, setup_entry: AsyncMock
 ) -> None:
-    """Util function to fill out a form and assert that a config entry is created."""
+    """Fill out the user form and assert a config entry is created."""
     with patch(
         "homeassistant.components.switchbot_cloud.config_flow.SwitchBotAPI.list_devices",
         return_value=[],
@@ -32,38 +41,47 @@ async def _fill_out_form_and_assert_entry_created(
         )
         await hass.async_block_till_done()
 
-        assert result_configure["type"] is FlowResultType.CREATE_ENTRY
-        assert result_configure["title"] == ENTRY_TITLE
-        assert result_configure["data"] == {
-            CONF_API_TOKEN: "test-token",
-            CONF_API_KEY: "test-secret-key",
-        }
-        mock_setup_entry.assert_called_once()
+        expect(result_configure["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result_configure["title"]).to_equal(ENTRY_TITLE)
+        expect(result_configure["data"]).to_equal(
+            {
+                CONF_API_TOKEN: "test-token",
+                CONF_API_KEY: "test-secret-key",
+            }
+        )
+        setup_entry.assert_called_once()
 
 
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form."""
     result_init = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result_init["type"] is FlowResultType.FORM
-    assert not result_init["errors"]
+    expect(result_init["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result_init["errors"])).to_be(False)
 
     await _fill_out_form_and_assert_entry_created(
-        hass, result_init["flow_id"], mock_setup_entry
+        hass, result_init["flow_id"], setup_entry
     )
 
 
-@pytest.mark.parametrize(
-    ("error", "message"),
-    [
-        (SwitchBotAuthenticationError, "invalid_auth"),
-        (SwitchBotConnectionError, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", error=SwitchBotAuthenticationError, message="invalid_auth"),
+    test.case("cannot_connect", error=SwitchBotConnectionError, message="cannot_connect"),
+    test.case("unknown", error=Exception, message="unknown"),
 )
-async def test_form_fails(
-    hass: HomeAssistant, error: Exception, message: str, mock_setup_entry: AsyncMock
+async def form_fails(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    error: type[Exception],
+    message: str,
 ) -> None:
     """Test we handle error cases."""
     result_init = await hass.config_entries.flow.async_init(
@@ -82,10 +100,10 @@ async def test_form_fails(
             },
         )
 
-        assert result_configure["type"] is FlowResultType.FORM
-        assert result_configure["errors"] == {"base": message}
+        expect(result_configure["type"]).to_be(FlowResultType.FORM)
+        expect(result_configure["errors"]).to_equal({"base": message})
         await hass.async_block_till_done()
 
     await _fill_out_form_and_assert_entry_created(
-        hass, result_init["flow_id"], mock_setup_entry
+        hass, result_init["flow_id"], setup_entry
     )
