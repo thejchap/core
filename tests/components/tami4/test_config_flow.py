@@ -1,5 +1,14 @@
 """Tests for the Tami4 config flow."""
 
+# Tami4EdgeAPI -> pypasser -> pydub reads os.environ["PATH"] at import time
+# (scans for ffmpeg/avconv). Sibling tests use
+# patch.dict(os.environ, {}, clear=True) and tryke worker reuse means we can
+# inherit a PATH-less environ. Set a default before the import.
+import os as _os
+
+_os.environ.setdefault("PATH", "/usr/bin:/bin")
+del _os
+
 from unittest.mock import AsyncMock, patch
 
 from Tami4EdgeAPI import exceptions
