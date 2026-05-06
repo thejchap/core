@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.airvisual import (
     CONF_CITY,
     CONF_GEOGRAPHIES,
@@ -26,7 +28,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, issue_registry as ir
 
-from .conftest import (
+from ._fixtures import (
     COORDS_CONFIG,
     COORDS_CONFIG2,
     NAME_CONFIG,
@@ -38,12 +40,29 @@ from .conftest import (
     TEST_LONGITUDE,
     TEST_LONGITUDE2,
     TEST_STATE,
+    mock_pyairvisual,
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    device_registry as device_registry_fixture,
+    hass as hass_fixture,
+    issue_registry as issue_registry_fixture,
+    mock_network,
+)
 
 
-async def test_migration_1_2(hass: HomeAssistant, mock_pyairvisual) -> None:
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+async def migration_1_2(
+    _network: None = Depends(mock_network),
+    _mock: None = Depends(mock_pyairvisual),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test migrating from version 1 to 2."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -70,43 +89,41 @@ async def test_migration_1_2(hass: HomeAssistant, mock_pyairvisual) -> None:
     )
     entry.add_to_hass(hass)
 
-    assert await hass.config_entries.async_setup(entry.entry_id)
+    expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
 
     config_entries = hass.config_entries.async_entries(DOMAIN)
-    assert len(config_entries) == 3
+    expect(len(config_entries)).to_equal(3)
 
-    # Ensure that after migration, each configuration has its own config entry:
     identifier1 = f"{TEST_LATITUDE}, {TEST_LONGITUDE}"
-    assert config_entries[0].unique_id == identifier1
-    assert config_entries[0].title == f"Cloud API ({identifier1})"
-    assert config_entries[0].data == {
-        **COORDS_CONFIG,
-        CONF_INTEGRATION_TYPE: INTEGRATION_TYPE_GEOGRAPHY_COORDS,
-    }
+    expect(config_entries[0].unique_id).to_equal(identifier1)
+    expect(config_entries[0].title).to_equal(f"Cloud API ({identifier1})")
+    expect(config_entries[0].data).to_equal(
+        {**COORDS_CONFIG, CONF_INTEGRATION_TYPE: INTEGRATION_TYPE_GEOGRAPHY_COORDS}
+    )
 
     identifier2 = f"{TEST_CITY}, {TEST_STATE}, {TEST_COUNTRY}"
-    assert config_entries[1].unique_id == identifier2
-    assert config_entries[1].title == f"Cloud API ({identifier2})"
-    assert config_entries[1].data == {
-        **NAME_CONFIG,
-        CONF_INTEGRATION_TYPE: INTEGRATION_TYPE_GEOGRAPHY_NAME,
-    }
+    expect(config_entries[1].unique_id).to_equal(identifier2)
+    expect(config_entries[1].title).to_equal(f"Cloud API ({identifier2})")
+    expect(config_entries[1].data).to_equal(
+        {**NAME_CONFIG, CONF_INTEGRATION_TYPE: INTEGRATION_TYPE_GEOGRAPHY_NAME}
+    )
 
     identifier3 = f"{TEST_LATITUDE2}, {TEST_LONGITUDE2}"
-    assert config_entries[2].unique_id == identifier3
-    assert config_entries[2].title == f"Cloud API ({identifier3})"
-    assert config_entries[2].data == {
-        **COORDS_CONFIG2,
-        CONF_INTEGRATION_TYPE: INTEGRATION_TYPE_GEOGRAPHY_COORDS,
-    }
+    expect(config_entries[2].unique_id).to_equal(identifier3)
+    expect(config_entries[2].title).to_equal(f"Cloud API ({identifier3})")
+    expect(config_entries[2].data).to_equal(
+        {**COORDS_CONFIG2, CONF_INTEGRATION_TYPE: INTEGRATION_TYPE_GEOGRAPHY_COORDS}
+    )
 
 
-async def test_migration_2_3(
-    hass: HomeAssistant,
-    mock_pyairvisual,
-    device_registry: dr.DeviceRegistry,
-    issue_registry: ir.IssueRegistry,
+@test
+async def migration_2_3(
+    _network: None = Depends(mock_network),
+    _mock: None = Depends(mock_pyairvisual),
+    hass: HomeAssistant = Depends(hass_fixture),
+    device_registry: dr.DeviceRegistry = Depends(device_registry_fixture),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry_fixture),
 ) -> None:
     """Test migrating from version 2 to 3."""
     entry = MockConfigEntry(
@@ -134,9 +151,7 @@ async def test_migration_2_3(
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-        # Ensure that after migration, the AirVisual Pro device has been moved to the
-        # `airvisual_pro` domain and an issue has been created:
         for domain, entry_count in ((DOMAIN, 0), (AIRVISUAL_PRO_DOMAIN, 1)):
-            assert len(hass.config_entries.async_entries(domain)) == entry_count
+            expect(len(hass.config_entries.async_entries(domain))).to_equal(entry_count)
 
-        assert len(issue_registry.issues) == 1
+        expect(len(issue_registry.issues)).to_equal(1)
