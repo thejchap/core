@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from pyaprilaire.client import AprilaireClient
 from pyaprilaire.const import FunctionalDomain
-import pytest
+from tryke import Depends, fixture, test
 
 from homeassistant.components.aprilaire.config_flow import (
     STEP_USER_DATA_SCHEMA,
@@ -12,14 +12,20 @@ from homeassistant.components.aprilaire.config_flow import (
 )
 from homeassistant.core import HomeAssistant
 
+from ._fixtures import client
 
-@pytest.fixture
-def client() -> AprilaireClient:
-    """Return a mock client."""
-    return AsyncMock(AprilaireClient)
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_user_input_step() -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def user_input_step(_trigger: None = Depends(_trigger_executor)) -> None:
     """Test the user input step."""
 
     show_form_mock = Mock()
@@ -34,7 +40,11 @@ async def test_user_input_step() -> None:
     )
 
 
-async def test_config_flow_invalid_data(client: AprilaireClient) -> None:
+@test
+async def config_flow_invalid_data(
+    _trigger: None = Depends(_trigger_executor),
+    client: AprilaireClient = Depends(client),
+) -> None:
     """Test that the flow is aborted with invalid data."""
 
     show_form_mock = Mock()
@@ -67,7 +77,12 @@ async def test_config_flow_invalid_data(client: AprilaireClient) -> None:
     )
 
 
-async def test_config_flow_data(client: AprilaireClient, hass: HomeAssistant) -> None:
+@test
+async def config_flow_data(
+    _trigger: None = Depends(_trigger_executor),
+    client: AprilaireClient = Depends(client),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the config flow with valid data."""
 
     client.data = {"mac_address": "1:2:3:4:5:6"}
