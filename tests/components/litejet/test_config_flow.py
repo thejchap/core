@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from serial import SerialException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.litejet.const import CONF_DEFAULT_TRANSITION, DOMAIN
@@ -10,20 +11,37 @@ from homeassistant.const import CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_litejet
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
 
 
-async def test_show_config_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def show_config_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test show configuration form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_create_entry(hass: HomeAssistant, mock_litejet) -> None:
+@test
+async def create_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _lj=Depends(mock_litejet),
+) -> None:
     """Test create entry from user input."""
     test_data = {CONF_PORT: "/dev/test"}
 
@@ -31,12 +49,16 @@ async def test_create_entry(hass: HomeAssistant, mock_litejet) -> None:
         DOMAIN, context={"source": config_entries.SOURCE_USER}, data=test_data
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "/dev/test"
-    assert result["data"] == test_data
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("/dev/test")
+    expect(result["data"]).to_equal(test_data)
 
 
-async def test_flow_entry_already_exists(hass: HomeAssistant) -> None:
+@test
+async def flow_entry_already_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user input when a config entry already exists."""
     first_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -50,11 +72,15 @@ async def test_flow_entry_already_exists(hass: HomeAssistant) -> None:
         DOMAIN, context={"source": config_entries.SOURCE_USER}, data=test_data
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
 
 
-async def test_flow_open_failed(hass: HomeAssistant) -> None:
+@test
+async def flow_open_failed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user input when serial port open fails."""
     test_data = {CONF_PORT: "/dev/test"}
 
@@ -65,24 +91,28 @@ async def test_flow_open_failed(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": config_entries.SOURCE_USER}, data=test_data
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"][CONF_PORT] == "open_failed"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"][CONF_PORT]).to_equal("open_failed")
 
 
-async def test_options(hass: HomeAssistant) -> None:
+@test
+async def options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test updating options."""
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_PORT: "/dev/test"})
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_DEFAULT_TRANSITION: 12},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_DEFAULT_TRANSITION: 12}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({CONF_DEFAULT_TRANSITION: 12})
