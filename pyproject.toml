@@ -925,3 +925,19 @@ max-complexity = 25
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 property-decorators = ["propcache.api.cached_property"]
+
+[tool.tryke]
+# Mirror [tool.pytest.ini_options] testpaths/norecursedirs as Tryke's exclude
+# list. Tryke walks the import graph from the project root so we exclude paths
+# that aren't tests (or that aren't supposed to be discovered).
+exclude = [
+    ".git",
+    ".venv",
+    "build",
+    "dist",
+    "homeassistant",
+    "script",
+    "tests/testing_config",
+]
+src = ["."]
+python = ".venv/bin/python3"

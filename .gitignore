@@ -4,6 +4,9 @@ config2/*
 tests/testing_config/deps
 tests/testing_config/home-assistant.log*
 
+# Tryke migration scratch (per-session artifacts)
+/.migration/
+
 # hass-release
 data/
 .token
