@@ -1,9 +1,10 @@
 """Test the Universal Devices ISY/IoX config flow."""
 
 import re
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from pyisy import ISYConnectionError, ISYInvalidAuthError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.isy994.const import (
@@ -23,18 +24,16 @@ from homeassistant.helpers.service_info.ssdp import (
     SsdpServiceInfo,
 )
 
+from ._fixtures import mock_isy_init
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 MOCK_HOSTNAME = "1.1.1.1"
 MOCK_USERNAME = "test-username"
 MOCK_PASSWORD = "test-password"
 
-# Don't use the integration defaults here to make sure they're being set correctly.
 MOCK_TLS_VERSION = 1.2
-MOCK_IGNORE_STRING = "{IGNOREME}"
-MOCK_RESTORE_LIGHT_STATE = True
-MOCK_SENSOR_STRING = "IMASENSOR"
-MOCK_VARIABLE_SENSOR_STRING = "HomeAssistant."
 
 MOCK_USER_INPUT = {
     CONF_HOST: f"http://{MOCK_HOSTNAME}",
@@ -87,14 +86,25 @@ def _get_schema_default(schema, key_name):
     raise KeyError(f"{key_name} not found in schema")
 
 
-async def test_form(hass: HomeAssistant) -> None:
-    """Test we get the form."""
+@fixture
+def _trigger_executor(
+    _isy: MagicMock = Depends(mock_isy_init),
+    _network: None = Depends(mock_network),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(PATCH_CONNECTION, return_value=MOCK_CONFIG_RESPONSE),
@@ -108,14 +118,18 @@ async def test_form(hass: HomeAssistant) -> None:
             MOCK_USER_INPUT,
         )
         await hass.async_block_till_done()
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == f"{MOCK_DEVICE_NAME} ({MOCK_HOSTNAME})"
-    assert result2["result"].unique_id == MOCK_UUID
-    assert result2["data"] == MOCK_USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(f"{MOCK_DEVICE_NAME} ({MOCK_HOSTNAME})")
+    expect(result2["result"].unique_id).to_equal(MOCK_UUID)
+    expect(result2["data"]).to_equal(MOCK_USER_INPUT)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_host(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_host(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid host."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -124,18 +138,22 @@ async def test_form_invalid_host(hass: HomeAssistant) -> None:
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
-            "host": MOCK_HOSTNAME,  # Test with missing protocol (http://)
+            "host": MOCK_HOSTNAME,
             "username": MOCK_USERNAME,
             "password": MOCK_PASSWORD,
             "tls": MOCK_TLS_VERSION,
         },
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_host"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_host"})
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -149,11 +167,15 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             MOCK_USER_INPUT,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {CONF_PASSWORD: "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({CONF_PASSWORD: "invalid_auth"})
 
 
-async def test_form_unknown_exception(hass: HomeAssistant) -> None:
+@test
+async def form_unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle generic exceptions."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -167,11 +189,15 @@ async def test_form_unknown_exception(hass: HomeAssistant) -> None:
             MOCK_USER_INPUT,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_form_isy_connection_error(hass: HomeAssistant) -> None:
+@test
+async def form_isy_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -185,69 +211,82 @@ async def test_form_isy_connection_error(hass: HomeAssistant) -> None:
             MOCK_USER_INPUT,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_isy_parse_response_error(hass: HomeAssistant) -> None:
+@test
+async def form_isy_parse_response_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle poorly formatted XML response from ISY."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
     with patch(
         PATCH_CONNECTION,
-        return_value=MOCK_CONFIG_RESPONSE.rsplit("\n", 3)[0],  # Test with invalid XML
+        return_value=MOCK_CONFIG_RESPONSE.rsplit("\n", 3)[0],
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             MOCK_USER_INPUT,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_no_name_in_response(hass: HomeAssistant) -> None:
+@test
+async def form_no_name_in_response(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid response from ISY with name not set."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
     with patch(
         PATCH_CONNECTION,
-        return_value=re.sub(
-            r"\<name\>.*\n", "", MOCK_CONFIG_RESPONSE
-        ),  # Test with <name> line removed.
+        return_value=re.sub(r"\<name\>.*\n", "", MOCK_CONFIG_RESPONSE),
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             MOCK_USER_INPUT,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_existing_config_entry(hass: HomeAssistant) -> None:
+@test
+async def form_existing_config_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test if config entry already exists."""
     MockConfigEntry(domain=DOMAIN, unique_id=MOCK_UUID).add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(PATCH_CONNECTION, return_value=MOCK_CONFIG_RESPONSE):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             MOCK_USER_INPUT,
         )
-    assert result2["type"] is FlowResultType.ABORT
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
 
 
-async def test_form_ssdp_already_configured(hass: HomeAssistant) -> None:
+@test
+async def form_ssdp_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test ssdp abort when the serial number is already configured."""
-
     MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: f"http://{MOCK_HOSTNAME}{ISY_URL_POSTFIX}"},
@@ -267,12 +306,15 @@ async def test_form_ssdp_already_configured(hass: HomeAssistant) -> None:
             },
         ),
     )
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-async def test_form_ssdp(hass: HomeAssistant) -> None:
+@test
+async def form_ssdp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we can setup from ssdp."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_SSDP},
@@ -286,9 +328,9 @@ async def test_form_ssdp(hass: HomeAssistant) -> None:
             },
         ),
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(PATCH_CONNECTION, return_value=MOCK_CONFIG_RESPONSE),
@@ -303,16 +345,19 @@ async def test_form_ssdp(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == f"{MOCK_DEVICE_NAME} ({MOCK_HOSTNAME})"
-    assert result2["result"].unique_id == MOCK_UUID
-    assert result2["data"] == MOCK_USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(f"{MOCK_DEVICE_NAME} ({MOCK_HOSTNAME})")
+    expect(result2["result"].unique_id).to_equal(MOCK_UUID)
+    expect(result2["data"]).to_equal(MOCK_USER_INPUT)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_ssdp_existing_entry(hass: HomeAssistant) -> None:
+@test
+async def form_ssdp_existing_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we update the ip of an existing entry from ssdp."""
-
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: f"http://{MOCK_HOSTNAME}{ISY_URL_POSTFIX}"},
@@ -336,14 +381,17 @@ async def test_form_ssdp_existing_entry(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert entry.data[CONF_HOST] == f"http://3.3.3.3:80{ISY_URL_POSTFIX}"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(entry.data[CONF_HOST]).to_equal(f"http://3.3.3.3:80{ISY_URL_POSTFIX}")
 
 
-async def test_form_ssdp_existing_entry_with_no_port(hass: HomeAssistant) -> None:
+@test
+async def form_ssdp_existing_entry_with_no_port(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we update the ip of an existing entry from ssdp with no port."""
-
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: f"http://{MOCK_HOSTNAME}:1443/{ISY_URL_POSTFIX}"},
@@ -367,16 +415,17 @@ async def test_form_ssdp_existing_entry_with_no_port(hass: HomeAssistant) -> Non
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert entry.data[CONF_HOST] == f"http://3.3.3.3:80/{ISY_URL_POSTFIX}"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(entry.data[CONF_HOST]).to_equal(f"http://3.3.3.3:80/{ISY_URL_POSTFIX}")
 
 
-async def test_form_ssdp_existing_entry_with_alternate_port(
-    hass: HomeAssistant,
+@test
+async def form_ssdp_existing_entry_with_alternate_port(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we update the ip of an existing entry from ssdp with an alternate port."""
-
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: f"http://{MOCK_HOSTNAME}:1443/{ISY_URL_POSTFIX}"},
@@ -400,14 +449,17 @@ async def test_form_ssdp_existing_entry_with_alternate_port(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert entry.data[CONF_HOST] == f"http://3.3.3.3:1443/{ISY_URL_POSTFIX}"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(entry.data[CONF_HOST]).to_equal(f"http://3.3.3.3:1443/{ISY_URL_POSTFIX}")
 
 
-async def test_form_ssdp_existing_entry_no_port_https(hass: HomeAssistant) -> None:
+@test
+async def form_ssdp_existing_entry_no_port_https(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we update the ip of an existing entry from ssdp with no port and https."""
-
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: f"https://{MOCK_HOSTNAME}/{ISY_URL_POSTFIX}"},
@@ -431,14 +483,17 @@ async def test_form_ssdp_existing_entry_no_port_https(hass: HomeAssistant) -> No
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert entry.data[CONF_HOST] == f"https://3.3.3.3:443/{ISY_URL_POSTFIX}"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(entry.data[CONF_HOST]).to_equal(f"https://3.3.3.3:443/{ISY_URL_POSTFIX}")
 
 
-async def test_form_dhcp(hass: HomeAssistant) -> None:
+@test
+async def form_dhcp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we can setup from dhcp."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_DHCP},
@@ -448,9 +503,9 @@ async def test_form_dhcp(hass: HomeAssistant) -> None:
             macaddress=MOCK_MAC,
         ),
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(PATCH_CONNECTION, return_value=MOCK_CONFIG_RESPONSE),
@@ -465,16 +520,19 @@ async def test_form_dhcp(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == f"{MOCK_DEVICE_NAME} ({MOCK_HOSTNAME})"
-    assert result2["result"].unique_id == MOCK_UUID
-    assert result2["data"] == MOCK_USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(f"{MOCK_DEVICE_NAME} ({MOCK_HOSTNAME})")
+    expect(result2["result"].unique_id).to_equal(MOCK_UUID)
+    expect(result2["data"]).to_equal(MOCK_USER_INPUT)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_dhcp_with_polisy(hass: HomeAssistant) -> None:
+@test
+async def form_dhcp_with_polisy(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we can setup from dhcp with polisy."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_DHCP},
@@ -484,12 +542,11 @@ async def test_form_dhcp_with_polisy(hass: HomeAssistant) -> None:
             macaddress=MOCK_POLISY_MAC,
         ),
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
-    assert (
-        _get_schema_default(result["data_schema"].schema, CONF_HOST)
-        == "http://1.2.3.4:8080"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
+    expect(_get_schema_default(result["data_schema"].schema, CONF_HOST)).to_equal(
+        "http://1.2.3.4:8080"
     )
 
     with (
@@ -505,16 +562,19 @@ async def test_form_dhcp_with_polisy(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == f"{MOCK_DEVICE_NAME} ({MOCK_HOSTNAME})"
-    assert result2["result"].unique_id == MOCK_UUID
-    assert result2["data"] == MOCK_IOX_USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(f"{MOCK_DEVICE_NAME} ({MOCK_HOSTNAME})")
+    expect(result2["result"].unique_id).to_equal(MOCK_UUID)
+    expect(result2["data"]).to_equal(MOCK_IOX_USER_INPUT)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_dhcp_with_eisy(hass: HomeAssistant) -> None:
+@test
+async def form_dhcp_with_eisy(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we can setup from dhcp with eisy."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_DHCP},
@@ -524,12 +584,11 @@ async def test_form_dhcp_with_eisy(hass: HomeAssistant) -> None:
             macaddress=MOCK_MAC,
         ),
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
-    assert (
-        _get_schema_default(result["data_schema"].schema, CONF_HOST)
-        == "http://1.2.3.4:8080"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
+    expect(_get_schema_default(result["data_schema"].schema, CONF_HOST)).to_equal(
+        "http://1.2.3.4:8080"
     )
 
     with (
@@ -545,16 +604,19 @@ async def test_form_dhcp_with_eisy(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == f"{MOCK_DEVICE_NAME} ({MOCK_HOSTNAME})"
-    assert result2["result"].unique_id == MOCK_UUID
-    assert result2["data"] == MOCK_IOX_USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(f"{MOCK_DEVICE_NAME} ({MOCK_HOSTNAME})")
+    expect(result2["result"].unique_id).to_equal(MOCK_UUID)
+    expect(result2["data"]).to_equal(MOCK_IOX_USER_INPUT)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_dhcp_existing_entry(hass: HomeAssistant) -> None:
+@test
+async def form_dhcp_existing_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we update the ip of an existing entry from dhcp."""
-
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: f"http://{MOCK_HOSTNAME}{ISY_URL_POSTFIX}"},
@@ -574,14 +636,17 @@ async def test_form_dhcp_existing_entry(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert entry.data[CONF_HOST] == f"http://1.2.3.4{ISY_URL_POSTFIX}"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(entry.data[CONF_HOST]).to_equal(f"http://1.2.3.4{ISY_URL_POSTFIX}")
 
 
-async def test_form_dhcp_existing_entry_preserves_port(hass: HomeAssistant) -> None:
+@test
+async def form_dhcp_existing_entry_preserves_port(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we update the ip of an existing entry from dhcp preserves port."""
-
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -604,15 +669,18 @@ async def test_form_dhcp_existing_entry_preserves_port(hass: HomeAssistant) -> N
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert entry.data[CONF_HOST] == f"http://1.2.3.4:1443{ISY_URL_POSTFIX}"
-    assert entry.data[CONF_USERNAME] == "bob"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(entry.data[CONF_HOST]).to_equal(f"http://1.2.3.4:1443{ISY_URL_POSTFIX}")
+    expect(entry.data[CONF_USERNAME]).to_equal("bob")
 
 
-async def test_form_dhcp_existing_ignored_entry(hass: HomeAssistant) -> None:
+@test
+async def form_dhcp_existing_ignored_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handled an ignored entry from dhcp."""
-
     entry = MockConfigEntry(
         domain=DOMAIN, data={}, unique_id=MOCK_UUID, source=SOURCE_IGNORE
     )
@@ -630,11 +698,15 @@ async def test_form_dhcp_existing_ignored_entry(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reauth(hass: HomeAssistant) -> None:
+@test
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we can reauth."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -648,8 +720,8 @@ async def test_reauth(hass: HomeAssistant) -> None:
 
     result = await entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         PATCH_CONNECTION,
@@ -663,8 +735,8 @@ async def test_reauth(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"password": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"password": "invalid_auth"})
 
     with patch(
         PATCH_CONNECTION,
@@ -678,8 +750,8 @@ async def test_reauth(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "cannot_connect"}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": "cannot_connect"})
 
     with (
         patch(PATCH_CONNECTION, return_value=MOCK_CONFIG_RESPONSE),
@@ -697,19 +769,22 @@ async def test_reauth(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert mock_setup_entry.called
-    assert result4["type"] is FlowResultType.ABORT
-    assert result4["reason"] == "reauth_successful"
+    expect(mock_setup_entry.called).to_be_truthy()
+    expect(result4["type"]).to_be(FlowResultType.ABORT)
+    expect(result4["reason"]).to_equal("reauth_successful")
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test option flow."""
     entry = MockConfigEntry(domain=DOMAIN)
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
-    # This should be improved at a later stage to increase test coverage
     hass.config_entries.options.async_abort(result["flow_id"])
