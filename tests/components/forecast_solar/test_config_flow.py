@@ -1,8 +1,8 @@
 """Test the Forecast.Solar config flow."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.forecast_solar.const import (
     CONF_AZIMUTH,
@@ -23,17 +23,35 @@ from homeassistant.const import CONF_API_KEY, CONF_LATITUDE, CONF_LONGITUDE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import (
+    mock_config_entry,
+    mock_config_entry_no_api_key,
+    mock_forecast_solar,
+    mock_setup_entry,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_user_flow(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -46,46 +64,52 @@ async def test_user_flow(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> No
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.title == ""
-    assert config_entry.unique_id is None
-    assert config_entry.data == {
-        CONF_LATITUDE: 52.42,
-        CONF_LONGITUDE: 4.42,
-    }
-    assert config_entry.options == {}
+    expect(config_entry.title).to_equal("")
+    expect(config_entry.unique_id).to_be(None)
+    expect(config_entry.data).to_equal(
+        {
+            CONF_LATITUDE: 52.42,
+            CONF_LONGITUDE: 4.42,
+        }
+    )
+    expect(config_entry.options).to_equal({})
 
     # Verify a plane subentry was created
     plane_subentries = config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE)
-    assert len(plane_subentries) == 1
+    expect(len(plane_subentries)).to_equal(1)
     subentry = plane_subentries[0]
-    assert subentry.subentry_type == SUBENTRY_TYPE_PLANE
-    assert subentry.data == {
-        CONF_DECLINATION: 42,
-        CONF_AZIMUTH: 142,
-        CONF_MODULES_POWER: 4242,
-    }
-    assert subentry.title == "42° / 142° / 4242W"
+    expect(subentry.subentry_type).to_equal(SUBENTRY_TYPE_PLANE)
+    expect(subentry.data).to_equal(
+        {
+            CONF_DECLINATION: 42,
+            CONF_AZIMUTH: 142,
+            CONF_MODULES_POWER: 4242,
+        }
+    )
+    expect(subentry.title).to_equal("42° / 142° / 4242W")
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_options_flow_invalid_api(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def options_flow_invalid_api(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test options config flow when API key is invalid."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -97,8 +121,8 @@ async def test_options_flow_invalid_api(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {CONF_API_KEY: "invalid_api_key"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({CONF_API_KEY: "invalid_api_key"})
 
     # Ensure we can recover from this error
     result = await hass.config_entries.options.async_configure(
@@ -111,29 +135,33 @@ async def test_options_flow_invalid_api(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_API_KEY: "SolarForecast150",
-        CONF_DAMPING_MORNING: 0.25,
-        CONF_DAMPING_EVENING: 0.25,
-        CONF_INVERTER_SIZE: 2000,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_API_KEY: "SolarForecast150",
+            CONF_DAMPING_MORNING: 0.25,
+            CONF_DAMPING_EVENING: 0.25,
+            CONF_INVERTER_SIZE: 2000,
+        }
+    )
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_options_flow(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test config flow options."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     # With the API key
     result = await hass.config_entries.options.async_configure(
@@ -146,29 +174,33 @@ async def test_options_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_API_KEY: "SolarForecast150",
-        CONF_DAMPING_MORNING: 0.25,
-        CONF_DAMPING_EVENING: 0.25,
-        CONF_INVERTER_SIZE: 2000,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_API_KEY: "SolarForecast150",
+            CONF_DAMPING_MORNING: 0.25,
+            CONF_DAMPING_EVENING: 0.25,
+            CONF_INVERTER_SIZE: 2000,
+        }
+    )
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_options_flow_without_key(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def options_flow_without_key(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test config flow options."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     # Without the API key
     result = await hass.config_entries.options.async_configure(
@@ -180,21 +212,25 @@ async def test_options_flow_without_key(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_API_KEY: None,
-        CONF_DAMPING_MORNING: 0.25,
-        CONF_DAMPING_EVENING: 0.25,
-        CONF_INVERTER_SIZE: 2000,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_API_KEY: None,
+            CONF_DAMPING_MORNING: 0.25,
+            CONF_DAMPING_EVENING: 0.25,
+            CONF_INVERTER_SIZE: 2000,
+        }
+    )
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_options_flow_required_api_key(
-    hass: HomeAssistant,
+@test
+async def options_flow_required_api_key(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test config flow options requires API key when multiple planes are present."""
-    mock_config_entry = MockConfigEntry(
+    entry = MockConfigEntry(
         title="Green House",
         unique_id="unique",
         version=3,
@@ -235,14 +271,14 @@ async def test_options_flow_required_api_key(
         ],
     )
 
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     # Try to save with an empty API key
     result = await hass.config_entries.options.async_configure(
@@ -255,8 +291,8 @@ async def test_options_flow_required_api_key(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {CONF_API_KEY: "api_key_required"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({CONF_API_KEY: "api_key_required"})
 
     # Now provide an API key
     result = await hass.config_entries.options.async_configure(
@@ -269,32 +305,36 @@ async def test_options_flow_required_api_key(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_API_KEY: "SolarForecast150",
-        CONF_DAMPING_MORNING: 0.25,
-        CONF_DAMPING_EVENING: 0.25,
-        CONF_INVERTER_SIZE: 2000,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_API_KEY: "SolarForecast150",
+            CONF_DAMPING_MORNING: 0.25,
+            CONF_DAMPING_EVENING: 0.25,
+            CONF_INVERTER_SIZE: 2000,
+        }
+    )
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_subentry_flow_add_plane(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def subentry_flow_add_plane(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test adding a plane via subentry flow."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
     result = await hass.config_entries.subentries.async_init(
-        (mock_config_entry.entry_id, SUBENTRY_TYPE_PLANE),
+        (config_entry.entry_id, SUBENTRY_TYPE_PLANE),
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -305,39 +345,43 @@ async def test_subentry_flow_add_plane(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "45° / 270° / 3000W"
-    assert result["data"] == {
-        CONF_DECLINATION: 45,
-        CONF_AZIMUTH: 270,
-        CONF_MODULES_POWER: 3000,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("45° / 270° / 3000W")
+    expect(result["data"]).to_equal(
+        {
+            CONF_DECLINATION: 45,
+            CONF_AZIMUTH: 270,
+            CONF_MODULES_POWER: 3000,
+        }
+    )
 
-    assert len(mock_config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE)) == 2
+    expect(len(config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE))).to_equal(2)
 
 
-@pytest.mark.usefixtures("mock_forecast_solar")
-async def test_subentry_flow_reconfigure_plane(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def subentry_flow_reconfigure_plane(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _forecast: MagicMock = Depends(mock_forecast_solar),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reconfiguring a plane via subentry flow."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
     # Get the existing plane subentry id
-    subentry_id = mock_config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE)[
+    subentry_id = config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE)[
         0
     ].subentry_id
 
     result = await hass.config_entries.subentries.async_init(
-        (mock_config_entry.entry_id, SUBENTRY_TYPE_PLANE),
+        (config_entry.entry_id, SUBENTRY_TYPE_PLANE),
         context={"source": SOURCE_RECONFIGURE, "subentry_id": subentry_id},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -348,57 +392,62 @@ async def test_subentry_flow_reconfigure_plane(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
-    plane_subentries = mock_config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE)
-    assert len(plane_subentries) == 1
+    plane_subentries = config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE)
+    expect(len(plane_subentries)).to_equal(1)
     subentry = plane_subentries[0]
-    assert subentry.data == {
-        CONF_DECLINATION: 50,
-        CONF_AZIMUTH: 200,
-        CONF_MODULES_POWER: 6000,
-    }
-    assert subentry.title == "50° / 200° / 6000W"
+    expect(subentry.data).to_equal(
+        {
+            CONF_DECLINATION: 50,
+            CONF_AZIMUTH: 200,
+            CONF_MODULES_POWER: 6000,
+        }
+    )
+    expect(subentry.title).to_equal("50° / 200° / 6000W")
 
 
-@pytest.mark.parametrize("api_key_present", [False])
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_subentry_flow_no_api_key(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def subentry_flow_no_api_key(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry_no_api_key),
 ) -> None:
     """Test that adding more than one plane without API key is not allowed."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
     result = await hass.config_entries.subentries.async_init(
-        (mock_config_entry.entry_id, SUBENTRY_TYPE_PLANE),
+        (config_entry.entry_id, SUBENTRY_TYPE_PLANE),
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "api_key_required"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("api_key_required")
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_subentry_flow_max_planes(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def subentry_flow_max_planes(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that adding more than 4 planes is not allowed."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    # mock_config_entry already has 1 plane subentry; add 3 more to reach the limit
+    # config_entry already has 1 plane subentry; add 3 more to reach the limit
     for i in range(3):
         result = await hass.config_entries.subentries.async_init(
-            (mock_config_entry.entry_id, SUBENTRY_TYPE_PLANE),
+            (config_entry.entry_id, SUBENTRY_TYPE_PLANE),
             context={"source": SOURCE_USER},
         )
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
@@ -408,40 +457,42 @@ async def test_subentry_flow_max_planes(
                 CONF_MODULES_POWER: 1000 * (i + 1),
             },
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
-    assert len(mock_config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE)) == 4
+    expect(len(config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE))).to_equal(4)
 
     # Attempt to add a 5th plane should be aborted
     result = await hass.config_entries.subentries.async_init(
-        (mock_config_entry.entry_id, SUBENTRY_TYPE_PLANE),
+        (config_entry.entry_id, SUBENTRY_TYPE_PLANE),
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "max_planes"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("max_planes")
 
 
-async def test_subentry_flow_reconfigure_plane_not_loaded(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def subentry_flow_reconfigure_plane_not_loaded(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reconfiguring a plane via subentry flow when entry is not loaded."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
     # Entry is not loaded, so it has no update listeners
 
     # Get the existing plane subentry id
-    subentry_id = mock_config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE)[
+    subentry_id = config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE)[
         0
     ].subentry_id
 
     result = await hass.config_entries.subentries.async_init(
-        (mock_config_entry.entry_id, SUBENTRY_TYPE_PLANE),
+        (config_entry.entry_id, SUBENTRY_TYPE_PLANE),
         context={"source": SOURCE_RECONFIGURE, "subentry_id": subentry_id},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
@@ -452,15 +503,17 @@ async def test_subentry_flow_reconfigure_plane_not_loaded(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
-    plane_subentries = mock_config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE)
-    assert len(plane_subentries) == 1
+    plane_subentries = config_entry.get_subentries_of_type(SUBENTRY_TYPE_PLANE)
+    expect(len(plane_subentries)).to_equal(1)
     subentry = plane_subentries[0]
-    assert subentry.data == {
-        CONF_DECLINATION: 50,
-        CONF_AZIMUTH: 200,
-        CONF_MODULES_POWER: 6000,
-    }
-    assert subentry.title == "50° / 200° / 6000W"
+    expect(subentry.data).to_equal(
+        {
+            CONF_DECLINATION: 50,
+            CONF_AZIMUTH: 200,
+            CONF_MODULES_POWER: 6000,
+        }
+    )
+    expect(subentry.title).to_equal("50° / 200° / 6000W")
