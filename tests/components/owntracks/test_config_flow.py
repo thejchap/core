@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.owntracks import config_flow
@@ -14,41 +14,28 @@ from homeassistant.core_config import async_process_ha_core_config
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.setup import async_setup_component
 
+from ._fixtures import (
+    SECRET,
+    WEBHOOK_ID,
+    not_supports_encryption,
+    secret,
+    webhook_id,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 CONF_WEBHOOK_URL = "webhook_url"
-
 BASE_URL = "http://example.com"
 CLOUDHOOK = False
-SECRET = "test-secret"
-WEBHOOK_ID = "webhook_id"
 WEBHOOK_URL = f"{BASE_URL}/api/webhook/webhook_id"
 
 
-@pytest.fixture(name="webhook_id")
-def mock_webhook_id():
-    """Mock webhook_id."""
-    with patch(
-        "homeassistant.components.webhook.async_generate_id", return_value=WEBHOOK_ID
-    ):
-        yield
-
-
-@pytest.fixture(name="secret")
-def mock_secret():
-    """Mock secret."""
-    with patch("secrets.token_hex", return_value=SECRET):
-        yield
-
-
-@pytest.fixture(name="not_supports_encryption")
-def mock_not_supports_encryption():
-    """Mock non successful nacl import."""
-    with patch(
-        "homeassistant.components.owntracks.config_flow.supports_encryption",
-        return_value=False,
-    ):
-        yield
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Module-level fixture priming common mocks."""
 
 
 async def init_config_flow(hass: HomeAssistant) -> config_flow.OwnTracksFlow:
@@ -62,65 +49,84 @@ async def init_config_flow(hass: HomeAssistant) -> config_flow.OwnTracksFlow:
     return flow
 
 
-async def test_user(hass: HomeAssistant, webhook_id, secret) -> None:
+@test
+async def user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _wh: None = Depends(webhook_id),
+    _s: None = Depends(secret),
+) -> None:
     """Test user step."""
     flow = await init_config_flow(hass)
 
     result = await flow.async_step_user()
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await flow.async_step_user({})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OwnTracks"
-    assert result["data"][CONF_WEBHOOK_ID] == WEBHOOK_ID
-    assert result["data"][CONF_SECRET] == SECRET
-    assert result["data"][CONF_CLOUDHOOK] == CLOUDHOOK
-    assert result["description_placeholders"][CONF_WEBHOOK_URL] == WEBHOOK_URL
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OwnTracks")
+    expect(result["data"][CONF_WEBHOOK_ID]).to_equal(WEBHOOK_ID)
+    expect(result["data"][CONF_SECRET]).to_equal(SECRET)
+    expect(result["data"][CONF_CLOUDHOOK]).to_be(CLOUDHOOK)
+    expect(result["description_placeholders"][CONF_WEBHOOK_URL]).to_equal(WEBHOOK_URL)
 
 
-async def test_import_setup(hass: HomeAssistant) -> None:
+@test
+async def import_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that we don't automatically create a config entry."""
     await async_process_ha_core_config(
         hass,
         {"external_url": "http://example.com"},
     )
 
-    assert not hass.config_entries.async_entries(DOMAIN)
-    assert await async_setup_component(hass, DOMAIN, {"owntracks": {}})
+    expect(bool(hass.config_entries.async_entries(DOMAIN))).to_be(False)
+    expect(await async_setup_component(hass, DOMAIN, {"owntracks": {}})).to_be(True)
     await hass.async_block_till_done()
-    assert not hass.config_entries.async_entries(DOMAIN)
+    expect(bool(hass.config_entries.async_entries(DOMAIN))).to_be(False)
 
 
-async def test_abort_if_already_setup(hass: HomeAssistant) -> None:
+@test
+async def abort_if_already_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that we can't add more than one instance."""
     MockConfigEntry(domain=DOMAIN, data={}).add_to_hass(hass)
-    assert hass.config_entries.async_entries(DOMAIN)
+    expect(bool(hass.config_entries.async_entries(DOMAIN))).to_be(True)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    # Should fail, already setup (flow)
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
 
 
-async def test_user_not_supports_encryption(
-    hass: HomeAssistant, not_supports_encryption
+@test
+async def user_not_supports_encryption(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _ne: None = Depends(not_supports_encryption),
 ) -> None:
     """Test user step."""
     flow = await init_config_flow(hass)
 
     result = await flow.async_step_user({})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert (
-        result["description_placeholders"]["secret"]
-        == "Encryption is not supported because nacl is not installed."
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["description_placeholders"]["secret"]).to_equal(
+        "Encryption is not supported because nacl is not installed."
     )
 
 
-async def test_unload(hass: HomeAssistant) -> None:
+@test
+async def unload(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test unloading a config flow."""
     await async_process_ha_core_config(
         hass,
@@ -134,26 +140,30 @@ async def test_unload(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": config_entries.SOURCE_USER}, data={}
         )
 
-    assert len(mock_forward.mock_calls) == 1
+    expect(len(mock_forward.mock_calls)).to_equal(1)
     entry = result["result"]
 
     mock_forward.assert_called_once_with(entry, ["device_tracker"])
-    assert entry.data["webhook_id"] in hass.data["webhook"]
+    expect(entry.data["webhook_id"] in hass.data["webhook"]).to_be(True)
 
     with patch(
         "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
         return_value=True,
     ) as mock_unload:
-        assert await hass.config_entries.async_unload(entry.entry_id)
+        expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
 
-    assert len(mock_unload.mock_calls) == 1
+    expect(len(mock_unload.mock_calls)).to_equal(1)
     mock_forward.assert_called_once_with(entry, ["device_tracker"])
-    assert entry.data["webhook_id"] not in hass.data["webhook"]
+    expect(entry.data["webhook_id"] not in hass.data["webhook"]).to_be(True)
 
 
-async def test_with_cloud_sub(hass: HomeAssistant) -> None:
+@test
+async def with_cloud_sub(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test creating a config flow while subscribed."""
-    assert await async_setup_component(hass, "cloud", {})
+    expect(await async_setup_component(hass, "cloud", {})).to_be(True)
 
     with (
         patch(
@@ -171,18 +181,21 @@ async def test_with_cloud_sub(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": config_entries.SOURCE_USER}, data={}
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     entry = result["result"]
-    assert entry.data["cloudhook"]
-    assert (
-        result["description_placeholders"]["webhook_url"]
-        == "https://hooks.nabu.casa/ABCD"
+    expect(entry.data["cloudhook"]).to_be(True)
+    expect(result["description_placeholders"]["webhook_url"]).to_equal(
+        "https://hooks.nabu.casa/ABCD"
     )
 
 
-async def test_with_cloud_sub_not_connected(hass: HomeAssistant) -> None:
+@test
+async def with_cloud_sub_not_connected(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test creating a config flow while subscribed."""
-    assert await async_setup_component(hass, "cloud", {})
+    expect(await async_setup_component(hass, "cloud", {})).to_be(True)
 
     with (
         patch(
@@ -200,5 +213,5 @@ async def test_with_cloud_sub_not_connected(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": config_entries.SOURCE_USER}, data={}
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cloud_not_connected"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cloud_not_connected")
