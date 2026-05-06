@@ -1,30 +1,216 @@
-"""Tryke skip-stubs for foscam config flow tests.
+"""Test the Foscam config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from unittest.mock import patch
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def user_valid() -> None:
-    """Stub for test_user_valid (port deferred)."""
+from homeassistant import config_entries
+from homeassistant.components.foscam import config_flow
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def user_invalid_auth() -> None:
-    """Stub for test_user_invalid_auth (port deferred)."""
+from .conftest import setup_mock_foscam_camera
+from .const import CAMERA_NAME, INVALID_RESPONSE_CONFIG, VALID_CONFIG
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def user_cannot_connect() -> None:
-    """Stub for test_user_cannot_connect (port deferred)."""
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def user_invalid_response() -> None:
-    """Stub for test_user_invalid_response (port deferred)."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def user_already_configured() -> None:
-    """Stub for test_user_already_configured (port deferred)."""
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture so tryke fully resolves Depends across the module."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def user_unknown_exception() -> None:
-    """Stub for test_user_unknown_exception (port deferred)."""
+
+@test
+async def user_valid(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test valid config from user input."""
+    result = await hass.config_entries.flow.async_init(
+        config_flow.DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+
+    with (
+        patch(
+            "homeassistant.components.foscam.config_flow.FoscamCamera",
+        ) as mock_foscam_camera,
+        patch(
+            "homeassistant.components.foscam.async_setup_entry",
+            return_value=True,
+        ) as mock_setup_entry,
+    ):
+        setup_mock_foscam_camera(mock_foscam_camera)
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            VALID_CONFIG,
+        )
+
+        await hass.async_block_till_done()
+
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(CAMERA_NAME)
+        expect(result["data"]).to_equal(VALID_CONFIG)
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
+@test
+async def user_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we handle invalid auth from user input."""
+    result = await hass.config_entries.flow.async_init(
+        config_flow.DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+
+    with patch(
+        "homeassistant.components.foscam.config_flow.FoscamCamera",
+    ) as mock_foscam_camera:
+        setup_mock_foscam_camera(mock_foscam_camera)
+
+        invalid_user = VALID_CONFIG.copy()
+        invalid_user[config_flow.CONF_USERNAME] = "invalid"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            invalid_user,
+        )
+
+        await hass.async_block_till_done()
+
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "invalid_auth"})
+
+
+@test
+async def user_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we handle cannot connect error from user input."""
+    result = await hass.config_entries.flow.async_init(
+        config_flow.DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+
+    with patch(
+        "homeassistant.components.foscam.config_flow.FoscamCamera",
+    ) as mock_foscam_camera:
+        setup_mock_foscam_camera(mock_foscam_camera)
+
+        invalid_host = VALID_CONFIG.copy()
+        invalid_host[config_flow.CONF_HOST] = "127.0.0.1"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            invalid_host,
+        )
+
+        await hass.async_block_till_done()
+
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "cannot_connect"})
+
+
+@test
+async def user_invalid_response(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we handle invalid response error from user input."""
+    result = await hass.config_entries.flow.async_init(
+        config_flow.DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+
+    with patch(
+        "homeassistant.components.foscam.config_flow.FoscamCamera",
+    ) as mock_foscam_camera:
+        setup_mock_foscam_camera(mock_foscam_camera)
+
+        invalid_response = VALID_CONFIG.copy()
+        invalid_response[config_flow.CONF_USERNAME] = INVALID_RESPONSE_CONFIG[
+            config_flow.CONF_USERNAME
+        ]
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            invalid_response,
+        )
+
+        await hass.async_block_till_done()
+
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "invalid_response"})
+
+
+@test
+async def user_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we handle already configured from user input."""
+    entry = MockConfigEntry(
+        domain=config_flow.DOMAIN,
+        data=VALID_CONFIG,
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        config_flow.DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+
+    with patch(
+        "homeassistant.components.foscam.config_flow.FoscamCamera",
+    ) as mock_foscam_camera:
+        setup_mock_foscam_camera(mock_foscam_camera)
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            VALID_CONFIG,
+        )
+
+        await hass.async_block_till_done()
+
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
+
+
+@test
+async def user_unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we handle unknown exceptions from user input."""
+    result = await hass.config_entries.flow.async_init(
+        config_flow.DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+
+    with patch(
+        "homeassistant.components.foscam.config_flow.FoscamCamera",
+    ) as mock_foscam_camera:
+        mock_foscam_camera.side_effect = Exception("test")
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            VALID_CONFIG,
+        )
+
+        await hass.async_block_till_done()
+
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "unknown"})
