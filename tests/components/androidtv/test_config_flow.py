@@ -3,7 +3,7 @@
 from typing import Any
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.androidtv.config_flow import (
     APPS_NEW_ID,
@@ -38,9 +38,15 @@ from homeassistant.const import CONF_DEVICE_CLASS, CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import (
+    adb_device_tcp_fixture,
+    keygen_fixture,
+    load_adbkey_fixture,
+)
 from .patchers import PATCH_ACCESS, PATCH_ISFILE, PATCH_SETUP_ENTRY
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 ADBKEY = "adbkey"
 ETH_MAC = "a1:b1:c1:d1:e1:f1"
@@ -49,14 +55,12 @@ INVALID_MAC = "ff:ff:ff:ff:ff:ff"
 HOST = "127.0.0.1"
 VALID_DETECT_RULE = [{"paused": {"media_session_state": 3}}]
 
-# Android device with Python ADB implementation
 CONFIG_PYTHON_ADB = {
     CONF_HOST: HOST,
     CONF_PORT: DEFAULT_PORT,
     CONF_DEVICE_CLASS: DEVICE_ANDROIDTV,
 }
 
-# Android device with ADB server
 CONFIG_ADB_SERVER = {
     CONF_HOST: HOST,
     CONF_PORT: DEFAULT_PORT,
@@ -83,31 +87,50 @@ class MockConfigDevice:
         self.available = False
 
 
-@pytest.mark.parametrize(
-    ("config", "eth_mac", "wifi_mac"),
-    [
-        (CONFIG_PYTHON_ADB, ETH_MAC, None),
-        (CONFIG_ADB_SERVER, ETH_MAC, None),
-        (CONFIG_PYTHON_ADB, None, WIFI_MAC),
-        (CONFIG_ADB_SERVER, None, WIFI_MAC),
-        (CONFIG_PYTHON_ADB, ETH_MAC, WIFI_MAC),
-        (CONFIG_ADB_SERVER, ETH_MAC, WIFI_MAC),
-    ],
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _adb: None = Depends(adb_device_tcp_fixture),
+    _adbkey: None = Depends(load_adbkey_fixture),
+    _keygen: None = Depends(keygen_fixture),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test.cases(
+    test.case(
+        "python_adb_eth", config=CONFIG_PYTHON_ADB, eth_mac=ETH_MAC, wifi_mac=None
+    ),
+    test.case(
+        "adb_server_eth", config=CONFIG_ADB_SERVER, eth_mac=ETH_MAC, wifi_mac=None
+    ),
+    test.case(
+        "python_adb_wifi", config=CONFIG_PYTHON_ADB, eth_mac=None, wifi_mac=WIFI_MAC
+    ),
+    test.case(
+        "adb_server_wifi", config=CONFIG_ADB_SERVER, eth_mac=None, wifi_mac=WIFI_MAC
+    ),
+    test.case(
+        "python_adb_both", config=CONFIG_PYTHON_ADB, eth_mac=ETH_MAC, wifi_mac=WIFI_MAC
+    ),
+    test.case(
+        "adb_server_both", config=CONFIG_ADB_SERVER, eth_mac=ETH_MAC, wifi_mac=WIFI_MAC
+    ),
 )
-async def test_user(
-    hass: HomeAssistant,
+async def user(
     config: dict[str, Any],
     eth_mac: str | None,
     wifi_mac: str | None,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test user config."""
     flow_result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER, "show_advanced_options": True}
     )
-    assert flow_result["type"] is FlowResultType.FORM
-    assert flow_result["step_id"] == "user"
+    expect(flow_result["type"]).to_be(FlowResultType.FORM)
+    expect(flow_result["step_id"]).to_equal("user")
 
-    # test with all provided
     with (
         patch(
             CONNECT_METHOD,
@@ -120,14 +143,18 @@ async def test_user(
         )
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == HOST
-        assert result["data"] == config
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(HOST)
+        expect(result["data"]).to_equal(config)
 
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_adbkey(hass: HomeAssistant) -> None:
+@test
+async def user_adbkey(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user step with adbkey file."""
     config_data = CONFIG_PYTHON_ADB.copy()
     config_data[CONF_ADBKEY] = ADBKEY
@@ -148,14 +175,18 @@ async def test_user_adbkey(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == HOST
-        assert result["data"] == config_data
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(HOST)
+        expect(result["data"]).to_equal(config_data)
 
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_error_both_key_server(hass: HomeAssistant) -> None:
+@test
+async def error_both_key_server(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we abort if both adb key and server are provided."""
     config_data = CONFIG_ADB_SERVER.copy()
 
@@ -166,8 +197,8 @@ async def test_error_both_key_server(hass: HomeAssistant) -> None:
         data=config_data,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "key_and_server"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "key_and_server"})
 
     with (
         patch(
@@ -181,12 +212,16 @@ async def test_error_both_key_server(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
-        assert result2["title"] == HOST
-        assert result2["data"] == CONFIG_ADB_SERVER
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result2["title"]).to_equal(HOST)
+        expect(result2["data"]).to_equal(CONFIG_ADB_SERVER)
 
 
-async def test_error_invalid_key(hass: HomeAssistant) -> None:
+@test
+async def error_invalid_key(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we abort if component is already setup."""
     config_data = CONFIG_PYTHON_ADB.copy()
     config_data[CONF_ADBKEY] = ADBKEY
@@ -196,8 +231,8 @@ async def test_error_invalid_key(hass: HomeAssistant) -> None:
         data=config_data,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "adbkey_not_file"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "adbkey_not_file"})
 
     with (
         patch(
@@ -211,27 +246,49 @@ async def test_error_invalid_key(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
-        assert result2["title"] == HOST
-        assert result2["data"] == CONFIG_ADB_SERVER
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result2["title"]).to_equal(HOST)
+        expect(result2["data"]).to_equal(CONFIG_ADB_SERVER)
 
 
-@pytest.mark.parametrize(
-    ("config", "eth_mac", "wifi_mac"),
-    [
-        (CONFIG_ADB_SERVER, None, None),
-        (CONFIG_PYTHON_ADB, None, None),
-        (CONFIG_ADB_SERVER, INVALID_MAC, None),
-        (CONFIG_PYTHON_ADB, INVALID_MAC, None),
-        (CONFIG_ADB_SERVER, None, INVALID_MAC),
-        (CONFIG_PYTHON_ADB, None, INVALID_MAC),
-    ],
+@test.cases(
+    test.case(
+        "adb_server_no_mac", config=CONFIG_ADB_SERVER, eth_mac=None, wifi_mac=None
+    ),
+    test.case(
+        "python_no_mac", config=CONFIG_PYTHON_ADB, eth_mac=None, wifi_mac=None
+    ),
+    test.case(
+        "adb_server_invalid_eth",
+        config=CONFIG_ADB_SERVER,
+        eth_mac=INVALID_MAC,
+        wifi_mac=None,
+    ),
+    test.case(
+        "python_invalid_eth",
+        config=CONFIG_PYTHON_ADB,
+        eth_mac=INVALID_MAC,
+        wifi_mac=None,
+    ),
+    test.case(
+        "adb_server_invalid_wifi",
+        config=CONFIG_ADB_SERVER,
+        eth_mac=None,
+        wifi_mac=INVALID_MAC,
+    ),
+    test.case(
+        "python_invalid_wifi",
+        config=CONFIG_PYTHON_ADB,
+        eth_mac=None,
+        wifi_mac=INVALID_MAC,
+    ),
 )
-async def test_invalid_mac(
-    hass: HomeAssistant,
+async def invalid_mac(
     config: dict[str, Any],
     eth_mac: str | None,
     wifi_mac: str | None,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test for invalid mac address."""
     with patch(
@@ -244,29 +301,36 @@ async def test_invalid_mac(
             data=config,
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "invalid_unique_id"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("invalid_unique_id")
 
 
-async def test_abort_if_host_exist(hass: HomeAssistant) -> None:
+@test
+async def abort_if_host_exist(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we abort if component is already setup."""
     MockConfigEntry(
         domain=DOMAIN, data=CONFIG_ADB_SERVER, unique_id=ETH_MAC
     ).add_to_hass(hass)
 
     config_data = CONFIG_PYTHON_ADB
-    # Should fail, same HOST
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
         data=config_data,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_abort_if_unique_exist(hass: HomeAssistant) -> None:
+@test
+async def abort_if_unique_exist(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we abort if component is already setup."""
     config_data = CONFIG_ADB_SERVER.copy()
     config_data[CONF_HOST] = "127.0.0.2"
@@ -274,7 +338,6 @@ async def test_abort_if_unique_exist(hass: HomeAssistant) -> None:
         hass
     )
 
-    # Should fail, same SerialNo
     with patch(
         CONNECT_METHOD,
         return_value=(MockConfigDevice(), None),
@@ -285,11 +348,15 @@ async def test_abort_if_unique_exist(hass: HomeAssistant) -> None:
             data=CONFIG_ADB_SERVER,
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_on_connect_failed(hass: HomeAssistant) -> None:
+@test
+async def on_connect_failed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test when we have errors connecting the router."""
     flow_result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -300,8 +367,8 @@ async def test_on_connect_failed(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_configure(
             flow_result["flow_id"], user_input=CONFIG_ADB_SERVER
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": "cannot_connect"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     with patch(
         CONNECT_METHOD,
@@ -310,8 +377,8 @@ async def test_on_connect_failed(hass: HomeAssistant) -> None:
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=CONFIG_ADB_SERVER
         )
-        assert result2["type"] is FlowResultType.FORM
-        assert result2["errors"] == {"base": "unknown"}
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["errors"]).to_equal({"base": "unknown"})
 
     with (
         patch(
@@ -325,12 +392,16 @@ async def test_on_connect_failed(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        assert result3["type"] is FlowResultType.CREATE_ENTRY
-        assert result3["title"] == HOST
-        assert result3["data"] == CONFIG_ADB_SERVER
+        expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result3["title"]).to_equal(HOST)
+        expect(result3["data"]).to_equal(CONFIG_ADB_SERVER)
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow options."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -348,40 +419,36 @@ async def test_options_flow(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
         result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
-        # test app form with existing app
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
                 CONF_APPS: "app1",
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "apps"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("apps")
 
-        # test change value in apps form
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
                 CONF_APP_NAME: "Appl1",
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
-        # test app form with new app
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
                 CONF_APPS: APPS_NEW_ID,
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "apps"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("apps")
 
-        # test save value for new app
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
@@ -389,20 +456,18 @@ async def test_options_flow(hass: HomeAssistant) -> None:
                 CONF_APP_NAME: "Appl2",
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
-        # test app form for delete
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
                 CONF_APPS: "app1",
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "apps"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("apps")
 
-        # test delete app1
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
@@ -410,62 +475,56 @@ async def test_options_flow(hass: HomeAssistant) -> None:
                 CONF_APP_DELETE: True,
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
-        # test rules form with existing rule
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
                 CONF_STATE_DETECTION_RULES: "com.plexapp.android",
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "rules"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("rules")
 
-        # test change value in rule form with invalid json rule
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
                 CONF_RULE_VALUES: "a",
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "rules"
-        assert result["errors"] == {"base": "invalid_det_rules"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("rules")
+        expect(result["errors"]).to_equal({"base": "invalid_det_rules"})
 
-        # test change value in rule form with invalid rule
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
                 CONF_RULE_VALUES: {"a": "b"},
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "rules"
-        assert result["errors"] == {"base": "invalid_det_rules"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("rules")
+        expect(result["errors"]).to_equal({"base": "invalid_det_rules"})
 
-        # test change value in rule form with valid rule
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
                 CONF_RULE_VALUES: ["standby"],
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
-        # test rule form with new rule
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
                 CONF_STATE_DETECTION_RULES: RULES_NEW_ID,
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "rules"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("rules")
 
-        # test save value for new rule
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
@@ -473,28 +532,26 @@ async def test_options_flow(hass: HomeAssistant) -> None:
                 CONF_RULE_VALUES: VALID_DETECT_RULE,
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
-        # test rules form with delete existing rule
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
                 CONF_STATE_DETECTION_RULES: "com.plexapp.android",
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "rules"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("rules")
 
-        # test delete rule
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={
                 CONF_RULE_DELETE: True,
             },
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -507,14 +564,14 @@ async def test_options_flow(hass: HomeAssistant) -> None:
             },
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
         apps_options = config_entry.options[CONF_APPS]
-        assert apps_options.get("app1") is None
-        assert apps_options["app2"] == "Appl2"
+        expect(apps_options.get("app1")).to_be(None)
+        expect(apps_options["app2"]).to_equal("Appl2")
 
-        assert config_entry.options[CONF_GET_SOURCES] is True
-        assert config_entry.options[CONF_EXCLUDE_UNNAMED_APPS] is True
-        assert config_entry.options[CONF_SCREENCAP_INTERVAL] == 1
-        assert config_entry.options[CONF_TURN_OFF_COMMAND] == "off"
-        assert config_entry.options[CONF_TURN_ON_COMMAND] == "on"
+        expect(config_entry.options[CONF_GET_SOURCES]).to_be(True)
+        expect(config_entry.options[CONF_EXCLUDE_UNNAMED_APPS]).to_be(True)
+        expect(config_entry.options[CONF_SCREENCAP_INTERVAL]).to_equal(1)
+        expect(config_entry.options[CONF_TURN_OFF_COMMAND]).to_equal("off")
+        expect(config_entry.options[CONF_TURN_ON_COMMAND]).to_equal("on")
