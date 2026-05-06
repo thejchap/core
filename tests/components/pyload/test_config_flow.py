@@ -1,9 +1,11 @@
 """Test the pyLoad config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import AsyncMock
 
 from pyloadapi.exceptions import CannotConnect, InvalidAuth, ParserError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.pyload.const import DEFAULT_NAME, DOMAIN
 from homeassistant.config_entries import SOURCE_HASSIO, SOURCE_IGNORE, SOURCE_USER
@@ -11,55 +13,68 @@ from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import (
+from ._fixtures import (
     ADDON_DISCOVERY_INFO,
     ADDON_SERVICE_INFO,
     NEW_INPUT,
     REAUTH_INPUT,
     USER_INPUT,
+    config_entry as config_entry_fx,
+    mock_async_zeroconf as mock_async_zeroconf_fx,
+    mock_pyloadapi as mock_pyloadapi_fx,
+    mock_setup_entry as mock_setup_entry_fx,
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_pyloadapi: AsyncMock,
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _zc: object = Depends(mock_async_zeroconf_fx),
+) -> None:
+    """Wire mock_network + zeroconf for every test."""
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+    _mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_NAME
-    assert result["data"] == USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_NAME)
+    expect(result["data"]).to_equal(USER_INPUT)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_error"),
-    [
-        (InvalidAuth, "invalid_auth"),
-        (CannotConnect, "cannot_connect"),
-        (ParserError, "cannot_connect"),
-        (ValueError, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", exception=InvalidAuth, expected_error="invalid_auth"),
+    test.case(
+        "cannot_connect", exception=CannotConnect, expected_error="cannot_connect"
+    ),
+    test.case("parser_error", exception=ParserError, expected_error="cannot_connect"),
+    test.case("unknown", exception=ValueError, expected_error="unknown"),
 )
-async def test_form_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_pyloadapi: AsyncMock,
-    exception: Exception,
+async def form_errors(
+    exception: type[Exception],
     expected_error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+    mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
@@ -72,8 +87,8 @@ async def test_form_errors(
         USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": expected_error})
 
     mock_pyloadapi.get_status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
@@ -81,83 +96,83 @@ async def test_form_errors(
         USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DEFAULT_NAME
-    assert result["data"] == USER_INPUT
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DEFAULT_NAME)
+    expect(result["data"]).to_equal(USER_INPUT)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_flow_user_already_configured(
-    hass: HomeAssistant, config_entry: MockConfigEntry, mock_pyloadapi: AsyncMock
+@test
+async def flow_user_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry_fx),
+    _mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test we abort user data set when entry is already configured."""
-
     config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reauth(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    mock_pyloadapi: AsyncMock,
+@test
+async def reauth(
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry_fx),
+    _mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test reauth flow."""
-
     config_entry.add_to_hass(hass)
 
     result = await config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         REAUTH_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert config_entry.data == NEW_INPUT
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data).to_equal(NEW_INPUT)
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_text"),
-    [
-        (InvalidAuth, "invalid_auth"),
-        (CannotConnect, "cannot_connect"),
-        (IndexError, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=InvalidAuth, error_text="invalid_auth"),
+    test.case(
+        "cannot_connect", side_effect=CannotConnect, error_text="cannot_connect"
+    ),
+    test.case("unknown", side_effect=IndexError, error_text="unknown"),
 )
-async def test_reauth_errors(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    mock_pyloadapi: AsyncMock,
-    side_effect: Exception,
+async def reauth_errors(
+    side_effect: type[Exception],
     error_text: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry_fx),
+    mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test reauth flow."""
-
     config_entry.add_to_hass(hass)
 
     result = await config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     mock_pyloadapi.get_status.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
@@ -165,8 +180,8 @@ async def test_reauth_errors(
         REAUTH_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_text}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_text})
 
     mock_pyloadapi.get_status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
@@ -176,60 +191,58 @@ async def test_reauth_errors(
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert config_entry.data == NEW_INPUT
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data).to_equal(NEW_INPUT)
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-async def test_reconfiguration(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    mock_pyloadapi: AsyncMock,
+@test
+async def reconfiguration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry_fx),
+    _mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test reconfiguration flow."""
-
     config_entry.add_to_hass(hass)
 
     result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert config_entry.data == USER_INPUT
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data).to_equal(USER_INPUT)
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_text"),
-    [
-        (InvalidAuth, "invalid_auth"),
-        (CannotConnect, "cannot_connect"),
-        (IndexError, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=InvalidAuth, error_text="invalid_auth"),
+    test.case(
+        "cannot_connect", side_effect=CannotConnect, error_text="cannot_connect"
+    ),
+    test.case("unknown", side_effect=IndexError, error_text="unknown"),
 )
-async def test_reconfigure_errors(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    mock_pyloadapi: AsyncMock,
-    side_effect: Exception,
+async def reconfigure_errors(
+    side_effect: type[Exception],
     error_text: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(config_entry_fx),
+    mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test reconfiguration flow."""
-
     config_entry.add_to_hass(hass)
 
     result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     mock_pyloadapi.get_status.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
@@ -237,8 +250,8 @@ async def test_reconfigure_errors(
         USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_text}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_text})
 
     mock_pyloadapi.get_status.side_effect = None
     result = await hass.config_entries.flow.async_configure(
@@ -248,19 +261,19 @@ async def test_reconfigure_errors(
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert config_entry.data == USER_INPUT
-    assert len(hass.config_entries.async_entries()) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data).to_equal(USER_INPUT)
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
 
 
-async def test_hassio_discovery(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_pyloadapi: AsyncMock,
+@test
+async def hassio_discovery(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+    mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test flow started from Supervisor discovery."""
-
     mock_pyloadapi.get_status.side_effect = InvalidAuth
 
     result = await hass.config_entries.flow.async_init(
@@ -269,62 +282,60 @@ async def test_hassio_discovery(
         context={"source": SOURCE_HASSIO},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "hassio_confirm"
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("hassio_confirm")
+    expect(result["errors"]).to_be(None)
 
     mock_pyloadapi.get_status.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_USERNAME: "pyload", CONF_PASSWORD: "pyload"}
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "p539df76c_pyload-ng"
-    assert result["data"] == {**ADDON_DISCOVERY_INFO, CONF_VERIFY_SSL: False}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("p539df76c_pyload-ng")
+    expect(result["data"]).to_equal({**ADDON_DISCOVERY_INFO, CONF_VERIFY_SSL: False})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_pyloadapi")
-async def test_hassio_discovery_confirm_only(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+@test
+async def hassio_discovery_confirm_only(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+    _mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test flow started from Supervisor discovery. Abort with confirm only."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         data=ADDON_SERVICE_INFO,
         context={"source": SOURCE_HASSIO},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "hassio_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("hassio_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "p539df76c_pyload-ng"
-    assert result["data"] == {**ADDON_DISCOVERY_INFO, CONF_VERIFY_SSL: False}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("p539df76c_pyload-ng")
+    expect(result["data"]).to_equal({**ADDON_DISCOVERY_INFO, CONF_VERIFY_SSL: False})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_text"),
-    [
-        (InvalidAuth, "invalid_auth"),
-        (CannotConnect, "cannot_connect"),
-        (IndexError, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=InvalidAuth, error_text="invalid_auth"),
+    test.case(
+        "cannot_connect", side_effect=CannotConnect, error_text="cannot_connect"
+    ),
+    test.case("unknown", side_effect=IndexError, error_text="unknown"),
 )
-async def test_hassio_discovery_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_pyloadapi: AsyncMock,
-    side_effect: Exception,
+async def hassio_discovery_errors(
+    side_effect: type[Exception],
     error_text: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fx),
+    mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test flow started from Supervisor discovery."""
-
     mock_pyloadapi.get_status.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_init(
@@ -333,16 +344,16 @@ async def test_hassio_discovery_errors(
         context={"source": SOURCE_HASSIO},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "hassio_confirm"
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("hassio_confirm")
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_USERNAME: "pyload", CONF_PASSWORD: "pyload"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_text}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_text})
 
     mock_pyloadapi.get_status.side_effect = None
 
@@ -350,18 +361,18 @@ async def test_hassio_discovery_errors(
         result["flow_id"], {CONF_USERNAME: "pyload", CONF_PASSWORD: "pyload"}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "p539df76c_pyload-ng"
-    assert result["data"] == {**ADDON_DISCOVERY_INFO, CONF_VERIFY_SSL: False}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("p539df76c_pyload-ng")
+    expect(result["data"]).to_equal({**ADDON_DISCOVERY_INFO, CONF_VERIFY_SSL: False})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_pyloadapi")
-async def test_hassio_discovery_already_configured(
-    hass: HomeAssistant,
+@test
+async def hassio_discovery_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test we abort discovery flow if already configured."""
-
     MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -377,16 +388,16 @@ async def test_hassio_discovery_already_configured(
         context={"source": SOURCE_HASSIO},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures("mock_pyloadapi")
-async def test_hassio_discovery_data_update(
-    hass: HomeAssistant,
+@test
+async def hassio_discovery_data_update(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
-    """Test we abort discovery flow if already configured and we update entry from discovery data."""
-
+    """Test we abort discovery flow if already configured and update entry from discovery data."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -405,18 +416,17 @@ async def test_hassio_discovery_data_update(
         context={"source": SOURCE_HASSIO},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(entry.data[CONF_URL]).to_equal("http://539df76c-pyload-ng:8000/")
 
-    assert entry.data[CONF_URL] == "http://539df76c-pyload-ng:8000/"
 
-
-@pytest.mark.usefixtures("mock_pyloadapi")
-async def test_hassio_discovery_ignored(
-    hass: HomeAssistant,
+@test
+async def hassio_discovery_ignored(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_pyloadapi: AsyncMock = Depends(mock_pyloadapi_fx),
 ) -> None:
     """Test we abort discovery flow if discovery was ignored."""
-
     MockConfigEntry(
         domain=DOMAIN,
         source=SOURCE_IGNORE,
@@ -430,5 +440,5 @@ async def test_hassio_discovery_ignored(
         context={"source": SOURCE_HASSIO},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
