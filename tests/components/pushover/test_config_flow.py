@@ -1,9 +1,11 @@
-"""Test pushbullet config flow."""
+"""Test pushover config flow."""
 
-from unittest.mock import MagicMock, patch
+from __future__ import annotations
+
+from unittest.mock import MagicMock
 
 from pushover_complete import BadAPIRequestError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.pushover.const import CONF_USER_KEY, DOMAIN
@@ -12,29 +14,26 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import MOCK_CONFIG
+from ._fixtures import (
+    mock_pushover as mock_pushover_fx,
+    mock_setup_entry as mock_setup_entry_fx,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.fixture(autouse=True)
-def mock_pushover():
-    """Mock pushover."""
-    with patch(
-        "pushover_complete.PushoverAPI._generic_post", return_value={}
-    ) as mock_generic_post:
-        yield mock_generic_post
+@fixture
+def _trigger_executor(
+    _net: None = Depends(mock_network),
+    _mock_pushover: MagicMock = Depends(mock_pushover_fx),
+    _setup: None = Depends(mock_setup_entry_fx),
+) -> None:
+    """Wire default mocks for every test."""
 
 
-@pytest.fixture(autouse=True)
-def pushover_setup_fixture():
-    """Patch pushover setup entry."""
-    with patch(
-        "homeassistant.components.pushover.async_setup_entry", return_value=True
-    ):
-        yield
-
-
-async def test_flow_user(hass: HomeAssistant) -> None:
+@test
+async def flow_user(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test user initialized flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -44,18 +43,17 @@ async def test_flow_user(hass: HomeAssistant) -> None:
         result["flow_id"],
         user_input=MOCK_CONFIG,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Pushover"
-    assert result["data"] == MOCK_CONFIG
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Pushover")
+    expect(result["data"]).to_equal(MOCK_CONFIG)
 
 
-async def test_flow_user_key_api_key_exists(hass: HomeAssistant) -> None:
+@test
+async def flow_user_key_api_key_exists(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user initialized flow with duplicate user key / api key pair."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data=MOCK_CONFIG,
-    )
-
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG)
     entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
@@ -66,18 +64,20 @@ async def test_flow_user_key_api_key_exists(hass: HomeAssistant) -> None:
         result["flow_id"],
         user_input=MOCK_CONFIG,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_flow_name_already_configured(hass: HomeAssistant) -> None:
+@test
+async def flow_name_already_configured(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user initialized flow with duplicate server."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data=MOCK_CONFIG,
         unique_id="MYUSERKEY",
     )
-
     entry.add_to_hass(hass)
 
     new_config = MOCK_CONFIG.copy()
@@ -91,135 +91,125 @@ async def test_flow_name_already_configured(hass: HomeAssistant) -> None:
         result["flow_id"],
         user_input=new_config,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_flow_invalid_user_key(
-    hass: HomeAssistant, mock_pushover: MagicMock
+@test
+async def flow_invalid_user_key(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_pushover: MagicMock = Depends(mock_pushover_fx),
 ) -> None:
     """Test user initialized flow with wrong user key."""
-
     mock_pushover.side_effect = BadAPIRequestError("400: user key is invalid")
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
         data=MOCK_CONFIG,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {CONF_USER_KEY: "invalid_user_key"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({CONF_USER_KEY: "invalid_user_key"})
 
 
-async def test_flow_invalid_api_key(
-    hass: HomeAssistant, mock_pushover: MagicMock
+@test
+async def flow_invalid_api_key(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_pushover: MagicMock = Depends(mock_pushover_fx),
 ) -> None:
     """Test user initialized flow with wrong api key."""
-
     mock_pushover.side_effect = BadAPIRequestError("400: application token is invalid")
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
         data=MOCK_CONFIG,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {CONF_API_KEY: "invalid_api_key"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({CONF_API_KEY: "invalid_api_key"})
 
 
-async def test_flow_conn_err(hass: HomeAssistant, mock_pushover: MagicMock) -> None:
+@test
+async def flow_conn_err(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_pushover: MagicMock = Depends(mock_pushover_fx),
+) -> None:
     """Test user initialized flow with conn error."""
-
     mock_pushover.side_effect = BadAPIRequestError
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
         data=MOCK_CONFIG,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_reauth_success(hass: HomeAssistant) -> None:
+@test
+async def reauth_success(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we can reauth."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data=MOCK_CONFIG,
-    )
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG)
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_API_KEY: "NEWAPIKEY",
-        },
+        {CONF_API_KEY: "NEWAPIKEY"},
     )
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
 
 
-async def test_reauth_failed(hass: HomeAssistant, mock_pushover: MagicMock) -> None:
+@test
+async def reauth_failed(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_pushover: MagicMock = Depends(mock_pushover_fx),
+) -> None:
     """Test we can reauth."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data=MOCK_CONFIG,
-    )
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG)
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     mock_pushover.side_effect = BadAPIRequestError("400: application token is invalid")
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_API_KEY: "WRONGAPIKEY",
-        },
+        {CONF_API_KEY: "WRONGAPIKEY"},
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {
-        CONF_API_KEY: "invalid_api_key",
-    }
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({CONF_API_KEY: "invalid_api_key"})
 
 
-async def test_reauth_with_existing_config(hass: HomeAssistant) -> None:
+@test
+async def reauth_with_existing_config(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth fails if the api key entered exists in another entry."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data=MOCK_CONFIG,
-    )
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG)
     entry.add_to_hass(hass)
 
     second_entry = MOCK_CONFIG.copy()
     second_entry[CONF_API_KEY] = "MYAPIKEY2"
 
-    entry2 = MockConfigEntry(
-        domain=DOMAIN,
-        data=second_entry,
-    )
+    entry2 = MockConfigEntry(domain=DOMAIN, data=second_entry)
     entry2.add_to_hass(hass)
 
     result = await entry2.start_reauth_flow(hass)
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_API_KEY: MOCK_CONFIG[CONF_API_KEY],
-        },
+        {CONF_API_KEY: MOCK_CONFIG[CONF_API_KEY]},
     )
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")
