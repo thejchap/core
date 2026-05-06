@@ -1,9 +1,8 @@
 """Test the Home Assistant Connect ZBT-2 config flow."""
 
-from collections.abc import Generator
 from unittest.mock import ANY, AsyncMock, Mock, call, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 from universal_silabs_flasher.flasher import Zbt2Flasher
 
 from homeassistant.components.homeassistant_connect_zbt2.const import DOMAIN
@@ -28,32 +27,35 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.usb import UsbServiceInfo
 from homeassistant.setup import async_setup_component
 
+from ._fixtures import (
+    addon_installed,
+    autouse_bundle,
+    start_addon,
+    supervisor,
+)
 from .common import USB_DATA_ZBT2
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
 
 
-@pytest.fixture(name="supervisor")
-def mock_supervisor_fixture() -> Generator[None]:
-    """Mock Supervisor."""
-    with patch(
-        "homeassistant.components.homeassistant_hardware.firmware_config_flow.is_hassio",
-        return_value=True,
-    ):
-        yield
+@fixture
+def _trigger_executor(
+    _autouse: None = Depends(autouse_bundle),
+) -> None:
+    """Local anchor fixture so tryke materializes hass per-test.
+
+    Tryke needs the test signature to include a fixture Depends() that is
+    defined in this same module for hass injection to land reliably; this
+    re-exports the autouse bundle through a module-local name.
+    """
 
 
-@pytest.fixture(name="setup_entry", autouse=True)
-def setup_entry_fixture() -> Generator[AsyncMock]:
-    """Mock entry setup."""
-    with patch(
-        "homeassistant.components.homeassistant_connect_zbt2.async_setup_entry",
-        return_value=True,
-    ) as mock_setup_entry:
-        yield mock_setup_entry
-
-
-async def test_config_flow_zigbee(hass: HomeAssistant) -> None:
+@test
+async def config_flow_zigbee(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+) -> None:
     """Test Zigbee config flow for Connect ZBT-2."""
     fw_type = ApplicationType.EZSP
     fw_version = "7.4.4.0 build 0"
@@ -64,11 +66,11 @@ async def test_config_flow_zigbee(hass: HomeAssistant) -> None:
         DOMAIN, context={"source": "usb"}, data=usb_data
     )
 
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "pick_firmware"
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("pick_firmware")
     description_placeholders = result["description_placeholders"]
-    assert description_placeholders is not None
-    assert description_placeholders["model"] == model
+    expect(description_placeholders is not None).to_be(True)
+    expect(description_placeholders["model"]).to_equal(model)
 
     async def mock_install_firmware_step(
         self,
@@ -100,61 +102,68 @@ async def test_config_flow_zigbee(hass: HomeAssistant) -> None:
             user_input={"next_step_id": STEP_PICK_FIRMWARE_ZIGBEE},
         )
 
-        assert pick_result["type"] is FlowResultType.MENU
-        assert pick_result["step_id"] == "zigbee_installation_type"
+        expect(pick_result["type"]).to_be(FlowResultType.MENU)
+        expect(pick_result["step_id"]).to_equal("zigbee_installation_type")
 
         create_result = await hass.config_entries.flow.async_configure(
             pick_result["flow_id"],
             user_input={"next_step_id": "zigbee_intent_recommended"},
         )
 
-    assert create_result["type"] is FlowResultType.CREATE_ENTRY
+    expect(create_result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     config_entry = create_result["result"]
-    assert config_entry.data == {
-        "firmware": fw_type.value,
-        "firmware_version": fw_version,
-        "device": usb_data.device,
-        "manufacturer": usb_data.manufacturer,
-        "pid": usb_data.pid,
-        "product": usb_data.description,
-        "serial_number": usb_data.serial_number,
-        "vid": usb_data.vid,
-    }
+    expect(config_entry.data).to_equal(
+        {
+            "firmware": fw_type.value,
+            "firmware_version": fw_version,
+            "device": usb_data.device,
+            "manufacturer": usb_data.manufacturer,
+            "pid": usb_data.pid,
+            "product": usb_data.description,
+            "serial_number": usb_data.serial_number,
+            "vid": usb_data.vid,
+        }
+    )
 
     flows = hass.config_entries.flow.async_progress()
 
     # Ensure a ZHA discovery flow has been created
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
     zha_flow = flows[0]
-    assert zha_flow["handler"] == "zha"
-    assert zha_flow["context"]["source"] == "hardware"
-    assert zha_flow["step_id"] == "confirm"
+    expect(zha_flow["handler"]).to_equal("zha")
+    expect(zha_flow["context"]["source"]).to_equal("hardware")
+    expect(zha_flow["step_id"]).to_equal("confirm")
 
     progress_zha_flows = hass.config_entries.flow._async_progress_by_handler(
         handler="zha",
         match_context=None,
     )
 
-    assert len(progress_zha_flows) == 1
+    expect(len(progress_zha_flows)).to_equal(1)
 
     # Ensure correct baudrate
     progress_zha_flow = progress_zha_flows[0]
-    assert progress_zha_flow.init_data == {
-        "flow_strategy": "recommended",
-        "name": model,
-        "port": {
-            "path": usb_data.device,
-            "baudrate": 460800,
-            "flow_control": "hardware",
-        },
-        "radio_type": fw_type.value,
-    }
+    expect(progress_zha_flow.init_data).to_equal(
+        {
+            "flow_strategy": "recommended",
+            "name": model,
+            "port": {
+                "path": usb_data.device,
+                "baudrate": 460800,
+                "flow_control": "hardware",
+            },
+            "radio_type": fw_type.value,
+        }
+    )
 
 
-@pytest.mark.usefixtures("addon_installed", "supervisor")
-async def test_config_flow_thread(
-    hass: HomeAssistant,
-    start_addon: AsyncMock,
+@test
+async def config_flow_thread(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+    _addon_installed: AsyncMock = Depends(addon_installed),
+    _supervisor: None = Depends(supervisor),
+    start_addon: AsyncMock = Depends(start_addon),
 ) -> None:
     """Test Thread config flow for Connect ZBT-2."""
     fw_type = ApplicationType.SPINEL
@@ -166,11 +175,11 @@ async def test_config_flow_thread(
         DOMAIN, context={"source": "usb"}, data=usb_data
     )
 
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "pick_firmware"
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("pick_firmware")
     description_placeholders = result["description_placeholders"]
-    assert description_placeholders is not None
-    assert description_placeholders["model"] == model
+    expect(description_placeholders is not None).to_be(True)
+    expect(description_placeholders["model"]).to_equal(model)
 
     async def mock_install_firmware_step(
         self,
@@ -202,8 +211,8 @@ async def test_config_flow_thread(
             user_input={"next_step_id": STEP_PICK_FIRMWARE_THREAD},
         )
 
-        assert result["type"] is FlowResultType.SHOW_PROGRESS
-        assert result["step_id"] == "start_otbr_addon"
+        expect(result["type"]).to_be(FlowResultType.SHOW_PROGRESS)
+        expect(result["step_id"]).to_equal("start_otbr_addon")
 
         # Make sure the flow continues when the progress task is done.
         await hass.async_block_till_done()
@@ -212,34 +221,40 @@ async def test_config_flow_thread(
             result["flow_id"]
         )
 
-    assert start_addon.call_count == 1
-    assert start_addon.call_args == call("core_openthread_border_router")
-    assert create_result["type"] is FlowResultType.CREATE_ENTRY
+    expect(start_addon.call_count).to_equal(1)
+    expect(start_addon.call_args).to_equal(call("core_openthread_border_router"))
+    expect(create_result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     config_entry = create_result["result"]
-    assert config_entry.data == {
-        "firmware": fw_type.value,
-        "firmware_version": fw_version,
-        "device": usb_data.device,
-        "manufacturer": usb_data.manufacturer,
-        "pid": usb_data.pid,
-        "product": usb_data.description,
-        "serial_number": usb_data.serial_number,
-        "vid": usb_data.vid,
-    }
+    expect(config_entry.data).to_equal(
+        {
+            "firmware": fw_type.value,
+            "firmware_version": fw_version,
+            "device": usb_data.device,
+            "manufacturer": usb_data.manufacturer,
+            "pid": usb_data.pid,
+            "product": usb_data.description,
+            "serial_number": usb_data.serial_number,
+            "vid": usb_data.vid,
+        }
+    )
 
     flows = hass.config_entries.flow.async_progress()
 
-    assert len(flows) == 0
+    expect(len(flows)).to_equal(0)
 
 
-@pytest.mark.parametrize(
-    ("usb_data", "model"),
-    [
-        (USB_DATA_ZBT2, "Home Assistant Connect ZBT-2"),
-    ],
+@test.cases(
+    test.case(
+        "zbt2",
+        usb_data=USB_DATA_ZBT2,
+        model="Home Assistant Connect ZBT-2",
+    ),
 )
-async def test_options_flow(
-    usb_data: UsbServiceInfo, model: str, hass: HomeAssistant
+async def options_flow(
+    usb_data: UsbServiceInfo,
+    model: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
 ) -> None:
     """Test the options flow for Connect ZBT-2."""
     config_entry = MockConfigEntry(
@@ -259,16 +274,16 @@ async def test_options_flow(
     )
     config_entry.add_to_hass(hass)
 
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
 
     # First step is confirmation
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "pick_firmware"
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("pick_firmware")
     description_placeholders = result["description_placeholders"]
-    assert description_placeholders is not None
-    assert description_placeholders["firmware_type"] == "spinel"
-    assert description_placeholders["model"] == model
+    expect(description_placeholders is not None).to_be(True)
+    expect(description_placeholders["firmware_type"]).to_equal("spinel")
+    expect(description_placeholders["model"]).to_equal(model)
 
     mock_update_client = AsyncMock()
     mock_manifest = Mock()
@@ -332,85 +347,99 @@ async def test_options_flow(
             user_input={"next_step_id": STEP_PICK_FIRMWARE_ZIGBEE},
         )
 
-        assert pick_result["type"] is FlowResultType.MENU
-        assert pick_result["step_id"] == "zigbee_installation_type"
+        expect(pick_result["type"]).to_be(FlowResultType.MENU)
+        expect(pick_result["step_id"]).to_equal("zigbee_installation_type")
 
         create_result = await hass.config_entries.options.async_configure(
             pick_result["flow_id"],
             user_input={"next_step_id": "zigbee_intent_recommended"},
         )
 
-    assert create_result["type"] is FlowResultType.CREATE_ENTRY
+    expect(create_result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
-    assert config_entry.data == {
-        "firmware": "ezsp",
-        "firmware_version": "7.4.4.0 build 0",
-        "device": usb_data.device,
-        "manufacturer": usb_data.manufacturer,
-        "pid": usb_data.pid,
-        "product": usb_data.description,
-        "serial_number": usb_data.serial_number,
-        "vid": usb_data.vid,
-    }
+    expect(config_entry.data).to_equal(
+        {
+            "firmware": "ezsp",
+            "firmware_version": "7.4.4.0 build 0",
+            "device": usb_data.device,
+            "manufacturer": usb_data.manufacturer,
+            "pid": usb_data.pid,
+            "product": usb_data.description,
+            "serial_number": usb_data.serial_number,
+            "vid": usb_data.vid,
+        }
+    )
 
-    assert flash_mock.mock_calls == [
-        call(
-            hass=hass,
-            device=USB_DATA_ZBT2.device,
-            fw_data=ANY,
-            flasher_cls=Zbt2Flasher,
-            expected_installed_firmware_type=ApplicationType.EZSP,
-            progress_callback=ANY,
-        )
-    ]
+    expect(flash_mock.mock_calls).to_equal(
+        [
+            call(
+                hass=hass,
+                device=USB_DATA_ZBT2.device,
+                fw_data=ANY,
+                flasher_cls=Zbt2Flasher,
+                expected_installed_firmware_type=ApplicationType.EZSP,
+                progress_callback=ANY,
+            )
+        ]
+    )
 
     flows = hass.config_entries.flow.async_progress()
 
     # Ensure a ZHA discovery flow has been created
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
     zha_flow = flows[0]
-    assert zha_flow["handler"] == "zha"
-    assert zha_flow["context"]["source"] == "hardware"
-    assert zha_flow["step_id"] == "confirm"
+    expect(zha_flow["handler"]).to_equal("zha")
+    expect(zha_flow["context"]["source"]).to_equal("hardware")
+    expect(zha_flow["step_id"]).to_equal("confirm")
 
     progress_zha_flows = hass.config_entries.flow._async_progress_by_handler(
         handler="zha",
         match_context=None,
     )
 
-    assert len(progress_zha_flows) == 1
+    expect(len(progress_zha_flows)).to_equal(1)
 
     # Ensure correct baudrate
     progress_zha_flow = progress_zha_flows[0]
-    assert progress_zha_flow.init_data == {
-        "flow_strategy": "recommended",
-        "name": model,
-        "port": {
-            "path": usb_data.device,
-            "baudrate": 460800,
-            "flow_control": "hardware",
-        },
-        "radio_type": "ezsp",
-    }
+    expect(progress_zha_flow.init_data).to_equal(
+        {
+            "flow_strategy": "recommended",
+            "name": model,
+            "port": {
+                "path": usb_data.device,
+                "baudrate": 460800,
+                "flow_control": "hardware",
+            },
+            "radio_type": "ezsp",
+        }
+    )
 
 
-async def test_duplicate_discovery(hass: HomeAssistant) -> None:
+@test
+async def duplicate_discovery(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+) -> None:
     """Test config flow unique_id deduplication."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "usb"}, data=USB_DATA_ZBT2
     )
 
-    assert result["type"] is FlowResultType.MENU
+    expect(result["type"]).to_be(FlowResultType.MENU)
 
     result_duplicate = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "usb"}, data=USB_DATA_ZBT2
     )
 
-    assert result_duplicate["type"] is FlowResultType.ABORT
-    assert result_duplicate["reason"] == "already_in_progress"
+    expect(result_duplicate["type"]).to_be(FlowResultType.ABORT)
+    expect(result_duplicate["reason"]).to_equal("already_in_progress")
 
 
-async def test_duplicate_discovery_updates_usb_path(hass: HomeAssistant) -> None:
+@test
+async def duplicate_discovery_updates_usb_path(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+) -> None:
     """Test config flow unique_id deduplication updates USB path."""
     config_entry = MockConfigEntry(
         domain="homeassistant_connect_zbt2",
@@ -435,19 +464,23 @@ async def test_duplicate_discovery_updates_usb_path(hass: HomeAssistant) -> None
     )
     config_entry.add_to_hass(hass)
 
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "usb"}, data=USB_DATA_ZBT2
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert config_entry.data["device"] == USB_DATA_ZBT2.device
+    expect(config_entry.data["device"]).to_equal(USB_DATA_ZBT2.device)
 
 
-async def test_firmware_callback_auto_creates_entry(hass: HomeAssistant) -> None:
+@test
+async def firmware_callback_auto_creates_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+) -> None:
     """Test that firmware notification triggers import flow that auto-creates config entry."""
     await async_setup_component(hass, HOMEASSISTANT_HARDWARE_DOMAIN, {})
     await async_setup_component(hass, USB_DOMAIN, {})
@@ -456,8 +489,8 @@ async def test_firmware_callback_auto_creates_entry(hass: HomeAssistant) -> None
         DOMAIN, context={"source": "usb"}, data=USB_DATA_ZBT2
     )
 
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "pick_firmware"
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("pick_firmware")
 
     usb_device = USBDevice(
         device=USB_DATA_ZBT2.device,
@@ -488,23 +521,29 @@ async def test_firmware_callback_auto_creates_entry(hass: HomeAssistant) -> None
 
     # The config entry was auto-created
     entries = hass.config_entries.async_entries(DOMAIN)
-    assert len(entries) == 1
-    assert entries[0].data == {
-        "device": USB_DATA_ZBT2.device,
-        "firmware": ApplicationType.EZSP.value,
-        "firmware_version": "7.4.4.0",
-        "vid": USB_DATA_ZBT2.vid,
-        "pid": USB_DATA_ZBT2.pid,
-        "serial_number": USB_DATA_ZBT2.serial_number,
-        "manufacturer": USB_DATA_ZBT2.manufacturer,
-        "product": USB_DATA_ZBT2.description,
-    }
+    expect(len(entries)).to_equal(1)
+    expect(entries[0].data).to_equal(
+        {
+            "device": USB_DATA_ZBT2.device,
+            "firmware": ApplicationType.EZSP.value,
+            "firmware_version": "7.4.4.0",
+            "vid": USB_DATA_ZBT2.vid,
+            "pid": USB_DATA_ZBT2.pid,
+            "serial_number": USB_DATA_ZBT2.serial_number,
+            "manufacturer": USB_DATA_ZBT2.manufacturer,
+            "product": USB_DATA_ZBT2.description,
+        }
+    )
 
     # The discovery flow is gone
-    assert not hass.config_entries.flow.async_progress_by_handler(DOMAIN)
+    expect(hass.config_entries.flow.async_progress_by_handler(DOMAIN)).to_equal([])
 
 
-async def test_firmware_callback_updates_existing_entry(hass: HomeAssistant) -> None:
+@test
+async def firmware_callback_updates_existing_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _trigger: None = Depends(_trigger_executor),
+) -> None:
     """Test that firmware notification updates existing config entry device path."""
     await async_setup_component(hass, HOMEASSISTANT_HARDWARE_DOMAIN, {})
     await async_setup_component(hass, USB_DOMAIN, {})
@@ -559,8 +598,8 @@ async def test_firmware_callback_updates_existing_entry(hass: HomeAssistant) -> 
         await hass.async_block_till_done()
 
     # The config entry device path should be updated
-    assert config_entry.data["device"] == USB_DATA_ZBT2.device
+    expect(config_entry.data["device"]).to_equal(USB_DATA_ZBT2.device)
 
     # No new config entry was created
     entries = hass.config_entries.async_entries(DOMAIN)
-    assert len(entries) == 1
+    expect(len(entries)).to_equal(1)
