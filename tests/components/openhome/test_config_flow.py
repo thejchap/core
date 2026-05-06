@@ -1,5 +1,7 @@
 """Tests for the Openhome config flow module."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.openhome.const import DOMAIN
 from homeassistant.config_entries import SOURCE_SSDP
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_SOURCE
@@ -12,6 +14,7 @@ from homeassistant.helpers.service_info.ssdp import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 MOCK_UDN = "uuid:4c494e4e-1234-ab12-abcd-01234567819f"
 MOCK_FRIENDLY_NAME = "Test Client"
@@ -25,7 +28,18 @@ MOCK_DISCOVER = SsdpServiceInfo(
 )
 
 
-async def test_ssdp(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture so tryke fully resolves Depends across the module."""
+
+
+@test
+async def ssdp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a ssdp import flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -33,16 +47,20 @@ async def test_ssdp(hass: HomeAssistant) -> None:
         data=MOCK_DISCOVER,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
-    assert result["description_placeholders"] == {CONF_NAME: MOCK_FRIENDLY_NAME}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
+    expect(result["description_placeholders"]).to_equal({CONF_NAME: MOCK_FRIENDLY_NAME})
 
     result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-    assert result2["title"] == MOCK_FRIENDLY_NAME
-    assert result2["data"] == {CONF_HOST: MOCK_SSDP_LOCATION}
+    expect(result2["title"]).to_equal(MOCK_FRIENDLY_NAME)
+    expect(result2["data"]).to_equal({CONF_HOST: MOCK_SSDP_LOCATION})
 
 
-async def test_device_exists(hass: HomeAssistant) -> None:
+@test
+async def device_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a ssdp import where device already exists."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -57,11 +75,15 @@ async def test_device_exists(hass: HomeAssistant) -> None:
         context={CONF_SOURCE: SOURCE_SSDP},
         data=MOCK_DISCOVER,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_missing_udn(hass: HomeAssistant) -> None:
+@test
+async def missing_udn(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a ssdp import where discovery is missing udn."""
     broken_discovery = SsdpServiceInfo(
         ssdp_usn="usn",
@@ -76,11 +98,15 @@ async def test_missing_udn(hass: HomeAssistant) -> None:
         context={CONF_SOURCE: SOURCE_SSDP},
         data=broken_discovery,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "incomplete_discovery"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("incomplete_discovery")
 
 
-async def test_missing_ssdp_location(hass: HomeAssistant) -> None:
+@test
+async def missing_ssdp_location(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a ssdp import where discovery is missing udn."""
     broken_discovery = SsdpServiceInfo(
         ssdp_usn="usn",
@@ -93,11 +119,15 @@ async def test_missing_ssdp_location(hass: HomeAssistant) -> None:
         context={CONF_SOURCE: SOURCE_SSDP},
         data=broken_discovery,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "incomplete_discovery"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("incomplete_discovery")
 
 
-async def test_host_updated(hass: HomeAssistant) -> None:
+@test
+async def host_updated(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a ssdp import flow where host changes."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -112,7 +142,7 @@ async def test_host_updated(hass: HomeAssistant) -> None:
         context={CONF_SOURCE: SOURCE_SSDP},
         data=MOCK_DISCOVER,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
-    assert entry.data[CONF_HOST] == MOCK_SSDP_LOCATION
+    expect(entry.data[CONF_HOST]).to_equal(MOCK_SSDP_LOCATION)
