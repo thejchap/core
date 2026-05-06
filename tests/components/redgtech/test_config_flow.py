@@ -1,9 +1,11 @@
 """Tests Config flow for the Redgtech integration."""
 
+from __future__ import annotations
+
 from unittest.mock import MagicMock
 
-import pytest
 from redgtech_api.api import RedgtechAuthError, RedgtechConnectionError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.redgtech.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -11,73 +13,86 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_redgtech_api as mock_redgtech_api_fx
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 TEST_EMAIL = "test@example.com"
 TEST_PASSWORD = "123456"
 FAKE_TOKEN = "fake_token"
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (RedgtechAuthError, "invalid_auth"),
-        (RedgtechConnectionError, "cannot_connect"),
-        (Exception("Generic error"), "unknown"),
-    ],
+@fixture
+def _trigger_executor(_net: None = Depends(mock_network)) -> None:
+    """Wire mock_network for every test."""
+
+
+@test.cases(
+    test.case("invalid_auth", side_effect=RedgtechAuthError, expected_error="invalid_auth"),
+    test.case(
+        "cannot_connect",
+        side_effect=RedgtechConnectionError,
+        expected_error="cannot_connect",
+    ),
+    test.case(
+        "unknown", side_effect=Exception("Generic error"), expected_error="unknown"
+    ),
 )
-async def test_user_step_errors(
-    hass: HomeAssistant,
-    mock_redgtech_api: MagicMock,
-    side_effect: type[Exception],
+async def user_step_errors(
+    *,
+    side_effect: type[Exception] | Exception,
     expected_error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(mock_redgtech_api_fx),
 ) -> None:
     """Test user step with various errors."""
     user_input = {CONF_EMAIL: TEST_EMAIL, CONF_PASSWORD: TEST_PASSWORD}
-    mock_redgtech_api.login.side_effect = side_effect
-    mock_redgtech_api.login.return_value = None
+    api.login.side_effect = side_effect
+    api.login.return_value = None
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data=user_input
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == expected_error
-    mock_redgtech_api.login.assert_called_once_with(TEST_EMAIL, TEST_PASSWORD)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal(expected_error)
+    api.login.assert_called_once_with(TEST_EMAIL, TEST_PASSWORD)
 
 
-async def test_user_step_creates_entry(
-    hass: HomeAssistant,
-    mock_redgtech_api: MagicMock,
+@test
+async def user_step_creates_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(mock_redgtech_api_fx),
 ) -> None:
-    """Tests the correct creation of the entry in the configuration."""
+    """Test the correct creation of the entry in the configuration."""
     user_input = {CONF_EMAIL: TEST_EMAIL, CONF_PASSWORD: TEST_PASSWORD}
-    mock_redgtech_api.login.reset_mock()
-    mock_redgtech_api.login.return_value = FAKE_TOKEN
-    mock_redgtech_api.login.side_effect = None
+    api.login.reset_mock()
+    api.login.return_value = FAKE_TOKEN
+    api.login.side_effect = None
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data=user_input
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_EMAIL
-    assert result["data"] == user_input
-    # Verify login was called at least once with correct parameters
-    mock_redgtech_api.login.assert_any_call(TEST_EMAIL, TEST_PASSWORD)
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_EMAIL)
+    expect(result["data"]).to_equal(user_input)
+    api.login.assert_any_call(TEST_EMAIL, TEST_PASSWORD)
 
 
-async def test_user_step_duplicate_entry(
-    hass: HomeAssistant,
-    mock_redgtech_api: MagicMock,
+@test
+async def user_step_duplicate_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(mock_redgtech_api_fx),
 ) -> None:
     """Test attempt to add duplicate entry."""
-    existing_entry = MockConfigEntry(
+    existing = MockConfigEntry(
         domain=DOMAIN,
         unique_id=TEST_EMAIL,
         data={CONF_EMAIL: TEST_EMAIL},
     )
-    existing_entry.add_to_hass(hass)
+    existing.add_to_hass(hass)
 
     user_input = {CONF_EMAIL: TEST_EMAIL, CONF_PASSWORD: TEST_PASSWORD}
 
@@ -85,54 +100,52 @@ async def test_user_step_duplicate_entry(
         DOMAIN, context={"source": SOURCE_USER}, data=user_input
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    mock_redgtech_api.login.assert_not_called()
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    api.login.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (RedgtechAuthError, "invalid_auth"),
-        (RedgtechConnectionError, "cannot_connect"),
-        (Exception("Generic error"), "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=RedgtechAuthError, expected_error="invalid_auth"),
+    test.case(
+        "cannot_connect",
+        side_effect=RedgtechConnectionError,
+        expected_error="cannot_connect",
+    ),
+    test.case(
+        "unknown", side_effect=Exception("Generic error"), expected_error="unknown"
+    ),
 )
-async def test_user_step_error_recovery(
-    hass: HomeAssistant,
-    mock_redgtech_api: MagicMock,
-    side_effect: Exception,
+async def user_step_error_recovery(
+    *,
+    side_effect: type[Exception] | Exception,
     expected_error: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(mock_redgtech_api_fx),
 ) -> None:
     """Test that the flow can recover from errors and complete successfully."""
     user_input = {CONF_EMAIL: TEST_EMAIL, CONF_PASSWORD: TEST_PASSWORD}
 
-    # Reset mock to start fresh
-    mock_redgtech_api.login.reset_mock()
-    mock_redgtech_api.login.return_value = None
-    mock_redgtech_api.login.side_effect = None
+    api.login.reset_mock()
+    api.login.return_value = None
+    api.login.side_effect = side_effect
 
-    # First attempt fails with error
-    mock_redgtech_api.login.side_effect = side_effect
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data=user_input
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == expected_error
-    # Verify login was called at least once for the first attempt
-    assert mock_redgtech_api.login.call_count >= 1
-    first_call_count = mock_redgtech_api.login.call_count
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal(expected_error)
+    expect(api.login.call_count >= 1).to_be(True)
+    first_call_count = api.login.call_count
 
-    # Second attempt succeeds - flow recovers
-    mock_redgtech_api.login.side_effect = None
-    mock_redgtech_api.login.return_value = FAKE_TOKEN
+    api.login.side_effect = None
+    api.login.return_value = FAKE_TOKEN
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=user_input
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_EMAIL
-    assert result["data"] == user_input
-    # Verify login was called again for the second attempt (recovery)
-    assert mock_redgtech_api.login.call_count > first_call_count
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_EMAIL)
+    expect(result["data"]).to_equal(user_input)
+    expect(api.login.call_count > first_call_count).to_be(True)
