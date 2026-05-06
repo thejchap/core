@@ -1,8 +1,11 @@
 """Test the Sonarr config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import MagicMock, patch
 
 from aiopyarr import ArrAuthenticationException, ArrException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.sonarr.const import (
     CONF_UPCOMING_DAYS,
@@ -17,124 +20,137 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import MOCK_REAUTH_INPUT, MOCK_USER_INPUT
+from ._fixtures import (
+    init_integration,
+    mock_setup_entry,
+    mock_sonarr_config_flow,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_show_user_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def show_user_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the user set up form is served."""
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={CONF_SOURCE: SOURCE_USER},
+        DOMAIN, context={CONF_SOURCE: SOURCE_USER}
     )
 
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
 
-async def test_cannot_connect(
-    hass: HomeAssistant, mock_sonarr_config_flow: MagicMock
+@test
+async def cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_sonarr_config_flow),
 ) -> None:
     """Test we show user form on connection error."""
-    mock_sonarr_config_flow.async_get_system_status.side_effect = ArrException
+    client.async_get_system_status.side_effect = ArrException
 
     user_input = MOCK_USER_INPUT.copy()
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={CONF_SOURCE: SOURCE_USER},
-        data=user_input,
+        DOMAIN, context={CONF_SOURCE: SOURCE_USER}, data=user_input
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_url_rewrite(
-    hass: HomeAssistant,
-    mock_sonarr_config_flow: MagicMock,
-    mock_setup_entry: None,
+@test
+async def url_rewrite(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: MagicMock = Depends(mock_sonarr_config_flow),
+    _setup: None = Depends(mock_setup_entry),
 ) -> None:
     """Test the full manual user flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={CONF_SOURCE: SOURCE_USER},
+        DOMAIN, context={CONF_SOURCE: SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     user_input = MOCK_USER_INPUT.copy()
     user_input[CONF_URL] = "https://192.168.1.189"
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input=user_input,
+        result["flow_id"], user_input=user_input
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "192.168.1.189"
-
-    assert result["data"]
-    assert result["data"][CONF_URL] == "https://192.168.1.189:443/"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("192.168.1.189")
+    expect(result["data"][CONF_URL]).to_equal("https://192.168.1.189:443/")
 
 
-async def test_invalid_auth(
-    hass: HomeAssistant, mock_sonarr_config_flow: MagicMock
+@test
+async def invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_sonarr_config_flow),
 ) -> None:
     """Test we show user form on invalid auth."""
-    mock_sonarr_config_flow.async_get_system_status.side_effect = (
-        ArrAuthenticationException
-    )
+    client.async_get_system_status.side_effect = ArrAuthenticationException
 
     user_input = MOCK_USER_INPUT.copy()
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={CONF_SOURCE: SOURCE_USER},
-        data=user_input,
+        DOMAIN, context={CONF_SOURCE: SOURCE_USER}, data=user_input
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_unknown_error(
-    hass: HomeAssistant, mock_sonarr_config_flow: MagicMock
+@test
+async def unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MagicMock = Depends(mock_sonarr_config_flow),
 ) -> None:
     """Test we show user form on unknown error."""
-    mock_sonarr_config_flow.async_get_system_status.side_effect = Exception
+    client.async_get_system_status.side_effect = Exception
 
     user_input = MOCK_USER_INPUT.copy()
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={CONF_SOURCE: SOURCE_USER},
-        data=user_input,
+        DOMAIN, context={CONF_SOURCE: SOURCE_USER}, data=user_input
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unknown"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unknown")
 
 
-async def test_full_reauth_flow_implementation(
-    hass: HomeAssistant,
-    mock_sonarr_config_flow: MagicMock,
-    mock_setup_entry: None,
-    init_integration: MockConfigEntry,
+@test
+async def full_reauth_flow_implementation(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: MagicMock = Depends(mock_sonarr_config_flow),
+    _setup: None = Depends(mock_setup_entry),
+    entry: MockConfigEntry = Depends(init_integration),
 ) -> None:
     """Test the manual reauth flow from start to finish."""
-    entry = init_integration
-
     result = await entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     user_input = MOCK_REAUTH_INPUT.copy()
     result = await hass.config_entries.flow.async_configure(
@@ -142,94 +158,90 @@ async def test_full_reauth_flow_implementation(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
-    assert entry.data[CONF_API_KEY] == "test-api-key-reauth"
+    expect(entry.data[CONF_API_KEY]).to_equal("test-api-key-reauth")
 
 
-async def test_full_user_flow_implementation(
-    hass: HomeAssistant,
-    mock_sonarr_config_flow: MagicMock,
-    mock_setup_entry: None,
+@test
+async def full_user_flow_implementation(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: MagicMock = Depends(mock_sonarr_config_flow),
+    _setup: None = Depends(mock_setup_entry),
 ) -> None:
     """Test the full manual user flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={CONF_SOURCE: SOURCE_USER},
+        DOMAIN, context={CONF_SOURCE: SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     user_input = MOCK_USER_INPUT.copy()
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input=user_input,
+        result["flow_id"], user_input=user_input
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "192.168.1.189"
-
-    assert result["data"]
-    assert result["data"][CONF_URL] == "http://192.168.1.189:8989/"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("192.168.1.189")
+    expect(result["data"][CONF_URL]).to_equal("http://192.168.1.189:8989/")
 
 
-async def test_full_user_flow_advanced_options(
-    hass: HomeAssistant,
-    mock_sonarr_config_flow: MagicMock,
-    mock_setup_entry: None,
+@test
+async def full_user_flow_advanced_options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: MagicMock = Depends(mock_sonarr_config_flow),
+    _setup: None = Depends(mock_setup_entry),
 ) -> None:
     """Test the full manual user flow with advanced options."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_USER, "show_advanced_options": True}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    user_input = {
-        **MOCK_USER_INPUT,
-        CONF_VERIFY_SSL: True,
-    }
+    user_input = {**MOCK_USER_INPUT, CONF_VERIFY_SSL: True}
 
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input=user_input,
+        result["flow_id"], user_input=user_input
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "192.168.1.189"
-
-    assert result["data"]
-    assert result["data"][CONF_URL] == "http://192.168.1.189:8989/"
-    assert result["data"][CONF_VERIFY_SSL]
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("192.168.1.189")
+    expect(result["data"][CONF_URL]).to_equal("http://192.168.1.189:8989/")
+    expect(result["data"][CONF_VERIFY_SSL]).to_be(True)
 
 
-@patch("homeassistant.components.sonarr.PLATFORMS", [])
-async def test_options_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: None,
-    init_integration: MockConfigEntry,
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: None = Depends(mock_setup_entry),
+    entry: MockConfigEntry = Depends(init_integration),
 ) -> None:
     """Test updating options."""
-    entry = init_integration
+    with patch("homeassistant.components.sonarr.PLATFORMS", []):
+        expect(entry.options[CONF_UPCOMING_DAYS]).to_equal(DEFAULT_UPCOMING_DAYS)
+        expect(entry.options[CONF_WANTED_MAX_ITEMS]).to_equal(
+            DEFAULT_WANTED_MAX_ITEMS
+        )
 
-    assert entry.options[CONF_UPCOMING_DAYS] == DEFAULT_UPCOMING_DAYS
-    assert entry.options[CONF_WANTED_MAX_ITEMS] == DEFAULT_WANTED_MAX_ITEMS
+        result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    result = await hass.config_entries.options.async_init(entry.entry_id)
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={CONF_UPCOMING_DAYS: 2, CONF_WANTED_MAX_ITEMS: 100},
+        )
+        await hass.async_block_till_done()
 
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input={CONF_UPCOMING_DAYS: 2, CONF_WANTED_MAX_ITEMS: 100},
-    )
-    await hass.async_block_till_done()
-
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_UPCOMING_DAYS] == 2
-    assert result["data"][CONF_WANTED_MAX_ITEMS] == 100
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"][CONF_UPCOMING_DAYS]).to_equal(2)
+        expect(result["data"][CONF_WANTED_MAX_ITEMS]).to_equal(100)
