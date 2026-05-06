@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from aemet_opendata.exceptions import AemetTimeout
-from freezegun.api import FrozenDateTimeFactory
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.aemet.const import DOMAIN
 from homeassistant.config_entries import ConfigEntryState
@@ -14,6 +14,12 @@ from homeassistant.helpers import entity_registry as er
 from .util import mock_api_call
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    entity_registry as entity_registry_fixture,
+    freezer as freezer_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
 
 CONFIG = {
     CONF_NAME: "aemet",
@@ -23,13 +29,19 @@ CONFIG = {
 }
 
 
-async def test_unload_entry(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    freezer: FrozenDateTimeFactory,
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+async def unload_entry(
+    _network: None = Depends(mock_network),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fixture),
+    freezer=Depends(freezer_fixture),
 ) -> None:
     """Test (un)loading the AEMET integration."""
-
     await hass.config.async_set_time_zone("UTC")
     freezer.move_to("2021-01-09 12:00:00+00:00")
     with patch(
@@ -41,27 +53,28 @@ async def test_unload_entry(
         )
         config_entry.add_to_hass(hass)
 
-        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
         await hass.async_block_till_done()
-        assert config_entry.state is ConfigEntryState.LOADED
+        expect(config_entry.state).to_be(ConfigEntryState.LOADED)
 
         await hass.config_entries.async_unload(config_entry.entry_id)
         await hass.async_block_till_done()
-        assert config_entry.state is ConfigEntryState.NOT_LOADED
+        expect(config_entry.state).to_be(ConfigEntryState.NOT_LOADED)
 
-        assert await hass.config_entries.async_remove(config_entry.entry_id)
+        expect(await hass.config_entries.async_remove(config_entry.entry_id)).to_be_truthy()
         await hass.async_block_till_done()
 
-        assert hass.states.get("weather.aemet") is None
-        assert entity_registry.async_get("weather.aemet") is None
+        expect(hass.states.get("weather.aemet")).to_be(None)
+        expect(entity_registry.async_get("weather.aemet")).to_be(None)
 
 
-async def test_init_town_not_found(
-    hass: HomeAssistant,
-    freezer: FrozenDateTimeFactory,
+@test
+async def init_town_not_found(
+    _network: None = Depends(mock_network),
+    hass: HomeAssistant = Depends(hass_fixture),
+    freezer=Depends(freezer_fixture),
 ) -> None:
     """Test TownNotFound when loading the AEMET integration."""
-
     await hass.config.async_set_time_zone("UTC")
     freezer.move_to("2021-01-09 12:00:00+00:00")
     with patch(
@@ -79,15 +92,18 @@ async def test_init_town_not_found(
         )
         config_entry.add_to_hass(hass)
 
-        assert await hass.config_entries.async_setup(config_entry.entry_id) is False
+        expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(
+            False
+        )
 
 
-async def test_init_api_timeout(
-    hass: HomeAssistant,
-    freezer: FrozenDateTimeFactory,
+@test
+async def init_api_timeout(
+    _network: None = Depends(mock_network),
+    hass: HomeAssistant = Depends(hass_fixture),
+    freezer=Depends(freezer_fixture),
 ) -> None:
     """Test API timeouts when loading the AEMET integration."""
-
     await hass.config.async_set_time_zone("UTC")
     freezer.move_to("2021-01-09 12:00:00+00:00")
     with patch(
@@ -105,4 +121,6 @@ async def test_init_api_timeout(
         )
         config_entry.add_to_hass(hass)
 
-        assert await hass.config_entries.async_setup(config_entry.entry_id) is False
+        expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(
+            False
+        )
