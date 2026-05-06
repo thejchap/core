@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.ourgroceries.config_flow import (
@@ -13,14 +13,28 @@ from homeassistant.components.ourgroceries.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_setup_entry
 
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.ourgroceries.config_flow.OurGroceries.login",
@@ -35,26 +49,30 @@ async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "test-username"
-    assert result2["data"] == {
-        "username": "test-username",
-        "password": "test-password",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("test-username")
+    expect(result2["data"]).to_equal(
+        {
+            "username": "test-username",
+            "password": "test-password",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (InvalidLoginException, "invalid_auth"),
-        (ClientError, "cannot_connect"),
-        (TimeoutError, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", exception=InvalidLoginException, error="invalid_auth"),
+    test.case("client_error", exception=ClientError, error="cannot_connect"),
+    test.case("timeout", exception=TimeoutError, error="cannot_connect"),
+    test.case("unknown", exception=Exception, error="unknown"),
 )
-async def test_form_error(
-    hass: HomeAssistant, exception: Exception, error: str, mock_setup_entry: AsyncMock
+async def form_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    exception: type[Exception],
+    error: str,
 ) -> None:
     """Test we handle form errors."""
     result = await hass.config_entries.flow.async_init(
@@ -73,8 +91,8 @@ async def test_form_error(
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": error}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": error})
     with patch(
         "homeassistant.components.ourgroceries.config_flow.OurGroceries.login",
         return_value=True,
@@ -87,10 +105,12 @@ async def test_form_error(
             },
         )
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == "test-username"
-    assert result3["data"] == {
-        "username": "test-username",
-        "password": "test-password",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("test-username")
+    expect(result3["data"]).to_equal(
+        {
+            "username": "test-username",
+            "password": "test-password",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)

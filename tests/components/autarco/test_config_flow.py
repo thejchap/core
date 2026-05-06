@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 from autarco import AutarcoAuthenticationError, AutarcoConnectionError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.autarco.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -12,41 +12,59 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.components.autarco._fixtures import (
+    mock_autarco_client,
+    mock_config_entry,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import hass, mock_network
 
 
-async def test_full_user_flow(
-    hass: HomeAssistant,
-    mock_autarco_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def full_user_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_autarco_client: AsyncMock = Depends(mock_autarco_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
-    assert not result.get("errors")
+    expect(result.get("type") is FlowResultType.FORM).to_be(True)
+    expect(result.get("step_id")).to_equal("user")
+    expect(not result.get("errors")).to_be(True)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_EMAIL: "test@autarco.com", CONF_PASSWORD: "test-password"},
     )
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == "test@autarco.com"
-    assert result.get("data") == {
-        CONF_EMAIL: "test@autarco.com",
-        CONF_PASSWORD: "test-password",
-    }
-    assert len(mock_autarco_client.get_account.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result.get("type") is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result.get("title")).to_equal("test@autarco.com")
+    expect(result.get("data")).to_equal(
+        {
+            CONF_EMAIL: "test@autarco.com",
+            CONF_PASSWORD: "test-password",
+        }
+    )
+    expect(len(mock_autarco_client.get_account.mock_calls)).to_equal(1)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_duplicate_entry(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_autarco_client: AsyncMock,
+@test
+async def duplicate_entry(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_autarco_client: AsyncMock = Depends(mock_autarco_client),
 ) -> None:
     """Test abort when setting up duplicate entry."""
     mock_config_entry.add_to_hass(hass)
@@ -54,31 +72,29 @@ async def test_duplicate_entry(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert not result.get("errors")
+    expect(result.get("type") is FlowResultType.FORM).to_be(True)
+    expect(not result.get("errors")).to_be(True)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_EMAIL: "test@autarco.com", CONF_PASSWORD: "test-password"},
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "already_configured"
+    expect(result.get("type") is FlowResultType.ABORT).to_be(True)
+    expect(result.get("reason")).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (AutarcoConnectionError, "cannot_connect"),
-        (AutarcoAuthenticationError, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("connection_error", AutarcoConnectionError, "cannot_connect"),
+    test.case("auth_error", AutarcoAuthenticationError, "invalid_auth"),
 )
-async def test_exceptions(
-    hass: HomeAssistant,
-    mock_autarco_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def exceptions(
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_autarco_client: AsyncMock = Depends(mock_autarco_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test exceptions."""
     mock_autarco_client.get_account.side_effect = exception
@@ -89,30 +105,31 @@ async def test_exceptions(
         result["flow_id"],
         user_input={CONF_EMAIL: "test@autarco.com", CONF_PASSWORD: "test-password"},
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {"base": error}
+    expect(result.get("type") is FlowResultType.FORM).to_be(True)
+    expect(result.get("errors")).to_equal({"base": error})
 
-    # Recover from error
     mock_autarco_client.get_account.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_EMAIL: "test@autarco.com", CONF_PASSWORD: "test-password"},
     )
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
+    expect(result.get("type") is FlowResultType.CREATE_ENTRY).to_be(True)
 
 
-async def test_step_reauth(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+@test
+async def step_reauth(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reauth flow."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reauth_flow(hass)
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "reauth_confirm"
+    expect(result.get("type") is FlowResultType.FORM).to_be(True)
+    expect(result.get("step_id")).to_equal("reauth_confirm")
 
     with patch("homeassistant.components.autarco.config_flow.Autarco", autospec=True):
         result = await hass.config_entries.flow.async_configure(
@@ -120,52 +137,49 @@ async def test_step_reauth(
             user_input={CONF_PASSWORD: "new-password"},
         )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reauth_successful"
+    expect(result.get("type") is FlowResultType.ABORT).to_be(True)
+    expect(result.get("reason")).to_equal("reauth_successful")
 
-    assert len(hass.config_entries.async_entries()) == 1
-    assert mock_config_entry.data[CONF_PASSWORD] == "new-password"
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+    expect(mock_config_entry.data[CONF_PASSWORD]).to_equal("new-password")
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (AutarcoConnectionError, "cannot_connect"),
-        (AutarcoAuthenticationError, "invalid_auth"),
-    ],
+@test.cases(
+    test.case("connection_error", AutarcoConnectionError, "cannot_connect"),
+    test.case("auth_error", AutarcoAuthenticationError, "invalid_auth"),
 )
-async def test_step_reauth_exceptions(
-    hass: HomeAssistant,
-    mock_autarco_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def step_reauth_exceptions(
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_autarco_client: AsyncMock = Depends(mock_autarco_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test exceptions in reauth flow."""
     mock_autarco_client.get_account.side_effect = exception
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reauth_flow(hass)
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "reauth_confirm"
+    expect(result.get("type") is FlowResultType.FORM).to_be(True)
+    expect(result.get("step_id")).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_PASSWORD: "new-password"},
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {"base": error}
+    expect(result.get("type") is FlowResultType.FORM).to_be(True)
+    expect(result.get("errors")).to_equal({"base": error})
 
-    # Recover from error
     mock_autarco_client.get_account.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_PASSWORD: "new-password"},
     )
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reauth_successful"
+    expect(result.get("type") is FlowResultType.ABORT).to_be(True)
+    expect(result.get("reason")).to_equal("reauth_successful")
 
-    assert len(hass.config_entries.async_entries()) == 1
-    assert mock_config_entry.data[CONF_PASSWORD] == "new-password"
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+    expect(mock_config_entry.data[CONF_PASSWORD]).to_equal("new-password")

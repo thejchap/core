@@ -1,11 +1,9 @@
 """Tests for VegeHub config flow."""
 
-from collections.abc import Generator
 from ipaddress import ip_address
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.vegehub.const import DOMAIN
@@ -24,9 +22,17 @@ from homeassistant.helpers.service_info.zeroconf import (
     ZeroconfServiceInfo,
 )
 
-from .conftest import TEST_HOSTNAME, TEST_IP, TEST_SIMPLE_MAC
+from ._fixtures import (
+    TEST_HOSTNAME,
+    TEST_IP,
+    TEST_SIMPLE_MAC,
+    mock_setup_entry,
+    mock_vegehub,
+    mocked_config_entry,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 DISCOVERY_INFO = ZeroconfServiceInfo(
     ip_address=ip_address(TEST_IP),
@@ -42,176 +48,189 @@ DISCOVERY_INFO = ZeroconfServiceInfo(
 )
 
 
-@pytest.fixture(autouse=True)
-def mock_setup_entry() -> Generator[Any]:
-    """Prevent the actual integration from being set up."""
-    with (
-        patch("homeassistant.components.vegehub.async_setup_entry", return_value=True),
-    ):
-        yield
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _vegehub: MagicMock = Depends(mock_vegehub),
+    _setup: None = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-# Tests for flows where the user manually inputs an IP address
-async def test_user_flow_success(hass: HomeAssistant) -> None:
+@test
+async def user_flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the user flow with successful configuration."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_IP_ADDRESS: TEST_IP}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_IP
-    assert result["data"][CONF_MAC] == TEST_SIMPLE_MAC
-    assert result["data"][CONF_IP_ADDRESS] == TEST_IP
-    assert result["data"][CONF_DEVICE] is not None
-    assert result["data"][CONF_WEBHOOK_ID] is not None
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_IP)
+    expect(result["data"][CONF_MAC]).to_equal(TEST_SIMPLE_MAC)
+    expect(result["data"][CONF_IP_ADDRESS]).to_equal(TEST_IP)
+    expect(result["data"][CONF_DEVICE] is not None).to_be(True)
+    expect(result["data"][CONF_WEBHOOK_ID] is not None).to_be(True)
 
-    # Since this is user flow, there is no hostname, so hostname should be the IP address
-    assert result["data"][CONF_HOST] == TEST_IP
-    assert result["result"].unique_id == TEST_SIMPLE_MAC
+    expect(result["data"][CONF_HOST]).to_equal(TEST_IP)
+    expect(result["result"].unique_id).to_equal(TEST_SIMPLE_MAC)
 
-    # Confirm that the entry was created
     entries = hass.config_entries.async_entries(domain=DOMAIN)
-    assert len(entries) == 1
+    expect(len(entries)).to_equal(1)
 
 
-async def test_user_flow_cannot_connect(
-    hass: HomeAssistant,
-    mock_vegehub: MagicMock,
+@test
+async def user_flow_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    vegehub: MagicMock = Depends(mock_vegehub),
 ) -> None:
     """Test the user flow with bad data."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    mock_vegehub.mac_address = ""
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {CONF_IP_ADDRESS: TEST_IP}
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == "cannot_connect"
-
-    mock_vegehub.mac_address = TEST_SIMPLE_MAC
+    vegehub.mac_address = ""
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_IP_ADDRESS: TEST_IP}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal("cannot_connect")
+
+    vegehub.mac_address = TEST_SIMPLE_MAC
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_IP_ADDRESS: TEST_IP}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (TimeoutError, "timeout_connect"),
-        (ConnectionError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case(
+        "timeout", side_effect=TimeoutError, expected_error="timeout_connect"
+    ),
+    test.case(
+        "connection_error",
+        side_effect=ConnectionError,
+        expected_error="cannot_connect",
+    ),
 )
-async def test_user_flow_device_bad_connection_then_success(
-    hass: HomeAssistant,
-    mock_vegehub: MagicMock,
-    side_effect: Exception,
+async def user_flow_device_bad_connection_then_success(
+    *,
+    side_effect: type[Exception],
     expected_error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    vegehub: MagicMock = Depends(mock_vegehub),
 ) -> None:
     """Test the user flow with a timeout."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    mock_vegehub.setup.side_effect = side_effect
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {CONF_IP_ADDRESS: TEST_IP}
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert "errors" in result
-    assert result["errors"] == {"base": expected_error}
-
-    mock_vegehub.setup.side_effect = None  # Clear the error
+    vegehub.setup.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_IP_ADDRESS: TEST_IP}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_IP
-    assert result["data"][CONF_IP_ADDRESS] == TEST_IP
-    assert result["data"][CONF_MAC] == TEST_SIMPLE_MAC
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect("errors" in result).to_be(True)
+    expect(result["errors"]).to_equal({"base": expected_error})
+
+    vegehub.setup.side_effect = None
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_IP_ADDRESS: TEST_IP}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_IP)
+    expect(result["data"][CONF_IP_ADDRESS]).to_equal(TEST_IP)
+    expect(result["data"][CONF_MAC]).to_equal(TEST_SIMPLE_MAC)
 
 
-async def test_user_flow_no_ip_entered(hass: HomeAssistant) -> None:
+@test
+async def user_flow_no_ip_entered(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the user flow with blank IP."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_IP_ADDRESS: ""}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == "invalid_ip"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal("invalid_ip")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_IP_ADDRESS: TEST_IP}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_user_flow_bad_ip_entered(hass: HomeAssistant) -> None:
+@test
+async def user_flow_bad_ip_entered(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the user flow with badly formed IP."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_IP_ADDRESS: "192.168.0"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == "invalid_ip"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal("invalid_ip")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_IP_ADDRESS: TEST_IP}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_user_flow_duplicate_device(
-    hass: HomeAssistant, mocked_config_entry: MockConfigEntry
+@test
+async def user_flow_duplicate_device(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mocked_config_entry),
 ) -> None:
     """Test when user flow gets the same device twice."""
-
-    mocked_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -221,146 +240,150 @@ async def test_user_flow_duplicate_device(
         result["flow_id"], {CONF_IP_ADDRESS: TEST_IP}
     )
 
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-# Tests for flows that start in zeroconf
-async def test_zeroconf_flow_success(hass: HomeAssistant) -> None:
+@test
+async def zeroconf_flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the zeroconf discovery flow with successful configuration."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=DISCOVERY_INFO
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zeroconf_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
 
-    # Display the confirmation form
     result = await hass.config_entries.flow.async_configure(result["flow_id"], None)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zeroconf_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
 
-    # Proceed to creating the entry
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_HOSTNAME
-    assert result["data"][CONF_HOST] == TEST_HOSTNAME
-    assert result["data"][CONF_MAC] == TEST_SIMPLE_MAC
-    assert result["result"].unique_id == TEST_SIMPLE_MAC
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_HOSTNAME)
+    expect(result["data"][CONF_HOST]).to_equal(TEST_HOSTNAME)
+    expect(result["data"][CONF_MAC]).to_equal(TEST_SIMPLE_MAC)
+    expect(result["result"].unique_id).to_equal(TEST_SIMPLE_MAC)
 
 
-async def test_zeroconf_flow_abort_device_asleep(
-    hass: HomeAssistant,
-    mock_vegehub: MagicMock,
+@test
+async def zeroconf_flow_abort_device_asleep(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    vegehub: MagicMock = Depends(mock_vegehub),
 ) -> None:
     """Test when zeroconf tries to contact a device that is asleep."""
-
-    mock_vegehub.retrieve_mac_address.side_effect = TimeoutError
+    vegehub.retrieve_mac_address.side_effect = TimeoutError
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=DISCOVERY_INFO
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "timeout_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("timeout_connect")
 
 
-async def test_zeroconf_flow_abort_same_id(
-    hass: HomeAssistant,
-    mocked_config_entry: MockConfigEntry,
+@test
+async def zeroconf_flow_abort_same_id(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mocked_config_entry),
 ) -> None:
     """Test when zeroconf gets the same device twice."""
-
-    mocked_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=DISCOVERY_INFO
     )
 
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-async def test_zeroconf_flow_abort_cannot_connect(
-    hass: HomeAssistant,
-    mock_vegehub: MagicMock,
+@test
+async def zeroconf_flow_abort_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    vegehub: MagicMock = Depends(mock_vegehub),
 ) -> None:
     """Test when zeroconf gets bad data."""
-
-    mock_vegehub.mac_address = ""
+    vegehub.mac_address = ""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=DISCOVERY_INFO
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_zeroconf_flow_abort_cannot_connect_404(
-    hass: HomeAssistant,
-    mock_vegehub: MagicMock,
+@test
+async def zeroconf_flow_abort_cannot_connect_404(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    vegehub: MagicMock = Depends(mock_vegehub),
 ) -> None:
     """Test when zeroconf gets bad responses."""
-
-    mock_vegehub.retrieve_mac_address.side_effect = ConnectionError
+    vegehub.retrieve_mac_address.side_effect = ConnectionError
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=DISCOVERY_INFO
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (TimeoutError, "timeout_connect"),
-        (ConnectionError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("timeout", side_effect=TimeoutError, expected_error="timeout_connect"),
+    test.case(
+        "connection_error",
+        side_effect=ConnectionError,
+        expected_error="cannot_connect",
+    ),
 )
-async def test_zeroconf_flow_device_error_response(
-    hass: HomeAssistant,
-    mock_vegehub: MagicMock,
-    side_effect: Exception,
+async def zeroconf_flow_device_error_response(
+    *,
+    side_effect: type[Exception],
     expected_error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    vegehub: MagicMock = Depends(mock_vegehub),
 ) -> None:
     """Test when zeroconf detects the device, but the communication fails at setup."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_ZEROCONF}, data=DISCOVERY_INFO
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zeroconf_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
 
-    # Part way through the process, we simulate getting bad responses
-    mock_vegehub.setup.side_effect = side_effect
+    vegehub.setup.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == expected_error
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal(expected_error)
 
-    mock_vegehub.setup.side_effect = None
+    vegehub.setup.side_effect = None
 
-    # Proceed to creating the entry
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_zeroconf_flow_update_ip_hostname(
-    hass: HomeAssistant,
-    mocked_config_entry: MockConfigEntry,
+@test
+async def zeroconf_flow_update_ip_hostname(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mocked_config_entry),
 ) -> None:
     """Test when zeroconf gets the same device with a new IP and hostname."""
+    config_entry.add_to_hass(hass)
 
-    mocked_config_entry.add_to_hass(hass)
-
-    # Use the same discovery info, but change the IP and hostname
     new_ip = "192.168.0.99"
     new_hostname = "new_hostname"
     new_discovery_info = ZeroconfServiceInfo(
@@ -379,10 +402,9 @@ async def test_zeroconf_flow_update_ip_hostname(
         data=new_discovery_info,
     )
 
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
-    # Check if the original config entry has been updated
     entries = hass.config_entries.async_entries(domain=DOMAIN)
-    assert len(entries) == 1
-    assert mocked_config_entry.data[CONF_IP_ADDRESS] == new_ip
-    assert mocked_config_entry.data[CONF_HOST] == new_hostname
+    expect(len(entries)).to_equal(1)
+    expect(config_entry.data[CONF_IP_ADDRESS]).to_equal(new_ip)
+    expect(config_entry.data[CONF_HOST]).to_equal(new_hostname)

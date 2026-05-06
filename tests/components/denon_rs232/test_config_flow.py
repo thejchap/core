@@ -1,9 +1,8 @@
 """Tests for the Denon RS232 config flow."""
 
-from collections.abc import Generator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.denon_rs232.config_flow import CONF_MODEL_NAME
 from homeassistant.components.denon_rs232.const import DOMAIN
@@ -13,14 +12,23 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import MOCK_DEVICE, MOCK_MODEL, MOCK_MODEL_SELECTION
+from ._fixtures import MockReceiver, mock_receiver, mock_usb_component
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.fixture
-def mock_async_setup_entry(mock_receiver: MagicMock) -> Generator[AsyncMock]:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _usb: None = Depends(mock_usb_component),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@fixture
+def mock_async_setup_entry() -> AsyncMock:
     """Prevent config-entry creation tests from setting up the integration."""
-
     with patch(
         "homeassistant.components.denon_rs232.async_setup_entry",
         return_value=True,
@@ -28,10 +36,12 @@ def mock_async_setup_entry(mock_receiver: MagicMock) -> Generator[AsyncMock]:
         yield mock_setup_entry
 
 
-async def test_user_form_creates_entry(
-    hass: HomeAssistant,
-    mock_receiver: MagicMock,
-    mock_async_setup_entry: AsyncMock,
+@test
+async def user_form_creates_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    receiver: MockReceiver = Depends(mock_receiver),
+    setup_entry: AsyncMock = Depends(mock_async_setup_entry),
 ) -> None:
     """Test successful config flow creates an entry."""
     result = await hass.config_entries.flow.async_init(
@@ -40,74 +50,89 @@ async def test_user_form_creates_entry(
 
     with patch(
         "homeassistant.components.denon_rs232.config_flow.DenonReceiver",
-        return_value=mock_receiver,
+        return_value=receiver,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {CONF_DEVICE: MOCK_DEVICE, CONF_MODEL: MOCK_MODEL_SELECTION},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "AVR-3805"
-    assert result["data"] == {
-        CONF_DEVICE: MOCK_DEVICE,
-        CONF_MODEL: MOCK_MODEL,
-        CONF_MODEL_NAME: "AVR-3805",
-    }
-    mock_async_setup_entry.assert_awaited_once()
-    mock_receiver.connect.assert_awaited_once()
-    mock_receiver.disconnect.assert_awaited_once()
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("AVR-3805")
+    expect(result["data"]).to_equal(
+        {
+            CONF_DEVICE: MOCK_DEVICE,
+            CONF_MODEL: MOCK_MODEL,
+            CONF_MODEL_NAME: "AVR-3805",
+        }
+    )
+    setup_entry.assert_awaited_once()
+    receiver.connect.assert_awaited_once()
+    receiver.disconnect.assert_awaited_once()
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (ValueError("Invalid port"), "cannot_connect"),
-        (ConnectionError("No response"), "cannot_connect"),
-        (OSError("No such device"), "cannot_connect"),
-        (RuntimeError("boom"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "value_error",
+        exception=ValueError("Invalid port"),
+        error="cannot_connect",
+    ),
+    test.case(
+        "connection_error",
+        exception=ConnectionError("No response"),
+        error="cannot_connect",
+    ),
+    test.case(
+        "os_error", exception=OSError("No such device"), error="cannot_connect"
+    ),
+    test.case("runtime_error", exception=RuntimeError("boom"), error="unknown"),
 )
-async def test_user_form_error(
-    hass: HomeAssistant,
+async def user_form_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    receiver: MockReceiver = Depends(mock_receiver),
+    *,
     exception: Exception,
     error: str,
-    mock_receiver: MagicMock,
 ) -> None:
     """Test the user step reports connection and unexpected errors."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    mock_receiver.connect.side_effect = exception
+    receiver.connect.side_effect = exception
 
     with patch(
         "homeassistant.components.denon_rs232.config_flow.DenonReceiver",
-        return_value=mock_receiver,
+        return_value=receiver,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {CONF_DEVICE: MOCK_DEVICE, CONF_MODEL: MOCK_MODEL_SELECTION},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": error})
 
-    mock_receiver.connect.side_effect = None
+    receiver.connect.side_effect = None
 
     with patch(
         "homeassistant.components.denon_rs232.config_flow.DenonReceiver",
-        return_value=mock_receiver,
+        return_value=receiver,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {CONF_DEVICE: MOCK_DEVICE, CONF_MODEL: MOCK_MODEL_SELECTION},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_user_duplicate_port_aborts(hass: HomeAssistant) -> None:
+@test
+async def user_duplicate_port_aborts(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we abort if the same port is already configured."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -124,5 +149,5 @@ async def test_user_duplicate_port_aborts(hass: HomeAssistant) -> None:
         {CONF_DEVICE: MOCK_DEVICE, CONF_MODEL: MOCK_MODEL_SELECTION},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

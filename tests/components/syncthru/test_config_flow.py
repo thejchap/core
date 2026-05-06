@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock
 
 from pysyncthru import SyncThruAPINotSupported
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.syncthru.const import DOMAIN
@@ -19,7 +20,10 @@ from homeassistant.helpers.service_info.ssdp import (
     SsdpServiceInfo,
 )
 
+from ._fixtures import mock_config_entry, mock_setup_entry, mock_syncthru
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 FIXTURE_USER_INPUT = {
     CONF_URL: "http://192.168.1.2/",
@@ -27,32 +31,43 @@ FIXTURE_USER_INPUT = {
 }
 
 
-async def test_full_flow(
-    hass: HomeAssistant, mock_syncthru: AsyncMock, mock_setup_entry: AsyncMock
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _syncthru: AsyncMock = Depends(mock_syncthru),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the full flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=FIXTURE_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == FIXTURE_USER_INPUT
-    assert result["result"].unique_id is None
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(FIXTURE_USER_INPUT)
+    expect(result["result"].unique_id).to_be(None)
 
 
-async def test_already_configured_by_url(
-    hass: HomeAssistant, mock_syncthru: AsyncMock
+@test
+async def already_configured_by_url(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _syncthru: AsyncMock = Depends(mock_syncthru),
 ) -> None:
     """Test we match and update already configured devices by URL."""
-
     udn = "uuid:XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
     MockConfigEntry(
         domain=DOMAIN,
@@ -67,63 +82,74 @@ async def test_already_configured_by_url(
         data=FIXTURE_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_URL] == FIXTURE_USER_INPUT[CONF_URL]
-    assert result["data"][CONF_NAME] == FIXTURE_USER_INPUT[CONF_NAME]
-    assert result["result"].unique_id == udn
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_URL]).to_equal(FIXTURE_USER_INPUT[CONF_URL])
+    expect(result["data"][CONF_NAME]).to_equal(FIXTURE_USER_INPUT[CONF_NAME])
+    expect(result["result"].unique_id).to_equal(udn)
 
 
-async def test_syncthru_not_supported(
-    hass: HomeAssistant, mock_syncthru: AsyncMock
+@test
+async def syncthru_not_supported(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    syncthru: AsyncMock = Depends(mock_syncthru),
 ) -> None:
     """Test we show user form on unsupported device."""
-    mock_syncthru.update.side_effect = SyncThruAPINotSupported
+    syncthru.update.side_effect = SyncThruAPINotSupported
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
         data=FIXTURE_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {CONF_URL: "syncthru_not_supported"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({CONF_URL: "syncthru_not_supported"})
 
 
-async def test_unknown_state(hass: HomeAssistant, mock_syncthru: AsyncMock) -> None:
+@test
+async def unknown_state(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    syncthru: AsyncMock = Depends(mock_syncthru),
+) -> None:
     """Test we show user form on unsupported device."""
-    mock_syncthru.is_unknown_state.return_value = True
+    syncthru.is_unknown_state.return_value = True
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=FIXTURE_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {CONF_URL: "unknown_state"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({CONF_URL: "unknown_state"})
 
-    mock_syncthru.is_unknown_state.return_value = False
+    syncthru.is_unknown_state.return_value = False
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=FIXTURE_USER_INPUT,
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_ssdp(
-    hass: HomeAssistant, mock_syncthru: AsyncMock, mock_setup_entry: AsyncMock
+@test
+async def ssdp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _syncthru: AsyncMock = Depends(mock_syncthru),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test SSDP discovery initiates config properly."""
-
     url = "http://192.168.1.2/"
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -142,31 +168,36 @@ async def test_ssdp(
         ),
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
-    assert CONF_URL in result["data_schema"].schema
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
+    expect(CONF_URL in result["data_schema"].schema).to_be(True)
     for k in result["data_schema"].schema:
         if k == CONF_URL:
-            assert k.default() == url
+            expect(k.default()).to_equal(url)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_URL: url, CONF_NAME: "Printer"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_URL: url, CONF_NAME: "Printer"}
-    assert result["result"].unique_id == "uuid:XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({CONF_URL: url, CONF_NAME: "Printer"})
+    expect(result["result"].unique_id).to_equal(
+        "uuid:XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+    )
 
 
-async def test_ssdp_already_configured(
-    hass: HomeAssistant, mock_syncthru: AsyncMock, mock_config_entry: MockConfigEntry
+@test
+async def ssdp_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _syncthru: AsyncMock = Depends(mock_syncthru),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test SSDP discovery initiates config properly."""
-
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
     hass.config_entries.async_update_entry(
-        mock_config_entry, unique_id="uuid:XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+        config_entry, unique_id="uuid:XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
     )
 
     url = "http://192.168.1.2/"
@@ -187,5 +218,5 @@ async def test_ssdp_already_configured(
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

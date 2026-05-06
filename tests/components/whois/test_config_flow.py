@@ -2,8 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-from syrupy.assertion import SnapshotAssertion
+from tryke import Depends, expect, fixture, test
 from whois.exceptions import (
     FailedParsingWhoisOutput,
     UnknownDateFormat,
@@ -19,99 +18,118 @@ from homeassistant.const import CONF_DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_setup_entry, mock_whois
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.usefixtures("mock_whois")
-async def test_full_user_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    snapshot: SnapshotAssertion,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _whois: MagicMock = Depends(mock_whois),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_DOMAIN: "Example.com"},
     )
 
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2 == snapshot
+    expect(result2.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2.get("title")).to_equal("Example.com")
+    expect(result2.get("data")).to_equal({CONF_DOMAIN: "example.com"})
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("throw", "reason"),
-    [
-        (UnknownTld, "unknown_tld"),
-        (FailedParsingWhoisOutput, "unexpected_response"),
-        (UnknownDateFormat, "unknown_date_format"),
-        (WhoisCommandFailed, "whois_command_failed"),
-        (WhoisPrivateRegistry, "private_registry"),
-        (WhoisQuotaExceeded, "quota_exceeded"),
-    ],
+@test.cases(
+    test.case("unknown_tld", throw=UnknownTld, reason="unknown_tld"),
+    test.case(
+        "unexpected_response",
+        throw=FailedParsingWhoisOutput,
+        reason="unexpected_response",
+    ),
+    test.case(
+        "unknown_date_format",
+        throw=UnknownDateFormat,
+        reason="unknown_date_format",
+    ),
+    test.case(
+        "whois_command_failed",
+        throw=WhoisCommandFailed,
+        reason="whois_command_failed",
+    ),
+    test.case(
+        "private_registry", throw=WhoisPrivateRegistry, reason="private_registry"
+    ),
+    test.case("quota_exceeded", throw=WhoisQuotaExceeded, reason="quota_exceeded"),
 )
-async def test_full_flow_with_error(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_whois: MagicMock,
-    snapshot: SnapshotAssertion,
-    throw: Exception,
+async def full_flow_with_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    whois: MagicMock = Depends(mock_whois),
+    *,
+    throw: type[Exception],
     reason: str,
 ) -> None:
-    """Test the full user configuration flow with an error.
-
-    This tests tests a full config flow, with an error happening; allowing
-    the user to fix the error and try again.
-    """
+    """Test the full user configuration flow with an error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
-    mock_whois.side_effect = throw
+    whois.side_effect = throw
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_DOMAIN: "Example.com"},
     )
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "user"
-    assert result2.get("errors") == {"base": reason}
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("step_id")).to_equal("user")
+    expect(result2.get("errors")).to_equal({"base": reason})
 
-    assert len(mock_setup_entry.mock_calls) == 0
-    assert len(mock_whois.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(0)
+    expect(len(whois.mock_calls)).to_equal(1)
 
-    mock_whois.side_effect = None
+    whois.side_effect = None
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"],
         user_input={CONF_DOMAIN: "Example.com"},
     )
 
-    assert result3.get("type") is FlowResultType.CREATE_ENTRY
-    assert result3 == snapshot
+    expect(result3.get("type")).to_be(FlowResultType.CREATE_ENTRY)
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert len(mock_whois.mock_calls) == 2
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    expect(len(whois.mock_calls)).to_equal(2)
 
 
-@pytest.mark.usefixtures("mock_whois")
-async def test_already_configured(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _whois: MagicMock = Depends(mock_whois),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we abort if already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -119,7 +137,7 @@ async def test_already_configured(
         data={CONF_DOMAIN: "HOME-Assistant.io"},
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "already_configured"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("already_configured")
 
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(len(setup_entry.mock_calls)).to_equal(0)

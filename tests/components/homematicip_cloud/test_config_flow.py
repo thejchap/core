@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.homematicip_cloud.const import (
     DOMAIN,
@@ -13,16 +15,27 @@ from homeassistant.components.homematicip_cloud.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import simple_mock_home
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 DEFAULT_CONFIG = {HMIPC_HAPID: "ABC123", HMIPC_PIN: "123", HMIPC_NAME: "hmip"}
-
 IMPORT_CONFIG = {HMIPC_HAPID: "ABC123", HMIPC_AUTHTOKEN: "123", HMIPC_NAME: "hmip"}
 
 
-async def test_flow_works(hass: HomeAssistant, simple_mock_home) -> None:
-    """Test config flow."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
+
+@test
+async def flow_works(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _home: None = Depends(simple_mock_home),
+) -> None:
+    """Test config flow."""
     with (
         patch(
             "homeassistant.components.homematicip_cloud.hap.HomematicipAuth.async_checkbutton",
@@ -39,16 +52,16 @@ async def test_flow_works(hass: HomeAssistant, simple_mock_home) -> None:
             data=DEFAULT_CONFIG,
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "link"
-    assert result["errors"] == {"base": "press_the_button"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("link")
+    expect(result["errors"]).to_equal({"base": "press_the_button"})
 
     flow = next(
         flow
         for flow in hass.config_entries.flow.async_progress()
         if flow["flow_id"] == result["flow_id"]
     )
-    assert flow["context"]["unique_id"] == "ABC123"
+    expect(flow["context"]["unique_id"]).to_equal("ABC123")
 
     with (
         patch(
@@ -71,13 +84,19 @@ async def test_flow_works(hass: HomeAssistant, simple_mock_home) -> None:
             result["flow_id"], user_input={}
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "ABC123"
-    assert result["data"] == {"hapid": "ABC123", "authtoken": True, "name": "hmip"}
-    assert result["result"].unique_id == "ABC123"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("ABC123")
+    expect(result["data"]).to_equal(
+        {"hapid": "ABC123", "authtoken": True, "name": "hmip"}
+    )
+    expect(result["result"].unique_id).to_equal("ABC123")
 
 
-async def test_flow_init_connection_error(hass: HomeAssistant) -> None:
+@test
+async def flow_init_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow with accesspoint connection error."""
     with patch(
         "homeassistant.components.homematicip_cloud.hap.HomematicipAuth.async_setup",
@@ -89,11 +108,15 @@ async def test_flow_init_connection_error(hass: HomeAssistant) -> None:
             data=DEFAULT_CONFIG,
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
 
-async def test_flow_link_connection_error(hass: HomeAssistant) -> None:
+@test
+async def flow_link_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow client registration connection error."""
     with (
         patch(
@@ -115,11 +138,15 @@ async def test_flow_link_connection_error(hass: HomeAssistant) -> None:
             data=DEFAULT_CONFIG,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "connection_aborted"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("connection_aborted")
 
 
-async def test_flow_link_press_button(hass: HomeAssistant) -> None:
+@test
+async def flow_link_press_button(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow ask for pressing the blue button."""
     with (
         patch(
@@ -137,22 +164,29 @@ async def test_flow_link_press_button(hass: HomeAssistant) -> None:
             data=DEFAULT_CONFIG,
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "link"
-    assert result["errors"] == {"base": "press_the_button"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("link")
+    expect(result["errors"]).to_equal({"base": "press_the_button"})
 
 
-async def test_init_flow_show_form(hass: HomeAssistant) -> None:
+@test
+async def init_flow_show_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow shows up with a form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
 
-async def test_init_already_configured(hass: HomeAssistant) -> None:
+@test
+async def init_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test accesspoint is already configured."""
     MockConfigEntry(domain=DOMAIN, unique_id="ABC123").add_to_hass(hass)
     with patch(
@@ -165,11 +199,16 @@ async def test_init_already_configured(hass: HomeAssistant) -> None:
             data=DEFAULT_CONFIG,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_import_config(hass: HomeAssistant, simple_mock_home) -> None:
+@test
+async def import_config(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _home: None = Depends(simple_mock_home),
+) -> None:
     """Test importing a host with an existing config file."""
     with (
         patch(
@@ -194,13 +233,19 @@ async def test_import_config(hass: HomeAssistant, simple_mock_home) -> None:
             data=IMPORT_CONFIG,
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "ABC123"
-    assert result["data"] == {"authtoken": "123", "hapid": "ABC123", "name": "hmip"}
-    assert result["result"].unique_id == "ABC123"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("ABC123")
+    expect(result["data"]).to_equal(
+        {"authtoken": "123", "hapid": "ABC123", "name": "hmip"}
+    )
+    expect(result["result"].unique_id).to_equal("ABC123")
 
 
-async def test_reauth_flow(hass: HomeAssistant) -> None:
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth flow re-registers and updates the auth token."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -210,10 +255,9 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    # Submit reauth_confirm, button not yet pressed -> link form shown
     with (
         patch(
             "homeassistant.components.homematicip_cloud.hap.HomematicipAuth.async_setup",
@@ -228,11 +272,10 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
             result["flow_id"], user_input={}
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "link"
-    assert result["errors"] == {"base": "press_the_button"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("link")
+    expect(result["errors"]).to_equal({"base": "press_the_button"})
 
-    # User presses button -> reauth completes
     with (
         patch(
             "homeassistant.components.homematicip_cloud.hap.HomematicipAuth.async_checkbutton",
@@ -256,12 +299,16 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.data[HMIPC_AUTHTOKEN] == "new_token"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.data[HMIPC_AUTHTOKEN]).to_equal("new_token")
 
 
-async def test_reauth_flow_register_failure(hass: HomeAssistant) -> None:
+@test
+async def reauth_flow_register_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth flow keeps form alive when registration fails."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -272,7 +319,6 @@ async def test_reauth_flow_register_failure(hass: HomeAssistant) -> None:
 
     result = await entry.start_reauth_flow(hass)
 
-    # Submit reauth_confirm to get to link step
     with (
         patch(
             "homeassistant.components.homematicip_cloud.hap.HomematicipAuth.async_setup",
@@ -286,9 +332,8 @@ async def test_reauth_flow_register_failure(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={}
         )
-    assert result["step_id"] == "link"
+    expect(result["step_id"]).to_equal("link")
 
-    # Button pressed but register fails -> should show error, not abort
     with (
         patch(
             "homeassistant.components.homematicip_cloud.hap.HomematicipAuth.async_checkbutton",
@@ -303,11 +348,10 @@ async def test_reauth_flow_register_failure(hass: HomeAssistant) -> None:
             result["flow_id"], user_input={}
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "link"
-    assert result["errors"] == {"base": "connection_aborted"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("link")
+    expect(result["errors"]).to_equal({"base": "connection_aborted"})
 
-    # Retry succeeds -> reauth completes
     with (
         patch(
             "homeassistant.components.homematicip_cloud.hap.HomematicipAuth.async_checkbutton",
@@ -331,12 +375,16 @@ async def test_reauth_flow_register_failure(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.data[HMIPC_AUTHTOKEN] == "new_token"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.data[HMIPC_AUTHTOKEN]).to_equal("new_token")
 
 
-async def test_reauth_flow_connection_error(hass: HomeAssistant) -> None:
+@test
+async def reauth_flow_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth flow with connection error shows form again."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -346,8 +394,8 @@ async def test_reauth_flow_connection_error(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.homematicip_cloud.hap.HomematicipAuth.async_setup",
@@ -357,11 +405,10 @@ async def test_reauth_flow_connection_error(hass: HomeAssistant) -> None:
             result["flow_id"], user_input={}
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {"base": "invalid_sgtin_or_pin"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({"base": "invalid_sgtin_or_pin"})
 
-    # Retry succeeds -> reauth completes
     with (
         patch(
             "homeassistant.components.homematicip_cloud.hap.HomematicipAuth.async_setup",
@@ -389,12 +436,16 @@ async def test_reauth_flow_connection_error(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert entry.data[HMIPC_AUTHTOKEN] == "new_token"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(entry.data[HMIPC_AUTHTOKEN]).to_equal("new_token")
 
 
-async def test_import_existing_config(hass: HomeAssistant) -> None:
+@test
+async def import_existing_config(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test abort of an existing accesspoint from config."""
     MockConfigEntry(domain=DOMAIN, unique_id="ABC123").add_to_hass(hass)
     with (
@@ -417,5 +468,5 @@ async def test_import_existing_config(hass: HomeAssistant) -> None:
             data=IMPORT_CONFIG,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

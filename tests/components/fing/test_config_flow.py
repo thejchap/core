@@ -1,7 +1,7 @@
 """Tests for Fing config flow."""
 
 import httpx
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.fing.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -9,22 +9,36 @@ from homeassistant.const import CONF_API_KEY, CONF_IP_ADDRESS, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from tests.common import AsyncMock
-from tests.conftest import MockConfigEntry
+from ._fixtures import (
+    make_mock_config_entry,
+    make_mocked_fing_agent,
+    mock_config_entry,
+    mocked_fing_agent,
+)
+
+from tests.common import AsyncMock, MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_verify_connection_success(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mocked_fing_agent: AsyncMock,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def verify_connection_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(mock_config_entry),
+    _agent: AsyncMock = Depends(mocked_fing_agent),
 ) -> None:
     """Test successful connection verification."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -35,70 +49,103 @@ async def test_verify_connection_success(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == dict(mock_config_entry.data)
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(dict(entry.data))
 
-    entry = result["result"]
-    assert entry.unique_id == "0000000000XX"
-    assert entry.domain == DOMAIN
+    new_entry = result["result"]
+    expect(new_entry.unique_id).to_equal("0000000000XX")
+    expect(new_entry.domain).to_equal(DOMAIN)
 
 
-@pytest.mark.parametrize("api_type", ["old"])
-async def test_verify_api_version_outdated(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mocked_fing_agent: AsyncMock,
+@test
+async def verify_api_version_outdated(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test connection verification failure."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_USER}
-    )
+    # Use api_type="old" by constructing fixtures directly.
+    _entry = make_mock_config_entry("old")
+    agent_gen = make_mocked_fing_agent("old")
+    next(agent_gen)
+    try:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}
+        )
 
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input={
-            CONF_IP_ADDRESS: "192.168.1.1",
-            CONF_PORT: "49090",
-            CONF_API_KEY: "test_key",
-        },
-    )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_IP_ADDRESS: "192.168.1.1",
+                CONF_PORT: "49090",
+                CONF_API_KEY: "test_key",
+            },
+        )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "api_version_error"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("api_version_error")
+    finally:
+        # Trigger generator cleanup (exit the patches).
+        for _ in agent_gen:
+            pass
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (httpx.NetworkError("Network error"), "cannot_connect"),
-        (httpx.TimeoutException("Timeout error"), "timeout_connect"),
-        (
-            httpx.HTTPStatusError(
-                "HTTP status error - 500", request=None, response=httpx.Response(500)
-            ),
-            "http_status_error",
+@test.cases(
+    test.case(
+        "network_error",
+        exception=httpx.NetworkError("Network error"),
+        error="cannot_connect",
+    ),
+    test.case(
+        "timeout",
+        exception=httpx.TimeoutException("Timeout error"),
+        error="timeout_connect",
+    ),
+    test.case(
+        "http_500",
+        exception=httpx.HTTPStatusError(
+            "HTTP status error - 500", request=None, response=httpx.Response(500)
         ),
-        (
-            httpx.HTTPStatusError(
-                "HTTP status error - 401", request=None, response=httpx.Response(401)
-            ),
-            "invalid_api_key",
+        error="http_status_error",
+    ),
+    test.case(
+        "http_401",
+        exception=httpx.HTTPStatusError(
+            "HTTP status error - 401", request=None, response=httpx.Response(401)
         ),
-        (httpx.HTTPError("HTTP error"), "unknown"),
-        (httpx.InvalidURL("Invalid URL"), "url_error"),
-        (httpx.CookieConflict("Cookie conflict"), "unknown"),
-        (httpx.StreamError("Stream error"), "unknown"),
-    ],
+        error="invalid_api_key",
+    ),
+    test.case(
+        "http_error",
+        exception=httpx.HTTPError("HTTP error"),
+        error="unknown",
+    ),
+    test.case(
+        "invalid_url",
+        exception=httpx.InvalidURL("Invalid URL"),
+        error="url_error",
+    ),
+    test.case(
+        "cookie_conflict",
+        exception=httpx.CookieConflict("Cookie conflict"),
+        error="unknown",
+    ),
+    test.case(
+        "stream_error",
+        exception=httpx.StreamError("Stream error"),
+        error="unknown",
+    ),
 )
-async def test_http_error_handling(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mocked_fing_agent: AsyncMock,
-    error: str,
+async def http_error_handling(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(mock_config_entry),
+    agent: AsyncMock = Depends(mocked_fing_agent),
+    *,
     exception: Exception,
+    error: str,
 ) -> None:
     """Test handling of HTTP-related errors during connection verification."""
-    mocked_fing_agent.get_devices.side_effect = exception
+    agent.get_devices.side_effect = exception
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -110,11 +157,11 @@ async def test_http_error_handling(
             CONF_API_KEY: "test_key",
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"]["base"] == error
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal(error)
 
     # Simulate a successful connection after the error
-    mocked_fing_agent.get_devices.side_effect = None
+    agent.get_devices.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -125,17 +172,19 @@ async def test_http_error_handling(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == dict(mock_config_entry.data)
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(dict(entry.data))
 
 
-async def test_duplicate_entries(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mocked_fing_agent: AsyncMock,
+@test
+async def duplicate_entries(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(mock_config_entry),
+    _agent: AsyncMock = Depends(mocked_fing_agent),
 ) -> None:
     """Test detecting duplicate entries."""
-    mock_config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -150,5 +199,5 @@ async def test_duplicate_entries(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

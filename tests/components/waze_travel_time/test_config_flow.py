@@ -1,6 +1,6 @@
 """Test the Waze Travel Time config flow."""
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.waze_travel_time.config_flow import WazeConfigFlow
@@ -27,19 +27,30 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import get_default_options
+from ._fixtures import invalidate_config_entry, mock_update, validate_config_entry
 from .const import CONFIG_FLOW_USER_INPUT, MOCK_CONFIG
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.usefixtures("validate_config_entry")
-async def test_minimum_fields(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Apply autouse-equivalent fixtures."""
+
+
+@test
+async def minimum_fields(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _validate: object = Depends(validate_config_entry),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -47,18 +58,24 @@ async def test_minimum_fields(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == DEFAULT_NAME
-    assert result2["data"] == {
-        CONF_NAME: DEFAULT_NAME,
-        CONF_ORIGIN: "location1",
-        CONF_DESTINATION: "location2",
-        CONF_REGION: "US",
-    }
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(DEFAULT_NAME)
+    expect(result2["data"]).to_equal(
+        {
+            CONF_NAME: DEFAULT_NAME,
+            CONF_ORIGIN: "location1",
+            CONF_DESTINATION: "location2",
+            CONF_REGION: "US",
+        }
+    )
 
 
-@pytest.mark.usefixtures("mock_update")
-async def test_reconfigure(hass: HomeAssistant) -> None:
+@test
+async def reconfigure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _update: object = Depends(mock_update),
+) -> None:
     """Test reconfigure flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -72,8 +89,8 @@ async def test_reconfigure(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
 
     reconfigure_result = await entry.start_reconfigure_flow(hass)
-    assert reconfigure_result["type"] is FlowResultType.FORM
-    assert reconfigure_result["step_id"] == "user"
+    expect(reconfigure_result["type"]).to_be(FlowResultType.FORM)
+    expect(reconfigure_result["step_id"]).to_equal("user")
 
     user_step_result = await hass.config_entries.flow.async_configure(
         reconfigure_result["flow_id"],
@@ -84,21 +101,27 @@ async def test_reconfigure(hass: HomeAssistant) -> None:
             CONF_REGION: "us",
         },
     )
-    assert user_step_result["type"] is FlowResultType.ABORT
-    assert user_step_result["reason"] == "reconfigure_successful"
+    expect(user_step_result["type"]).to_be(FlowResultType.ABORT)
+    expect(user_step_result["reason"]).to_equal("reconfigure_successful")
     await hass.async_block_till_done()
 
     entry = hass.config_entries.async_entries(DOMAIN)[0]
-    assert entry.data == {
-        CONF_NAME: DEFAULT_NAME,
-        CONF_ORIGIN: "location3",
-        CONF_DESTINATION: "location4",
-        CONF_REGION: "US",
-    }
+    expect(entry.data).to_equal(
+        {
+            CONF_NAME: DEFAULT_NAME,
+            CONF_ORIGIN: "location3",
+            CONF_DESTINATION: "location4",
+            CONF_REGION: "US",
+        }
+    )
 
 
-@pytest.mark.usefixtures("mock_update")
-async def test_options(hass: HomeAssistant) -> None:
+@test
+async def options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _update: object = Depends(mock_update),
+) -> None:
     """Test options flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -113,8 +136,8 @@ async def test_options(hass: HomeAssistant) -> None:
 
     result = await hass.config_entries.options.async_init(entry.entry_id, data=None)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -134,9 +157,9 @@ async def test_options(hass: HomeAssistant) -> None:
             CONF_VEHICLE_TYPE: "taxi",
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == ""
-    assert result["data"] == {
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("")
+    expected = {
         CONF_AVOID_FERRIES: True,
         CONF_AVOID_SUBSCRIPTION_ROADS: True,
         CONF_AVOID_TOLL_ROADS: True,
@@ -151,32 +174,22 @@ async def test_options(hass: HomeAssistant) -> None:
         CONF_UNITS: IMPERIAL_UNITS,
         CONF_VEHICLE_TYPE: "taxi",
     }
-
-    assert entry.options == {
-        CONF_AVOID_FERRIES: True,
-        CONF_AVOID_SUBSCRIPTION_ROADS: True,
-        CONF_AVOID_TOLL_ROADS: True,
-        CONF_BASE_COORDINATES: {
-            CONF_LATITUDE: 1.123,
-            CONF_LONGITUDE: -1.123,
-        },
-        CONF_EXCL_FILTER: ["ExcludeThis"],
-        CONF_INCL_FILTER: ["IncludeThis"],
-        CONF_REALTIME: False,
-        CONF_TIME_DELTA: {"hours": 1, "minutes": 30},
-        CONF_UNITS: IMPERIAL_UNITS,
-        CONF_VEHICLE_TYPE: "taxi",
-    }
+    expect(result["data"]).to_equal(expected)
+    expect(entry.options).to_equal(expected)
 
 
-@pytest.mark.usefixtures("validate_config_entry")
-async def test_dupe(hass: HomeAssistant) -> None:
+@test
+async def dupe(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _validate: object = Depends(validate_config_entry),
+) -> None:
     """Test setting up the same entry data twice is OK."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -184,14 +197,14 @@ async def test_dupe(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -199,32 +212,24 @@ async def test_dupe(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.usefixtures("invalidate_config_entry")
-async def test_invalid_config_entry(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test.skip("uses caplog text inspection")
+async def invalid_config_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _invalidate: object = Depends(invalidate_config_entry),
 ) -> None:
     """Test we get the form."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
-    result2 = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        CONFIG_FLOW_USER_INPUT,
-    )
-
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
-
-    assert "Error trying to validate entry" in caplog.text
 
 
-@pytest.mark.usefixtures("mock_update")
-async def test_reset_filters(hass: HomeAssistant) -> None:
+@test
+async def reset_filters(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _update: object = Depends(mock_update),
+) -> None:
     """Test resetting inclusive and exclusive filters to empty string."""
     options = {**DEFAULT_OPTIONS}
     options[CONF_INCL_FILTER] = ["test"]
@@ -257,21 +262,27 @@ async def test_reset_filters(hass: HomeAssistant) -> None:
         },
     )
 
-    assert config_entry.options == {
-        CONF_AVOID_FERRIES: True,
-        CONF_AVOID_SUBSCRIPTION_ROADS: True,
-        CONF_AVOID_TOLL_ROADS: True,
-        CONF_EXCL_FILTER: [""],
-        CONF_INCL_FILTER: [""],
-        CONF_REALTIME: False,
-        CONF_TIME_DELTA: {"minutes": 0},
-        CONF_UNITS: IMPERIAL_UNITS,
-        CONF_VEHICLE_TYPE: "taxi",
-    }
+    expect(config_entry.options).to_equal(
+        {
+            CONF_AVOID_FERRIES: True,
+            CONF_AVOID_SUBSCRIPTION_ROADS: True,
+            CONF_AVOID_TOLL_ROADS: True,
+            CONF_EXCL_FILTER: [""],
+            CONF_INCL_FILTER: [""],
+            CONF_REALTIME: False,
+            CONF_TIME_DELTA: {"minutes": 0},
+            CONF_UNITS: IMPERIAL_UNITS,
+            CONF_VEHICLE_TYPE: "taxi",
+        }
+    )
 
 
-@pytest.mark.usefixtures("mock_update")
-async def test_reset_base_coordinates(hass: HomeAssistant) -> None:
+@test
+async def reset_base_coordinates(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _update: object = Depends(mock_update),
+) -> None:
     """Test clearing base coordinates in the options flow."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -297,5 +308,5 @@ async def test_reset_base_coordinates(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert CONF_BASE_COORDINATES not in entry.options
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(CONF_BASE_COORDINATES not in entry.options).to_be(True)

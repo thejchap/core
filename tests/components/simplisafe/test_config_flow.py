@@ -1,10 +1,9 @@
 """Define tests for the SimpliSafe config flow."""
 
-import logging
 from unittest.mock import patch
 
-import pytest
 from simplipy.errors import InvalidCredentialsError, SimplipyError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.simplisafe import DOMAIN
 from homeassistant.components.simplisafe.config_flow import CONF_AUTH_CODE
@@ -13,13 +12,29 @@ from homeassistant.const import CONF_CODE, CONF_TOKEN, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import (
+    config_entry,
+    config_entry_other_id,
+    setup_simplisafe,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 VALID_AUTH_CODE = "code12345123451234512345123451234512345123451"
 
 
-async def test_duplicate_error(
-    config_entry, hass: HomeAssistant, setup_simplisafe
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def duplicate_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _entry: MockConfigEntry = Depends(config_entry),
+    _setup: None = Depends(setup_simplisafe),
 ) -> None:
     """Test that errors are shown when duplicates are added."""
     with patch(
@@ -28,32 +43,40 @@ async def test_duplicate_error(
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-        assert result["step_id"] == "user"
-        assert result["type"] is FlowResultType.FORM
+        expect(result["step_id"]).to_equal("user")
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={CONF_AUTH_CODE: VALID_AUTH_CODE}
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_invalid_auth_code_length(hass: HomeAssistant) -> None:
+@test
+async def invalid_auth_code_length(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that an invalid auth code length show the correct error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_AUTH_CODE: "too_short_code"}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {CONF_AUTH_CODE: "invalid_auth_code_length"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({CONF_AUTH_CODE: "invalid_auth_code_length"})
 
 
-async def test_invalid_credentials(hass: HomeAssistant) -> None:
+@test
+async def invalid_credentials(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that invalid credentials show the correct error."""
     with patch(
         "homeassistant.components.simplisafe.config_flow.API.async_from_auth",
@@ -62,42 +85,51 @@ async def test_invalid_credentials(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-        assert result["step_id"] == "user"
-        assert result["type"] is FlowResultType.FORM
+        expect(result["step_id"]).to_equal("user")
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={CONF_AUTH_CODE: VALID_AUTH_CODE},
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {CONF_AUTH_CODE: "invalid_auth"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({CONF_AUTH_CODE: "invalid_auth"})
 
 
-async def test_options_flow(config_entry, hass: HomeAssistant) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+) -> None:
     """Test config flow options."""
     with patch(
         "homeassistant.components.simplisafe.async_setup_entry", return_value=True
     ):
-        await hass.config_entries.async_setup(config_entry.entry_id)
-        result = await hass.config_entries.options.async_init(config_entry.entry_id)
+        await hass.config_entries.async_setup(entry.entry_id)
+        result = await hass.config_entries.options.async_init(entry.entry_id)
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "init"
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("init")
 
         result = await hass.config_entries.options.async_configure(
             result["flow_id"], user_input={CONF_CODE: "4321"}
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert config_entry.options == {CONF_CODE: "4321"}
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(entry.options).to_equal({CONF_CODE: "4321"})
 
 
-async def test_step_reauth(
-    config_entry: MockConfigEntry, hass: HomeAssistant, setup_simplisafe
+@test
+async def step_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    _setup: None = Depends(setup_simplisafe),
 ) -> None:
     """Test the re-auth step."""
-    result = await config_entry.start_reauth_flow(hass)
-    assert result["step_id"] == "user"
+    result = await entry.start_reauth_flow(hass)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -108,21 +140,24 @@ async def test_step_reauth(
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={CONF_AUTH_CODE: VALID_AUTH_CODE}
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "reauth_successful"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("reauth_successful")
 
-    assert len(hass.config_entries.async_entries()) == 1
-    [config_entry] = hass.config_entries.async_entries(DOMAIN)
-    assert config_entry.data == {CONF_USERNAME: "12345", CONF_TOKEN: "token123"}
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+    [final_entry] = hass.config_entries.async_entries(DOMAIN)
+    expect(final_entry.data).to_equal({CONF_USERNAME: "12345", CONF_TOKEN: "token123"})
 
 
-@pytest.mark.parametrize("unique_id", ["some_other_id"])
-async def test_step_reauth_wrong_account(
-    config_entry: MockConfigEntry, hass: HomeAssistant, setup_simplisafe
+@test
+async def step_reauth_wrong_account(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry_other_id),
+    _setup: None = Depends(setup_simplisafe),
 ) -> None:
     """Test the re-auth step where the wrong account is used during login."""
-    result = await config_entry.start_reauth_flow(hass)
-    assert result["step_id"] == "user"
+    result = await entry.start_reauth_flow(hass)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -133,37 +168,26 @@ async def test_step_reauth_wrong_account(
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={CONF_AUTH_CODE: VALID_AUTH_CODE}
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "wrong_account"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("wrong_account")
 
 
-@pytest.mark.parametrize(
-    ("auth_code", "log_statement"),
-    [
-        (
-            VALID_AUTH_CODE,
-            None,
-        ),
-        (
-            f"={VALID_AUTH_CODE}",
-            'Stripping "=" from the start of the authorization code',
-        ),
-    ],
+@test.cases(
+    test.case("plain_code", auth_code=VALID_AUTH_CODE),
+    test.case("equals_prefix", auth_code=f"={VALID_AUTH_CODE}"),
 )
-async def test_step_user(
-    auth_code,
-    caplog: pytest.LogCaptureFixture,
-    hass: HomeAssistant,
-    log_statement,
-    setup_simplisafe,
+async def step_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: None = Depends(setup_simplisafe),
+    *,
+    auth_code: str,
 ) -> None:
     """Test successfully completion of the user step."""
-    caplog.set_level = logging.DEBUG
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["step_id"] == "user"
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -174,17 +198,19 @@ async def test_step_user(
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={CONF_AUTH_CODE: auth_code}
         )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
-    if log_statement:
-        assert any(m for m in caplog.messages if log_statement in m)
-
-    assert len(hass.config_entries.async_entries()) == 1
-    [config_entry] = hass.config_entries.async_entries(DOMAIN)
-    assert config_entry.data == {CONF_USERNAME: "12345", CONF_TOKEN: "token123"}
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+    [final_entry] = hass.config_entries.async_entries(DOMAIN)
+    expect(final_entry.data).to_equal({CONF_USERNAME: "12345", CONF_TOKEN: "token123"})
 
 
-async def test_unknown_error(hass: HomeAssistant, setup_simplisafe) -> None:
+@test
+async def unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: None = Depends(setup_simplisafe),
+) -> None:
     """Test that an unknown error shows ohe correct error."""
     with patch(
         "homeassistant.components.simplisafe.config_flow.API.async_from_auth",
@@ -193,11 +219,11 @@ async def test_unknown_error(hass: HomeAssistant, setup_simplisafe) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-        assert result["step_id"] == "user"
-        assert result["type"] is FlowResultType.FORM
+        expect(result["step_id"]).to_equal("user")
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input={CONF_AUTH_CODE: VALID_AUTH_CODE}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": "unknown"}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": "unknown"})

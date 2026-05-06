@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.components.html5.const import (
@@ -14,12 +14,22 @@ from homeassistant.components.html5.const import (
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 
-from .conftest import MOCK_CONF, MOCK_CONF_PUB_KEY
+from ._fixtures import MOCK_CONF, MOCK_CONF_PUB_KEY
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_step_user_success(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def step_user_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a successful user config flow."""
-
     with patch(
         "homeassistant.components.html5.async_setup_entry",
         return_value=True,
@@ -32,20 +42,25 @@ async def test_step_user_success(hass: HomeAssistant) -> None:
 
         await hass.async_block_till_done()
 
-        assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
-        assert result["data"] == {
-            ATTR_VAPID_PRV_KEY: MOCK_CONF[ATTR_VAPID_PRV_KEY],
-            ATTR_VAPID_PUB_KEY: MOCK_CONF_PUB_KEY,
-            ATTR_VAPID_EMAIL: MOCK_CONF[ATTR_VAPID_EMAIL],
-            CONF_NAME: DOMAIN,
-        }
+        expect(result["type"]).to_be(data_entry_flow.FlowResultType.CREATE_ENTRY)
+        expect(result["data"]).to_equal(
+            {
+                ATTR_VAPID_PRV_KEY: MOCK_CONF[ATTR_VAPID_PRV_KEY],
+                ATTR_VAPID_PUB_KEY: MOCK_CONF_PUB_KEY,
+                ATTR_VAPID_EMAIL: MOCK_CONF[ATTR_VAPID_EMAIL],
+                CONF_NAME: DOMAIN,
+            }
+        )
 
-        assert mock_setup_entry.call_count == 1
+        expect(mock_setup_entry.call_count).to_equal(1)
 
 
-async def test_step_user_success_generate(hass: HomeAssistant) -> None:
+@test
+async def step_user_success_generate(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a successful user config flow, generating a key pair."""
-
     with patch(
         "homeassistant.components.html5.async_setup_entry",
         return_value=True,
@@ -57,15 +72,18 @@ async def test_step_user_success_generate(hass: HomeAssistant) -> None:
 
         await hass.async_block_till_done()
 
-        assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
-        assert result["data"][ATTR_VAPID_EMAIL] == MOCK_CONF[ATTR_VAPID_EMAIL]
+        expect(result["type"]).to_be(data_entry_flow.FlowResultType.CREATE_ENTRY)
+        expect(result["data"][ATTR_VAPID_EMAIL]).to_equal(MOCK_CONF[ATTR_VAPID_EMAIL])
 
-        assert mock_setup_entry.call_count == 1
+        expect(mock_setup_entry.call_count).to_equal(1)
 
 
-async def test_step_user_new_form(hass: HomeAssistant) -> None:
+@test
+async def step_user_new_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test new user input."""
-
     with patch(
         "homeassistant.components.html5.async_setup_entry",
         return_value=True,
@@ -76,27 +94,27 @@ async def test_step_user_new_form(hass: HomeAssistant) -> None:
 
         await hass.async_block_till_done()
 
-        assert result["type"] is data_entry_flow.FlowResultType.FORM
-        assert mock_setup_entry.call_count == 0
+        expect(result["type"]).to_be(data_entry_flow.FlowResultType.FORM)
+        expect(mock_setup_entry.call_count).to_equal(0)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], MOCK_CONF
         )
-        assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
-        assert mock_setup_entry.call_count == 1
+        expect(result["type"]).to_be(data_entry_flow.FlowResultType.CREATE_ENTRY)
+        expect(mock_setup_entry.call_count).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("key", "value"),
-    [
-        (ATTR_VAPID_PRV_KEY, "invalid"),
-    ],
+@test.cases(
+    test.case("invalid_prv_key", key=ATTR_VAPID_PRV_KEY, value="invalid"),
 )
-async def test_step_user_form_invalid_key(
-    hass: HomeAssistant, key: str, value: str
+async def step_user_form_invalid_key(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    key: str,
+    value: str,
 ) -> None:
     """Test invalid user input."""
-
     with patch(
         "homeassistant.components.html5.async_setup_entry",
         return_value=True,
@@ -110,11 +128,11 @@ async def test_step_user_form_invalid_key(
 
         await hass.async_block_till_done()
 
-        assert result["type"] == data_entry_flow.FlowResultType.FORM
-        assert mock_setup_entry.call_count == 0
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+        expect(mock_setup_entry.call_count).to_equal(0)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], MOCK_CONF
         )
-        assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
-        assert mock_setup_entry.call_count == 1
+        expect(result["type"]).to_be(data_entry_flow.FlowResultType.CREATE_ENTRY)
+        expect(mock_setup_entry.call_count).to_equal(1)

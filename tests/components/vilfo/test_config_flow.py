@@ -3,7 +3,7 @@
 from typing import Any
 from unittest.mock import AsyncMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 from vilfo.exceptions import AuthenticationException, VilfoException
 
 from homeassistant.components.vilfo.const import DOMAIN
@@ -12,54 +12,69 @@ from homeassistant.const import CONF_ACCESS_TOKEN, CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from tests.common import MockConfigEntry
-
-
-@pytest.mark.parametrize(
-    ("user_input", "expected_unique_id", "mac"),
-    [
-        (
-            {CONF_HOST: "testadmin.vilfo.com", CONF_ACCESS_TOKEN: "test-token"},
-            "testadmin.vilfo.com",
-            None,
-        ),
-        (
-            {CONF_HOST: "testadmin.vilfo.com", CONF_ACCESS_TOKEN: "test-token"},
-            "FF-00-00-00-00-00",
-            "FF-00-00-00-00-00",
-        ),
-        (
-            {CONF_HOST: "192.168.0.1", CONF_ACCESS_TOKEN: "test-token"},
-            "FF-00-00-00-00-00",
-            "FF-00-00-00-00-00",
-        ),
-        (
-            {CONF_HOST: "2001:db8::1428:57ab", CONF_ACCESS_TOKEN: "test-token"},
-            "FF-00-00-00-00-00",
-            "FF-00-00-00-00-00",
-        ),
-    ],
+from ._fixtures import (
+    mock_config_entry,
+    mock_is_valid_host,
+    mock_setup_entry,
+    mock_vilfo_client,
 )
-async def test_full_flow(
-    hass: HomeAssistant,
-    mock_vilfo_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_is_valid_host: AsyncMock,
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test.cases(
+    test.case(
+        "domain_no_mac",
+        user_input={CONF_HOST: "testadmin.vilfo.com", CONF_ACCESS_TOKEN: "test-token"},
+        expected_unique_id="testadmin.vilfo.com",
+        mac=None,
+    ),
+    test.case(
+        "domain_with_mac",
+        user_input={CONF_HOST: "testadmin.vilfo.com", CONF_ACCESS_TOKEN: "test-token"},
+        expected_unique_id="FF-00-00-00-00-00",
+        mac="FF-00-00-00-00-00",
+    ),
+    test.case(
+        "ipv4",
+        user_input={CONF_HOST: "192.168.0.1", CONF_ACCESS_TOKEN: "test-token"},
+        expected_unique_id="FF-00-00-00-00-00",
+        mac="FF-00-00-00-00-00",
+    ),
+    test.case(
+        "ipv6",
+        user_input={CONF_HOST: "2001:db8::1428:57ab", CONF_ACCESS_TOKEN: "test-token"},
+        expected_unique_id="FF-00-00-00-00-00",
+        mac="FF-00-00-00-00-00",
+    ),
+)
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    vilfo_client: AsyncMock = Depends(mock_vilfo_client),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _is_valid_host: AsyncMock = Depends(mock_is_valid_host),
+    *,
     user_input: dict[str, Any],
     expected_unique_id: str,
     mac: str | None,
 ) -> None:
     """Test we can finish a config flow."""
-
-    mock_vilfo_client.resolve_mac_address.return_value = mac
-    mock_vilfo_client.mac = mac
+    vilfo_client.resolve_mac_address.return_value = mac
+    vilfo_client.mac = mac
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -67,30 +82,32 @@ async def test_full_flow(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == user_input[CONF_HOST]
-    assert result["data"] == user_input
-    assert result["result"].unique_id == expected_unique_id
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(user_input[CONF_HOST])
+    expect(result["data"]).to_equal(user_input)
+    expect(result["result"].unique_id).to_equal(expected_unique_id)
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(
-    hass: HomeAssistant,
-    mock_vilfo_client: AsyncMock,
-    mock_is_valid_host: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    vilfo_client: AsyncMock = Depends(mock_vilfo_client),
+    _is_valid_host: AsyncMock = Depends(mock_is_valid_host),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we handle invalid auth."""
-    mock_vilfo_client.get_board_information.side_effect = AuthenticationException
-    mock_vilfo_client.resolve_mac_address.return_value = None
+    vilfo_client.get_board_information.side_effect = AuthenticationException
+    vilfo_client.resolve_mac_address.return_value = None
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -98,11 +115,11 @@ async def test_form_invalid_auth(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
-    mock_vilfo_client.get_board_information.side_effect = None
-    mock_vilfo_client.resolve_mac_address.return_value = "FF-00-00-00-00-00"
+    vilfo_client.get_board_information.side_effect = None
+    vilfo_client.resolve_mac_address.return_value = "FF-00-00-00-00-00"
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -110,23 +127,25 @@ async def test_form_invalid_auth(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [(VilfoException, "cannot_connect"), (Exception, "unknown")],
+@test.cases(
+    test.case("cannot_connect", side_effect=VilfoException, error="cannot_connect"),
+    test.case("unknown", side_effect=Exception, error="unknown"),
 )
-async def test_form_exceptions(
-    hass: HomeAssistant,
-    mock_vilfo_client: AsyncMock,
-    mock_is_valid_host: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    side_effect: Exception,
+async def form_exceptions(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    vilfo_client: AsyncMock = Depends(mock_vilfo_client),
+    _is_valid_host: AsyncMock = Depends(mock_is_valid_host),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    side_effect: type[Exception],
     error: str,
 ) -> None:
     """Test we handle exceptions."""
-    mock_vilfo_client.ping.side_effect = side_effect
+    vilfo_client.ping.side_effect = side_effect
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -136,10 +155,10 @@ async def test_form_exceptions(
         {CONF_HOST: "testadmin.vilfo.com", CONF_ACCESS_TOKEN: "test-token"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    mock_vilfo_client.ping.side_effect = None
+    vilfo_client.ping.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -147,15 +166,17 @@ async def test_form_exceptions(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_form_wrong_host(
-    hass: HomeAssistant,
-    mock_is_valid_host: AsyncMock,
+@test
+async def form_wrong_host(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    is_valid_host: AsyncMock = Depends(mock_is_valid_host),
 ) -> None:
     """Test we handle wrong host errors."""
-    mock_is_valid_host.return_value = False
+    is_valid_host.return_value = False
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
@@ -165,18 +186,20 @@ async def test_form_wrong_host(
         },
     )
 
-    assert result["errors"] == {"base": "invalid_host"}
+    expect(result["errors"]).to_equal({"base": "invalid_host"})
 
 
-async def test_form_already_configured(
-    hass: HomeAssistant,
-    mock_vilfo_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    mock_is_valid_host: AsyncMock,
+@test
+async def form_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _vilfo_client: AsyncMock = Depends(mock_vilfo_client),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _is_valid_host: AsyncMock = Depends(mock_is_valid_host),
 ) -> None:
     """Test that we handle already configured exceptions appropriately."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -187,5 +210,5 @@ async def test_form_already_configured(
         {CONF_HOST: "testadmin.vilfo.com", CONF_ACCESS_TOKEN: "test-token"},
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

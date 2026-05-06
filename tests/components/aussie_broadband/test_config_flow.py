@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from aiohttp import ClientConnectionError
 from aussiebb.asyncio import AuthenticationException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.aussie_broadband.const import DOMAIN
@@ -14,18 +15,29 @@ from homeassistant.data_entry_flow import FlowResultType
 from .common import FAKE_DATA, FAKE_SERVICES
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass, mock_network
 
 TEST_USERNAME = FAKE_DATA[CONF_USERNAME]
 TEST_PASSWORD = FAKE_DATA[CONF_PASSWORD]
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test we get the form."""
     result1 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result1["type"] is FlowResultType.FORM
-    assert result1["errors"] is None
+    expect(result1["type"] is FlowResultType.FORM).to_be(True)
+    expect(result1["errors"] is None).to_be(True)
 
     with (
         patch("aussiebb.asyncio.AussieBB.__init__", return_value=None),
@@ -42,15 +54,18 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == TEST_USERNAME
-    assert result2["data"] == FAKE_DATA
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result2["title"]).to_equal(TEST_USERNAME)
+    expect(result2["data"]).to_equal(FAKE_DATA)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_already_configured(hass: HomeAssistant) -> None:
+@test
+async def already_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test already configured."""
-    # Setup an entry
     result1 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -64,7 +79,7 @@ async def test_already_configured(hass: HomeAssistant) -> None:
         patch(
             "homeassistant.components.aussie_broadband.async_setup_entry",
             return_value=True,
-        ) as mock_setup_entry,
+        ),
     ):
         await hass.config_entries.flow.async_configure(
             result1["flow_id"],
@@ -72,7 +87,6 @@ async def test_already_configured(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    # Test Already configured
     result3 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -93,17 +107,21 @@ async def test_already_configured(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result4["type"] is FlowResultType.ABORT
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result4["type"] is FlowResultType.ABORT).to_be(True)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_no_services(hass: HomeAssistant) -> None:
+@test
+async def no_services(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test when there are no services."""
     result1 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result1["type"] is FlowResultType.FORM
-    assert result1["errors"] is None
+    expect(result1["type"] is FlowResultType.FORM).to_be(True)
+    expect(result1["errors"] is None).to_be(True)
 
     with (
         patch("aussiebb.asyncio.AussieBB.__init__", return_value=None),
@@ -120,12 +138,16 @@ async def test_no_services(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "no_services_found"
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result2["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result2["reason"]).to_equal("no_services_found")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test invalid auth is handled."""
     result1 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -140,11 +162,15 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             FAKE_DATA,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_network_issue(hass: HomeAssistant) -> None:
+@test
+async def form_network_issue(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test network issues are handled."""
     result1 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -159,11 +185,15 @@ async def test_form_network_issue(hass: HomeAssistant) -> None:
             FAKE_DATA,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"] is FlowResultType.FORM).to_be(True)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_reauth(hass: HomeAssistant) -> None:
+@test
+async def reauth(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+) -> None:
     """Test reauth flow."""
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -172,9 +202,8 @@ async def test_reauth(hass: HomeAssistant) -> None:
     )
     mock_entry.add_to_hass(hass)
 
-    # Test failed reauth
     result5 = await mock_entry.start_reauth_flow(hass)
-    assert result5["step_id"] == "reauth_confirm"
+    expect(result5["step_id"]).to_equal("reauth_confirm")
 
     with (
         patch("aussiebb.asyncio.AussieBB.__init__", return_value=None),
@@ -191,9 +220,8 @@ async def test_reauth(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        assert result6["step_id"] == "reauth_confirm"
+        expect(result6["step_id"]).to_equal("reauth_confirm")
 
-    # Test successful reauth
     with (
         patch("aussiebb.asyncio.AussieBB.__init__", return_value=None),
         patch("aussiebb.asyncio.AussieBB.login", return_value=True),
@@ -209,5 +237,5 @@ async def test_reauth(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        assert result7["type"] is FlowResultType.ABORT
-        assert result7["reason"] == "reauth_successful"
+        expect(result7["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result7["reason"]).to_equal("reauth_successful")

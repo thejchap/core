@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.weheat.const import (
     DOMAIN,
@@ -16,6 +16,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_entry_oauth2_flow
 
+from ._fixtures import (
+    mock_setup_entry,
+    mock_user_id,
+    mock_weheat_discover,
+    setup_credentials,
+)
 from .const import (
     CLIENT_ID,
     CONF_AUTH_IMPLEMENTATION,
@@ -27,50 +33,104 @@ from .const import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    aioclient_mock as aioclient_mock_fx,
+    current_request_with_host,
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
-from tests.typing import ClientSessionGenerator
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_full_flow(
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _credentials: None = Depends(setup_credentials),
+    _request: None = Depends(current_request_with_host),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+async def _handle_oauth(
     hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
+    hass_client_no_auth_fn: ClientSessionGenerator,
     aioclient_mock: AiohttpClientMocker,
-    mock_setup_entry,
+    result: ConfigFlowResult,
+) -> None:
+    """Handle the Oauth2 part of the flow."""
+    state = config_entry_oauth2_flow._encode_jwt(
+        hass,
+        {
+            "flow_id": result["flow_id"],
+            "redirect_uri": "https://example.com/auth/external/callback",
+        },
+    )
+
+    expect(result["url"]).to_equal(
+        f"{OAUTH2_AUTHORIZE}?response_type=code&client_id={CLIENT_ID}"
+        "&redirect_uri=https://example.com/auth/external/callback"
+        f"&state={state}"
+        "&scope=openid+offline_access"
+    )
+
+    client = await hass_client_no_auth_fn()
+    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
+
+    aioclient_mock.post(
+        OAUTH2_TOKEN,
+        json={
+            "refresh_token": MOCK_REFRESH_TOKEN,
+            "access_token": MOCK_ACCESS_TOKEN,
+            "type": "Bearer",
+            "expires_in": 60,
+        },
+    )
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Check full of adding a single heat pump."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={CONF_SOURCE: SOURCE_USER}
     )
 
-    await handle_oauth(hass, hass_client_no_auth, aioclient_mock, result)
+    await _handle_oauth(hass, client, aioclient_mock, result)
 
-    with (
-        patch(
-            "homeassistant.components.weheat.config_flow.async_get_user_id_from_token",
-            return_value=USER_UUID_1,
-        ) as mock_weheat,
-    ):
+    with patch(
+        "homeassistant.components.weheat.config_flow.async_get_user_id_from_token",
+        return_value=USER_UUID_1,
+    ) as mock_weheat:
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert len(mock_weheat.mock_calls) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    expect(len(mock_weheat.mock_calls)).to_equal(1)
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].unique_id == USER_UUID_1
-    assert result["result"].title == ENTRY_TITLE
-    assert result["data"][CONF_TOKEN][CONF_REFRESH_TOKEN] == MOCK_REFRESH_TOKEN
-    assert result["data"][CONF_TOKEN][CONF_ACCESS_TOKEN] == MOCK_ACCESS_TOKEN
-    assert result["data"][CONF_AUTH_IMPLEMENTATION] == DOMAIN
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal(USER_UUID_1)
+    expect(result["result"].title).to_equal(ENTRY_TITLE)
+    expect(result["data"][CONF_TOKEN][CONF_REFRESH_TOKEN]).to_equal(MOCK_REFRESH_TOKEN)
+    expect(result["data"][CONF_TOKEN][CONF_ACCESS_TOKEN]).to_equal(MOCK_ACCESS_TOKEN)
+    expect(result["data"][CONF_AUTH_IMPLEMENTATION]).to_equal(DOMAIN)
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_duplicate_unique_id(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_setup_entry,
+@test
+async def duplicate_unique_id(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Check that the config flow is aborted when an entry with the same ID exists."""
     first_entry = MockConfigEntry(
@@ -85,38 +145,39 @@ async def test_duplicate_unique_id(
         DOMAIN, context={CONF_SOURCE: SOURCE_USER}
     )
 
-    await handle_oauth(hass, hass_client_no_auth, aioclient_mock, result)
+    await _handle_oauth(hass, client, aioclient_mock, result)
 
-    with (
-        patch(
-            "homeassistant.components.weheat.config_flow.async_get_user_id_from_token",
-            return_value=USER_UUID_1,
-        ),
+    with patch(
+        "homeassistant.components.weheat.config_flow.async_get_user_id_from_token",
+        return_value=USER_UUID_1,
     ):
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    # only care that the config flow is aborted
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-@pytest.mark.parametrize(
-    ("logged_in_user", "expected_reason"),
-    [(USER_UUID_1, "reauth_successful"), (USER_UUID_2, "wrong_account")],
+@test.cases(
+    test.case(
+        "correct_user", logged_in_user=USER_UUID_1, expected_reason="reauth_successful"
+    ),
+    test.case(
+        "wrong_user", logged_in_user=USER_UUID_2, expected_reason="wrong_account"
+    ),
 )
-async def test_reauth(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_user_id: AsyncMock,
-    mock_weheat_discover: AsyncMock,
-    setup_credentials,
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    user_id: AsyncMock = Depends(mock_user_id),
+    _discover: AsyncMock = Depends(mock_weheat_discover),
+    *,
     logged_in_user: str,
     expected_reason: str,
 ) -> None:
     """Check reauth flow both with and without the correct logged in user."""
-    mock_user_id.return_value = logged_in_user
+    user_id.return_value = logged_in_user
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={},
@@ -126,58 +187,20 @@ async def test_reauth(
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         flow_id=result["flow_id"],
         user_input={},
     )
 
-    await handle_oauth(hass, hass_client_no_auth, aioclient_mock, result)
+    await _handle_oauth(hass, client, aioclient_mock, result)
 
-    assert result["type"] is FlowResultType.EXTERNAL_STEP
+    expect(result["type"]).to_be(FlowResultType.EXTERNAL_STEP)
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == expected_reason
-    assert entry.unique_id == USER_UUID_1
-
-
-async def handle_oauth(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    result: ConfigFlowResult,
-) -> None:
-    """Handle the Oauth2 part of the flow."""
-    state = config_entry_oauth2_flow._encode_jwt(
-        hass,
-        {
-            "flow_id": result["flow_id"],
-            "redirect_uri": "https://example.com/auth/external/callback",
-        },
-    )
-
-    assert result["url"] == (
-        f"{OAUTH2_AUTHORIZE}?response_type=code&client_id={CLIENT_ID}"
-        "&redirect_uri=https://example.com/auth/external/callback"
-        f"&state={state}"
-        "&scope=openid+offline_access"
-    )
-
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
-
-    aioclient_mock.post(
-        OAUTH2_TOKEN,
-        json={
-            "refresh_token": MOCK_REFRESH_TOKEN,
-            "access_token": MOCK_ACCESS_TOKEN,
-            "type": "Bearer",
-            "expires_in": 60,
-        },
-    )
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal(expected_reason)
+    expect(entry.unique_id).to_equal(USER_UUID_1)

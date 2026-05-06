@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from bleak import BleakError
 from led_ble import CharacteristicMissingError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.led_ble.const import DOMAIN
@@ -19,9 +20,22 @@ from . import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import enable_bluetooth, hass as hass_fixture, mock_network
 
 
-async def test_user_step_success(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _bluetooth: None = Depends(enable_bluetooth),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def user_step_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user step success path."""
     with patch(
         "homeassistant.components.led_ble.config_flow.async_discovered_service_info",
@@ -30,14 +44,12 @@ async def test_user_step_success(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with (
-        patch(
-            "homeassistant.components.led_ble.config_flow.LEDBLE.update",
-        ),
+        patch("homeassistant.components.led_ble.config_flow.LEDBLE.update"),
         patch(
             "homeassistant.components.led_ble.async_setup_entry",
             return_value=True,
@@ -45,22 +57,22 @@ async def test_user_step_success(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-            },
+            {CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == LED_BLE_DISCOVERY_INFO.name
-    assert result2["data"] == {
-        CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-    }
-    assert result2["result"].unique_id == LED_BLE_DISCOVERY_INFO.address
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(LED_BLE_DISCOVERY_INFO.name)
+    expect(result2["data"]).to_equal({CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address})
+    expect(result2["result"].unique_id).to_equal(LED_BLE_DISCOVERY_INFO.address)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_step_no_devices_found(hass: HomeAssistant) -> None:
+@test
+async def user_step_no_devices_found(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user step with no devices found."""
     with patch(
         "homeassistant.components.led_ble.config_flow.async_discovered_service_info",
@@ -69,17 +81,19 @@ async def test_user_step_no_devices_found(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
 
 
-async def test_user_step_no_new_devices_found(hass: HomeAssistant) -> None:
+@test
+async def user_step_no_new_devices_found(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user step with only existing devices found."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        data={
-            CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-        },
+        data={CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address},
         unique_id=LED_BLE_DISCOVERY_INFO.address,
     )
     entry.add_to_hass(hass)
@@ -90,11 +104,15 @@ async def test_user_step_no_new_devices_found(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
 
 
-async def test_user_step_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def user_step_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user step and we cannot connect."""
     with patch(
         "homeassistant.components.led_ble.config_flow.async_discovered_service_info",
@@ -103,9 +121,9 @@ async def test_user_step_cannot_connect(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.led_ble.config_flow.LEDBLE.update",
@@ -113,20 +131,16 @@ async def test_user_step_cannot_connect(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-            },
+            {CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "user"
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("user")
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
     with (
-        patch(
-            "homeassistant.components.led_ble.config_flow.LEDBLE.update",
-        ),
+        patch("homeassistant.components.led_ble.config_flow.LEDBLE.update"),
         patch(
             "homeassistant.components.led_ble.async_setup_entry",
             return_value=True,
@@ -134,22 +148,22 @@ async def test_user_step_cannot_connect(hass: HomeAssistant) -> None:
     ):
         result3 = await hass.config_entries.flow.async_configure(
             result2["flow_id"],
-            {
-                CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-            },
+            {CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address},
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == LED_BLE_DISCOVERY_INFO.name
-    assert result3["data"] == {
-        CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-    }
-    assert result3["result"].unique_id == LED_BLE_DISCOVERY_INFO.address
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal(LED_BLE_DISCOVERY_INFO.name)
+    expect(result3["data"]).to_equal({CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address})
+    expect(result3["result"].unique_id).to_equal(LED_BLE_DISCOVERY_INFO.address)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_step_unknown_exception(hass: HomeAssistant) -> None:
+@test
+async def user_step_unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user step with an unknown exception."""
     with patch(
         "homeassistant.components.led_ble.config_flow.async_discovered_service_info",
@@ -158,9 +172,9 @@ async def test_user_step_unknown_exception(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.led_ble.config_flow.LEDBLE.update",
@@ -168,20 +182,16 @@ async def test_user_step_unknown_exception(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-            },
+            {CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "user"
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("user")
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
     with (
-        patch(
-            "homeassistant.components.led_ble.config_flow.LEDBLE.update",
-        ),
+        patch("homeassistant.components.led_ble.config_flow.LEDBLE.update"),
         patch(
             "homeassistant.components.led_ble.async_setup_entry",
             return_value=True,
@@ -189,22 +199,22 @@ async def test_user_step_unknown_exception(hass: HomeAssistant) -> None:
     ):
         result3 = await hass.config_entries.flow.async_configure(
             result2["flow_id"],
-            {
-                CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-            },
+            {CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address},
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == LED_BLE_DISCOVERY_INFO.name
-    assert result3["data"] == {
-        CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-    }
-    assert result3["result"].unique_id == LED_BLE_DISCOVERY_INFO.address
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal(LED_BLE_DISCOVERY_INFO.name)
+    expect(result3["data"]).to_equal({CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address})
+    expect(result3["result"].unique_id).to_equal(LED_BLE_DISCOVERY_INFO.address)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_step_not_supported(hass: HomeAssistant) -> None:
+@test
+async def user_step_not_supported(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user step with a non supported device."""
     with patch(
         "homeassistant.components.led_ble.config_flow.async_discovered_service_info",
@@ -213,9 +223,9 @@ async def test_user_step_not_supported(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.led_ble.config_flow.LEDBLE.update",
@@ -223,31 +233,31 @@ async def test_user_step_not_supported(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-            },
+            {CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "not_supported"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("not_supported")
 
 
-async def test_bluetooth_step_success(hass: HomeAssistant) -> None:
+@test
+async def bluetooth_step_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test bluetooth step success path."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_BLUETOOTH},
         data=LED_BLE_DISCOVERY_INFO,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with (
-        patch(
-            "homeassistant.components.led_ble.config_flow.LEDBLE.update",
-        ),
+        patch("homeassistant.components.led_ble.config_flow.LEDBLE.update"),
         patch(
             "homeassistant.components.led_ble.async_setup_entry",
             return_value=True,
@@ -255,33 +265,37 @@ async def test_bluetooth_step_success(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-            },
+            {CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == LED_BLE_DISCOVERY_INFO.name
-    assert result2["data"] == {
-        CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-    }
-    assert result2["result"].unique_id == LED_BLE_DISCOVERY_INFO.address
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(LED_BLE_DISCOVERY_INFO.name)
+    expect(result2["data"]).to_equal({CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address})
+    expect(result2["result"].unique_id).to_equal(LED_BLE_DISCOVERY_INFO.address)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_bluetooth_unsupported_model(hass: HomeAssistant) -> None:
+@test
+async def bluetooth_unsupported_model(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test bluetooth step with an unsupported model path."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_BLUETOOTH},
         data=UNSUPPORTED_LED_BLE_DISCOVERY_INFO,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_supported"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("not_supported")
 
 
-async def test_user_setup_replaces_ignored_device(hass: HomeAssistant) -> None:
+@test
+async def user_setup_replaces_ignored_device(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the user initiated form can replace an ignored device."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -298,16 +312,16 @@ async def test_user_setup_replaces_ignored_device(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     # Verify the ignored device is in the dropdown
-    assert "AA:BB:CC:DD:EE:FF" in result["data_schema"].schema["address"].container
+    expect(
+        "AA:BB:CC:DD:EE:FF" in result["data_schema"].schema["address"].container
+    ).to_be(True)
 
     with (
-        patch(
-            "homeassistant.components.led_ble.config_flow.LEDBLE.update",
-        ),
+        patch("homeassistant.components.led_ble.config_flow.LEDBLE.update"),
         patch(
             "homeassistant.components.led_ble.async_setup_entry",
             return_value=True,
@@ -315,16 +329,12 @@ async def test_user_setup_replaces_ignored_device(hass: HomeAssistant) -> None:
     ):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-            },
+            {CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address},
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == LED_BLE_DISCOVERY_INFO.name
-    assert result2["data"] == {
-        CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address,
-    }
-    assert result2["result"].unique_id == LED_BLE_DISCOVERY_INFO.address
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(LED_BLE_DISCOVERY_INFO.name)
+    expect(result2["data"]).to_equal({CONF_ADDRESS: LED_BLE_DISCOVERY_INFO.address})
+    expect(result2["result"].unique_id).to_equal(LED_BLE_DISCOVERY_INFO.address)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)

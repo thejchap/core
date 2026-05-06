@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from pyfireservicerota import InvalidAuthError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.fireservicerota.const import DOMAIN
@@ -11,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 MOCK_CONF = {
     CONF_USERNAME: "my@email.address",
@@ -40,16 +42,29 @@ MOCK_TOKEN_INFO = {
 }
 
 
-async def test_show_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def show_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the form is served with no input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_abort_if_already_setup(hass: HomeAssistant) -> None:
+@test
+async def abort_if_already_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test abort if already setup."""
     entry = MockConfigEntry(
         domain=DOMAIN, data=MOCK_CONF, unique_id=MOCK_CONF[CONF_USERNAME]
@@ -58,13 +73,16 @@ async def test_abort_if_already_setup(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}, data=MOCK_CONF
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_invalid_credentials(hass: HomeAssistant) -> None:
+@test
+async def invalid_credentials(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that invalid credentials throws an error."""
-
     with patch(
         "homeassistant.components.fireservicerota.coordinator.FireServiceRota.request_tokens",
         side_effect=InvalidAuthError,
@@ -72,12 +90,15 @@ async def test_invalid_credentials(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}, data=MOCK_CONF
         )
-        assert result["errors"] == {"base": "invalid_auth"}
+        expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_step_user(hass: HomeAssistant) -> None:
+@test
+async def step_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the start of the config flow."""
-
     with (
         patch(
             "homeassistant.components.fireservicerota.config_flow.FireServiceRota"
@@ -96,32 +117,38 @@ async def test_step_user(hass: HomeAssistant) -> None:
 
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == MOCK_CONF[CONF_USERNAME]
-        assert result["data"] == {
-            "auth_implementation": "fireservicerota",
-            CONF_URL: "www.brandweerrooster.nl",
-            CONF_USERNAME: "my@email.address",
-            "token": {
-                "access_token": "test-access-token",
-                "token_type": "Bearer",
-                "expires_in": 1234,
-                "refresh_token": "test-refresh-token",
-                "created_at": 4321,
-            },
-        }
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(MOCK_CONF[CONF_USERNAME])
+        expect(result["data"]).to_equal(
+            {
+                "auth_implementation": "fireservicerota",
+                CONF_URL: "www.brandweerrooster.nl",
+                CONF_USERNAME: "my@email.address",
+                "token": {
+                    "access_token": "test-access-token",
+                    "token_type": "Bearer",
+                    "expires_in": 1234,
+                    "refresh_token": "test-refresh-token",
+                    "created_at": 4321,
+                },
+            }
+        )
 
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_reauth(hass: HomeAssistant) -> None:
+@test
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the start of the config flow."""
     entry = MockConfigEntry(
         domain=DOMAIN, data=MOCK_CONF, unique_id=MOCK_CONF[CONF_USERNAME]
     )
     entry.add_to_hass(hass)
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with (
         patch(
@@ -140,5 +167,5 @@ async def test_reauth(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")

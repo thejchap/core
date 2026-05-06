@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.denonavr.config_flow import (
@@ -27,16 +27,21 @@ from homeassistant.helpers.service_info.ssdp import (
     SsdpServiceInfo,
 )
 
+from ._fixtures import (
+    TEST_MANUFACTURER,
+    TEST_MODEL,
+    TEST_NAME,
+    TEST_RECEIVER_TYPE,
+    TEST_SERIALNUMBER,
+    denonavr_connect,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 TEST_HOST = "1.2.3.4"
 TEST_HOST2 = "5.6.7.8"
-TEST_NAME = "Test_Receiver"
-TEST_MODEL = "model5"
 TEST_IGNORED_MODEL = "HEOS 7"
-TEST_RECEIVER_TYPE = "avr-x"
-TEST_SERIALNUMBER = "123456789"
-TEST_MANUFACTURER = "Denon"
 TEST_UPDATE_AUDYSSEY = False
 TEST_SSDP_LOCATION = f"http://{TEST_HOST}/"
 TEST_UNIQUE_ID = f"{TEST_MODEL}-{TEST_SERIALNUMBER}"
@@ -44,92 +49,60 @@ TEST_DISCOVER_1_RECEIVER = [{CONF_HOST: TEST_HOST}]
 TEST_DISCOVER_2_RECEIVER = [{CONF_HOST: TEST_HOST}, {CONF_HOST: TEST_HOST2}]
 
 
-@pytest.fixture(name="denonavr_connect", autouse=True)
-def denonavr_connect_fixture():
-    """Mock denonavr connection and entry setup."""
-    with (
-        patch(
-            "homeassistant.components.denonavr.receiver.DenonAVR.async_setup",
-            return_value=None,
-        ),
-        patch(
-            "homeassistant.components.denonavr.receiver.DenonAVR.async_update",
-            return_value=None,
-        ),
-        patch(
-            "homeassistant.components.denonavr.receiver.DenonAVR.support_sound_mode",
-            return_value=True,
-        ),
-        patch(
-            "homeassistant.components.denonavr.receiver.DenonAVR.name",
-            TEST_NAME,
-        ),
-        patch(
-            "homeassistant.components.denonavr.receiver.DenonAVR.model_name",
-            TEST_MODEL,
-        ),
-        patch(
-            "homeassistant.components.denonavr.receiver.DenonAVR.serial_number",
-            TEST_SERIALNUMBER,
-        ),
-        patch(
-            "homeassistant.components.denonavr.receiver.DenonAVR.manufacturer",
-            TEST_MANUFACTURER,
-        ),
-        patch(
-            "homeassistant.components.denonavr.receiver.DenonAVR.receiver_type",
-            TEST_RECEIVER_TYPE,
-        ),
-        patch(
-            "homeassistant.components.denonavr.async_setup_entry",
-            return_value=True,
-        ),
-    ):
-        yield
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _connect: None = Depends(denonavr_connect),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
 
 
-async def test_config_flow_manual_host_success(hass: HomeAssistant) -> None:
-    """Successful flow manually initialized by the user.
-
-    Host specified.
-    """
+@test
+async def config_flow_manual_host_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Successful flow manually initialized by the user."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_HOST: TEST_HOST},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_MODEL: TEST_MODEL,
-        CONF_TYPE: TEST_RECEIVER_TYPE,
-        CONF_MANUFACTURER: TEST_MANUFACTURER,
-        CONF_SERIAL_NUMBER: TEST_SERIALNUMBER,
-    }
-    assert result["options"] == {CONF_USE_TELNET: True}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_NAME)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_MODEL: TEST_MODEL,
+            CONF_TYPE: TEST_RECEIVER_TYPE,
+            CONF_MANUFACTURER: TEST_MANUFACTURER,
+            CONF_SERIAL_NUMBER: TEST_SERIALNUMBER,
+        }
+    )
+    expect(result["options"]).to_equal({CONF_USE_TELNET: True})
 
 
-async def test_config_flow_manual_discover_1_success(hass: HomeAssistant) -> None:
-    """Successful flow manually initialized by the user.
-
-    Without the host specified and 1 receiver discovered.
-    """
+@test
+async def config_flow_manual_discover_1_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Successful flow with 1 receiver discovered."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.denonavr.config_flow.denonavr.async_discover",
@@ -140,30 +113,33 @@ async def test_config_flow_manual_discover_1_success(hass: HomeAssistant) -> Non
             {},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_MODEL: TEST_MODEL,
-        CONF_TYPE: TEST_RECEIVER_TYPE,
-        CONF_MANUFACTURER: TEST_MANUFACTURER,
-        CONF_SERIAL_NUMBER: TEST_SERIALNUMBER,
-    }
-    assert result["options"] == {CONF_USE_TELNET: True}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_NAME)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_MODEL: TEST_MODEL,
+            CONF_TYPE: TEST_RECEIVER_TYPE,
+            CONF_MANUFACTURER: TEST_MANUFACTURER,
+            CONF_SERIAL_NUMBER: TEST_SERIALNUMBER,
+        }
+    )
+    expect(result["options"]).to_equal({CONF_USE_TELNET: True})
 
 
-async def test_config_flow_manual_discover_2_success(hass: HomeAssistant) -> None:
-    """Successful flow manually initialized by the user.
-
-    Without the host specified and 2 receiver discovered.
-    """
+@test
+async def config_flow_manual_discover_2_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Successful flow with 2 receivers discovered."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.denonavr.config_flow.denonavr.async_discover",
@@ -174,39 +150,42 @@ async def test_config_flow_manual_discover_2_success(hass: HomeAssistant) -> Non
             {},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "select"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("select")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {"select_host": TEST_HOST2},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST2,
-        CONF_MODEL: TEST_MODEL,
-        CONF_TYPE: TEST_RECEIVER_TYPE,
-        CONF_MANUFACTURER: TEST_MANUFACTURER,
-        CONF_SERIAL_NUMBER: TEST_SERIALNUMBER,
-    }
-    assert result["options"] == {CONF_USE_TELNET: True}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_NAME)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: TEST_HOST2,
+            CONF_MODEL: TEST_MODEL,
+            CONF_TYPE: TEST_RECEIVER_TYPE,
+            CONF_MANUFACTURER: TEST_MANUFACTURER,
+            CONF_SERIAL_NUMBER: TEST_SERIALNUMBER,
+        }
+    )
+    expect(result["options"]).to_equal({CONF_USE_TELNET: True})
 
 
-async def test_config_flow_manual_discover_error(hass: HomeAssistant) -> None:
-    """Failed flow manually initialized by the user.
-
-    Without the host specified and no receiver discovered.
-    """
+@test
+async def config_flow_manual_discover_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Failed flow with no receiver discovered."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.denonavr.config_flow.denonavr.async_discover",
@@ -217,23 +196,24 @@ async def test_config_flow_manual_discover_error(hass: HomeAssistant) -> None:
             {},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "discovery_error"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "discovery_error"})
 
 
-async def test_config_flow_manual_host_no_serial(hass: HomeAssistant) -> None:
-    """Successful flow manually initialized by the user.
-
-    Host specified and an error getting the serial number.
-    """
+@test
+async def config_flow_manual_host_no_serial(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Successful flow with no serial."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.denonavr.receiver.DenonAVR.serial_number",
@@ -244,29 +224,32 @@ async def test_config_flow_manual_host_no_serial(hass: HomeAssistant) -> None:
             {CONF_HOST: TEST_HOST},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_MODEL: TEST_MODEL,
-        CONF_TYPE: TEST_RECEIVER_TYPE,
-        CONF_MANUFACTURER: TEST_MANUFACTURER,
-        CONF_SERIAL_NUMBER: None,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_NAME)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_MODEL: TEST_MODEL,
+            CONF_TYPE: TEST_RECEIVER_TYPE,
+            CONF_MANUFACTURER: TEST_MANUFACTURER,
+            CONF_SERIAL_NUMBER: None,
+        }
+    )
 
 
-async def test_config_flow_manual_host_connection_error(hass: HomeAssistant) -> None:
-    """Failed flow manually initialized by the user.
-
-    Host specified and a connection error.
-    """
+@test
+async def config_flow_manual_host_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Failed flow with a connection error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -283,22 +266,23 @@ async def test_config_flow_manual_host_connection_error(hass: HomeAssistant) -> 
             {CONF_HOST: TEST_HOST},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_config_flow_manual_host_no_device_info(hass: HomeAssistant) -> None:
-    """Failed flow manually initialized by the user.
-
-    Host specified and no device info (due to receiver power off).
-    """
+@test
+async def config_flow_manual_host_no_device_info(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Failed flow with no device info."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.denonavr.receiver.DenonAVR.receiver_type",
@@ -309,11 +293,15 @@ async def test_config_flow_manual_host_no_device_info(hass: HomeAssistant) -> No
             {CONF_HOST: TEST_HOST},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-async def test_config_flow_ssdp(hass: HomeAssistant) -> None:
+@test
+async def config_flow_ssdp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Successful flow initialized by ssdp discovery."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -330,31 +318,34 @@ async def test_config_flow_ssdp(hass: HomeAssistant) -> None:
         ),
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_MODEL: TEST_MODEL,
-        CONF_TYPE: TEST_RECEIVER_TYPE,
-        CONF_MANUFACTURER: TEST_MANUFACTURER,
-        CONF_SERIAL_NUMBER: TEST_SERIALNUMBER,
-    }
-    assert result["options"] == {CONF_USE_TELNET: True}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_NAME)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_MODEL: TEST_MODEL,
+            CONF_TYPE: TEST_RECEIVER_TYPE,
+            CONF_MANUFACTURER: TEST_MANUFACTURER,
+            CONF_SERIAL_NUMBER: TEST_SERIALNUMBER,
+        }
+    )
+    expect(result["options"]).to_equal({CONF_USE_TELNET: True})
 
 
-async def test_config_flow_ssdp_not_denon(hass: HomeAssistant) -> None:
-    """Failed flow initialized by ssdp discovery.
-
-    Not supported manufacturer.
-    """
+@test
+async def config_flow_ssdp_not_denon(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Failed flow with not supported manufacturer."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_SSDP},
@@ -370,15 +361,16 @@ async def test_config_flow_ssdp_not_denon(hass: HomeAssistant) -> None:
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_denonavr_manufacturer"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("not_denonavr_manufacturer")
 
 
-async def test_config_flow_ssdp_missing_info(hass: HomeAssistant) -> None:
-    """Failed flow initialized by ssdp discovery.
-
-    Missing information.
-    """
+@test
+async def config_flow_ssdp_missing_info(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Failed flow with missing information."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_SSDP},
@@ -392,15 +384,16 @@ async def test_config_flow_ssdp_missing_info(hass: HomeAssistant) -> None:
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_denonavr_missing"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("not_denonavr_missing")
 
 
-async def test_config_flow_ssdp_ignored_model(hass: HomeAssistant) -> None:
-    """Failed flow initialized by ssdp discovery.
-
-    Model in the ignored models list.
-    """
+@test
+async def config_flow_ssdp_ignored_model(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Failed flow with ignored model."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_SSDP},
@@ -416,11 +409,15 @@ async def test_config_flow_ssdp_ignored_model(hass: HomeAssistant) -> None:
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_denonavr_manufacturer"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("not_denonavr_manufacturer")
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test specifying non default settings using options flow."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -437,13 +434,13 @@ async def test_options_flow(hass: HomeAssistant) -> None:
     )
     config_entry.add_to_hass(hass)
 
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
 
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -455,30 +452,31 @@ async def test_options_flow(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {
-        CONF_SHOW_ALL_SOURCES: True,
-        CONF_ZONE2: True,
-        CONF_ZONE3: True,
-        CONF_UPDATE_AUDYSSEY: False,
-        CONF_USE_TELNET: False,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal(
+        {
+            CONF_SHOW_ALL_SOURCES: True,
+            CONF_ZONE2: True,
+            CONF_ZONE3: True,
+            CONF_UPDATE_AUDYSSEY: False,
+            CONF_USE_TELNET: False,
+        }
+    )
 
 
-async def test_config_flow_manual_host_no_serial_double_config(
-    hass: HomeAssistant,
+@test
+async def config_flow_manual_host_no_serial_double_config(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Failed flow manually initialized by the user twice.
-
-    Host specified and an error getting the serial number.
-    """
+    """Failed flow manually initialized by the user twice."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.denonavr.receiver.DenonAVR.serial_number",
@@ -489,23 +487,25 @@ async def test_config_flow_manual_host_no_serial_double_config(
             {CONF_HOST: TEST_HOST},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_NAME
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_MODEL: TEST_MODEL,
-        CONF_TYPE: TEST_RECEIVER_TYPE,
-        CONF_MANUFACTURER: TEST_MANUFACTURER,
-        CONF_SERIAL_NUMBER: None,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_NAME)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_MODEL: TEST_MODEL,
+            CONF_TYPE: TEST_RECEIVER_TYPE,
+            CONF_MANUFACTURER: TEST_MANUFACTURER,
+            CONF_SERIAL_NUMBER: None,
+        }
+    )
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.denonavr.receiver.DenonAVR.serial_number",
@@ -516,5 +516,5 @@ async def test_config_flow_manual_host_no_serial_double_config(
             {CONF_HOST: TEST_HOST},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

@@ -4,7 +4,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from freezegun import freeze_time
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.derivative.const import DOMAIN
@@ -15,18 +15,31 @@ from homeassistant.helpers import selector
 from homeassistant.util import dt as dt_util
 
 from tests.common import MockConfigEntry, get_schema_suggested_value
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.parametrize("platform", ["sensor"])
-async def test_config_flow(hass: HomeAssistant, platform) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test.cases(
+    test.case("sensor", platform="sensor"),
+)
+async def config_flow(
+    *,
+    platform: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the config flow."""
     input_sensor_entity_id = "sensor.input"
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with patch(
         "homeassistant.components.derivative.async_setup_entry",
@@ -45,42 +58,60 @@ async def test_config_flow(hass: HomeAssistant, platform) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "My derivative"
-    assert result["data"] == {}
-    assert result["options"] == {
-        "name": "My derivative",
-        "round": 1.0,
-        "source": "sensor.input",
-        "time_window": {"seconds": 0.0},
-        "unit_time": "min",
-        "max_sub_interval": {"minutes": 1.0},
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("My derivative")
+    expect(result["data"]).to_equal({})
+    expect(result["options"]).to_equal(
+        {
+            "name": "My derivative",
+            "round": 1.0,
+            "source": "sensor.input",
+            "time_window": {"seconds": 0.0},
+            "unit_time": "min",
+            "max_sub_interval": {"minutes": 1.0},
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
     config_entry = hass.config_entries.async_entries(DOMAIN)[0]
-    assert config_entry.data == {}
-    assert config_entry.options == {
-        "name": "My derivative",
-        "round": 1.0,
-        "source": "sensor.input",
-        "time_window": {"seconds": 0.0},
-        "unit_time": "min",
-        "max_sub_interval": {"minutes": 1.0},
-    }
-    assert config_entry.title == "My derivative"
+    expect(config_entry.data).to_equal({})
+    expect(config_entry.options).to_equal(
+        {
+            "name": "My derivative",
+            "round": 1.0,
+            "source": "sensor.input",
+            "time_window": {"seconds": 0.0},
+            "unit_time": "min",
+            "max_sub_interval": {"minutes": 1.0},
+        }
+    )
+    expect(config_entry.title).to_equal("My derivative")
 
 
-@pytest.mark.parametrize("platform", ["sensor"])
-@pytest.mark.parametrize(
-    ("unit_prefix_entry", "unit_prefix_used"),
-    [("k", "k"), ("\u00b5", "\u03bc"), ("\u03bc", "\u03bc")],
+@test.cases(
+    test.case("sensor_k", platform="sensor", unit_prefix_entry="k", unit_prefix_used="k"),
+    test.case(
+        "sensor_micro_sign",
+        platform="sensor",
+        unit_prefix_entry="µ",
+        unit_prefix_used="μ",
+    ),
+    test.case(
+        "sensor_mu",
+        platform="sensor",
+        unit_prefix_entry="μ",
+        unit_prefix_used="μ",
+    ),
 )
-async def test_options(
-    hass: HomeAssistant, platform, unit_prefix_entry: str, unit_prefix_used: str
+async def options(
+    *,
+    platform: str,
+    unit_prefix_entry: str,
+    unit_prefix_used: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test reconfiguring and migrated unit prefix."""
-    # Setup the config entry
     config_entry = MockConfigEntry(
         data={},
         domain=DOMAIN,
@@ -96,7 +127,7 @@ async def test_options(
         title="My derivative",
     )
     config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
 
     hass.states.async_set("sensor.input", 10, {"unit_of_measurement": "dog"})
@@ -105,23 +136,27 @@ async def test_options(
     await hass.async_block_till_done()
 
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
     schema = result["data_schema"].schema
-    assert get_schema_suggested_value(schema, "round") == 1.0
-    assert get_schema_suggested_value(schema, "time_window") == {"seconds": 0.0}
-    assert get_schema_suggested_value(schema, "unit_prefix") == unit_prefix_used
-    assert get_schema_suggested_value(schema, "unit_time") == "min"
+    expect(get_schema_suggested_value(schema, "round")).to_equal(1.0)
+    expect(get_schema_suggested_value(schema, "time_window")).to_equal({"seconds": 0.0})
+    expect(get_schema_suggested_value(schema, "unit_prefix")).to_equal(unit_prefix_used)
+    expect(get_schema_suggested_value(schema, "unit_time")).to_equal("min")
 
     source = schema["source"]
-    assert isinstance(source, selector.EntitySelector)
-    assert source.config["include_entities"] == [
-        "sensor.input",
-        "sensor.valid",
-    ]
+    expect(isinstance(source, selector.EntitySelector)).to_be(True)
+    expect(source.config["include_entities"]).to_equal(
+        [
+            "sensor.input",
+            "sensor.valid",
+        ]
+    )
 
     state = hass.states.get(f"{platform}.my_derivative")
-    assert state.attributes["unit_of_measurement"] == f"{unit_prefix_used}dog/min"
+    expect(state.attributes["unit_of_measurement"]).to_equal(
+        f"{unit_prefix_used}dog/min"
+    )
     hass.states.async_set("sensor.valid", 10, {"unit_of_measurement": "cat"})
     await hass.async_block_till_done()
 
@@ -134,41 +169,45 @@ async def test_options(
             "unit_time": "h",
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        "name": "My derivative",
-        "round": 2.0,
-        "source": "sensor.valid",
-        "time_window": {"seconds": 10.0},
-        "unit_time": "h",
-    }
-    assert config_entry.data == {}
-    assert config_entry.options == {
-        "name": "My derivative",
-        "round": 2.0,
-        "source": "sensor.valid",
-        "time_window": {"seconds": 10.0},
-        "unit_time": "h",
-    }
-    assert config_entry.title == "My derivative"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            "name": "My derivative",
+            "round": 2.0,
+            "source": "sensor.valid",
+            "time_window": {"seconds": 10.0},
+            "unit_time": "h",
+        }
+    )
+    expect(config_entry.data).to_equal({})
+    expect(config_entry.options).to_equal(
+        {
+            "name": "My derivative",
+            "round": 2.0,
+            "source": "sensor.valid",
+            "time_window": {"seconds": 10.0},
+            "unit_time": "h",
+        }
+    )
+    expect(config_entry.title).to_equal("My derivative")
 
-    # Check config entry is reloaded with new options
     await hass.async_block_till_done()
 
-    # Check the entity was updated, no new entity was created
-    assert len(hass.states.async_all()) == 4
+    expect(len(hass.states.async_all())).to_equal(4)
 
-    # Check the state of the entity has changed as expected
     hass.states.async_set("sensor.valid", 10, {"unit_of_measurement": "cat"})
     hass.states.async_set("sensor.valid", 11, {"unit_of_measurement": "cat"})
     await hass.async_block_till_done()
     state = hass.states.get(f"{platform}.my_derivative")
-    assert state.attributes["unit_of_measurement"] == "cat/h"
+    expect(state.attributes["unit_of_measurement"]).to_equal("cat/h")
 
 
-async def test_update_unit(hass: HomeAssistant) -> None:
+@test
+async def update_unit(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test behavior of changing the unit_time option."""
-    # Setup the config entry
     source_id = "sensor.source"
     config_entry = MockConfigEntry(
         data={},
@@ -184,32 +223,29 @@ async def test_update_unit(hass: HomeAssistant) -> None:
     )
     derivative_id = "sensor.my_derivative"
     config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
 
     state = hass.states.get(derivative_id)
-    assert state.state == STATE_UNAVAILABLE
-    assert state.attributes.get("unit_of_measurement") is None
+    expect(state.state).to_equal(STATE_UNAVAILABLE)
+    expect(state.attributes.get("unit_of_measurement")).to_be(None)
 
     time = dt_util.utcnow()
     with freeze_time(time) as freezer:
-        # First state update of the source.
         hass.states.async_set(source_id, 5, {"unit_of_measurement": "dogs"})
         await hass.async_block_till_done()
         state = hass.states.get(derivative_id)
-        assert state.state == "0.0"
-        assert state.attributes.get("unit_of_measurement") == "dogs/min"
+        expect(state.state).to_equal("0.0")
+        expect(state.attributes.get("unit_of_measurement")).to_equal("dogs/min")
 
-        # Second state update of the source.
         time += timedelta(minutes=1)
         freezer.move_to(time)
         hass.states.async_set(source_id, "7", {"unit_of_measurement": "dogs"})
         await hass.async_block_till_done()
         state = hass.states.get(derivative_id)
-        assert state.state == "2.0"
-        assert state.attributes.get("unit_of_measurement") == "dogs/min"
+        expect(state.state).to_equal("2.0")
+        expect(state.attributes.get("unit_of_measurement")).to_equal("dogs/min")
 
-        # Update the unit_time from minutes to seconds.
         result = await hass.config_entries.options.async_init(config_entry.entry_id)
         result = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -222,25 +258,22 @@ async def test_update_unit(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        # Check the state after reconfigure.
         state = hass.states.get(derivative_id)
-        assert state.state == "0.0"
-        assert state.attributes.get("unit_of_measurement") == "dogs/s"
+        expect(state.state).to_equal("0.0")
+        expect(state.attributes.get("unit_of_measurement")).to_equal("dogs/s")
 
-        # Third state update of the source.
         time += timedelta(seconds=1)
         freezer.move_to(time)
         hass.states.async_set(source_id, "10", {"unit_of_measurement": "dogs"})
         await hass.async_block_till_done()
         state = hass.states.get(derivative_id)
-        assert state.state == "3.0"
-        assert state.attributes.get("unit_of_measurement") == "dogs/s"
+        expect(state.state).to_equal("3.0")
+        expect(state.attributes.get("unit_of_measurement")).to_equal("dogs/s")
 
-        # Fourth state update of the source.
         time += timedelta(seconds=1)
         freezer.move_to(time)
         hass.states.async_set(source_id, "20", {"unit_of_measurement": "dogs"})
         await hass.async_block_till_done()
         state = hass.states.get(derivative_id)
-        assert state.state == "10.0"
-        assert state.attributes.get("unit_of_measurement") == "dogs/s"
+        expect(state.state).to_equal("10.0")
+        expect(state.attributes.get("unit_of_measurement")).to_equal("dogs/s")

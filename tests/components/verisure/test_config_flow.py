@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 from verisure import Error as VerisureError, LoginError as VerisureLoginError
 
 from homeassistant import config_entries
@@ -17,25 +17,39 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
+from ._fixtures import (
+    mock_config_entry,
+    mock_setup_entry,
+    mock_verisure_config_flow,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_full_user_flow_single_installation(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_verisure_config_flow: MagicMock,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_user_flow_single_installation(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    verisure: MagicMock = Depends(mock_verisure_config_flow),
 ) -> None:
     """Test a full user initiated configuration flow with a single installation."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("step_id") == "user"
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {}
+    expect(result.get("step_id")).to_equal("user")
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({})
 
-    mock_verisure_config_flow.get_installations.return_value = {
+    verisure.get_installations.return_value = {
         k1: {k2: {k3: [v3[0]] for k3, v3 in v2.items()} for k2, v2 in v1.items()}
-        for k1, v1 in mock_verisure_config_flow.get_installations.return_value.items()
+        for k1, v1 in verisure.get_installations.return_value.items()
     }
 
     result2 = await hass.config_entries.flow.async_configure(
@@ -47,30 +61,34 @@ async def test_full_user_flow_single_installation(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2.get("title") == "ascending (12345th street)"
-    assert result2.get("data") == {
-        CONF_GIID: "12345",
-        CONF_EMAIL: "verisure_my_pages@example.com",
-        CONF_PASSWORD: "SuperS3cr3t!",
-    }
+    expect(result2.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2.get("title")).to_equal("ascending (12345th street)")
+    expect(result2.get("data")).to_equal(
+        {
+            CONF_GIID: "12345",
+            CONF_EMAIL: "verisure_my_pages@example.com",
+            CONF_PASSWORD: "SuperS3cr3t!",
+        }
+    )
 
-    assert len(mock_verisure_config_flow.login.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(verisure.login.mock_calls)).to_equal(1)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_full_user_flow_multiple_installations(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_verisure_config_flow: MagicMock,
+@test
+async def full_user_flow_multiple_installations(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    verisure: MagicMock = Depends(mock_verisure_config_flow),
 ) -> None:
     """Test a full user initiated configuration flow with multiple installations."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("step_id") == "user"
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {}
+    expect(result.get("step_id")).to_equal("user")
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({})
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -81,41 +99,45 @@ async def test_full_user_flow_multiple_installations(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("step_id") == "installation"
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("errors") is None
+    expect(result2.get("step_id")).to_equal("installation")
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("errors")).to_be(None)
 
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"], {"giid": "54321"}
     )
     await hass.async_block_till_done()
 
-    assert result3.get("type") is FlowResultType.CREATE_ENTRY
-    assert result3.get("title") == "descending (54321th street)"
-    assert result3.get("data") == {
-        CONF_GIID: "54321",
-        CONF_EMAIL: "verisure_my_pages@example.com",
-        CONF_PASSWORD: "SuperS3cr3t!",
-    }
+    expect(result3.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3.get("title")).to_equal("descending (54321th street)")
+    expect(result3.get("data")).to_equal(
+        {
+            CONF_GIID: "54321",
+            CONF_EMAIL: "verisure_my_pages@example.com",
+            CONF_PASSWORD: "SuperS3cr3t!",
+        }
+    )
 
-    assert len(mock_verisure_config_flow.login.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(verisure.login.mock_calls)).to_equal(1)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_full_user_flow_single_installation_with_mfa(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_verisure_config_flow: MagicMock,
+@test
+async def full_user_flow_single_installation_with_mfa(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    verisure: MagicMock = Depends(mock_verisure_config_flow),
 ) -> None:
     """Test a full user initiated flow with a single installation and mfa."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("step_id") == "user"
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {}
+    expect(result.get("step_id")).to_equal("user")
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({})
 
-    mock_verisure_config_flow.login.side_effect = VerisureLoginError(
+    verisure.login.side_effect = VerisureLoginError(
         "Multifactor authentication enabled, disable or create MFA cookie"
     )
 
@@ -128,51 +150,53 @@ async def test_full_user_flow_single_installation_with_mfa(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "mfa"
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("step_id")).to_equal("mfa")
 
-    mock_verisure_config_flow.login.side_effect = None
-    mock_verisure_config_flow.get_installations.return_value = {
+    verisure.login.side_effect = None
+    verisure.get_installations.return_value = {
         k1: {k2: {k3: [v3[0]] for k3, v3 in v2.items()} for k2, v2 in v1.items()}
-        for k1, v1 in mock_verisure_config_flow.get_installations.return_value.items()
+        for k1, v1 in verisure.get_installations.return_value.items()
     }
 
     result3 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            "code": "123456",
-        },
+        {"code": "123456"},
     )
     await hass.async_block_till_done()
 
-    assert result3.get("type") is FlowResultType.CREATE_ENTRY
-    assert result3.get("title") == "ascending (12345th street)"
-    assert result3.get("data") == {
-        CONF_GIID: "12345",
-        CONF_EMAIL: "verisure_my_pages@example.com",
-        CONF_PASSWORD: "SuperS3cr3t!",
-    }
+    expect(result3.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3.get("title")).to_equal("ascending (12345th street)")
+    expect(result3.get("data")).to_equal(
+        {
+            CONF_GIID: "12345",
+            CONF_EMAIL: "verisure_my_pages@example.com",
+            CONF_PASSWORD: "SuperS3cr3t!",
+        }
+    )
 
-    assert len(mock_verisure_config_flow.login.mock_calls) == 1
-    assert len(mock_verisure_config_flow.request_mfa.mock_calls) == 1
-    assert len(mock_verisure_config_flow.validate_mfa.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(verisure.login.mock_calls)).to_equal(1)
+    expect(len(verisure.request_mfa.mock_calls)).to_equal(1)
+    expect(len(verisure.validate_mfa.mock_calls)).to_equal(1)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_full_user_flow_multiple_installations_with_mfa(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_verisure_config_flow: MagicMock,
+@test
+async def full_user_flow_multiple_installations_with_mfa(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    verisure: MagicMock = Depends(mock_verisure_config_flow),
 ) -> None:
-    """Test a full user initiated configuration flow with a single installation."""
+    """Test a full user initiated configuration flow with multiple installations and mfa."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("step_id") == "user"
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {}
+    expect(result.get("step_id")).to_equal("user")
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({})
 
-    mock_verisure_config_flow.login.side_effect = VerisureLoginError(
+    verisure.login.side_effect = VerisureLoginError(
         "Multifactor authentication enabled, disable or create MFA cookie"
     )
 
@@ -185,54 +209,53 @@ async def test_full_user_flow_multiple_installations_with_mfa(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "mfa"
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("step_id")).to_equal("mfa")
 
-    mock_verisure_config_flow.login.side_effect = None
+    verisure.login.side_effect = None
 
     result3 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            "code": "123456",
-        },
+        {"code": "123456"},
     )
     await hass.async_block_till_done()
 
-    assert result3.get("step_id") == "installation"
-    assert result3.get("type") is FlowResultType.FORM
-    assert result3.get("errors") is None
+    expect(result3.get("step_id")).to_equal("installation")
+    expect(result3.get("type")).to_be(FlowResultType.FORM)
+    expect(result3.get("errors")).to_be(None)
 
     result4 = await hass.config_entries.flow.async_configure(
         result3["flow_id"], {"giid": "54321"}
     )
     await hass.async_block_till_done()
 
-    assert result4.get("type") is FlowResultType.CREATE_ENTRY
-    assert result4.get("title") == "descending (54321th street)"
-    assert result4.get("data") == {
-        CONF_GIID: "54321",
-        CONF_EMAIL: "verisure_my_pages@example.com",
-        CONF_PASSWORD: "SuperS3cr3t!",
-    }
+    expect(result4.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result4.get("title")).to_equal("descending (54321th street)")
+    expect(result4.get("data")).to_equal(
+        {
+            CONF_GIID: "54321",
+            CONF_EMAIL: "verisure_my_pages@example.com",
+            CONF_PASSWORD: "SuperS3cr3t!",
+        }
+    )
 
-    assert len(mock_verisure_config_flow.login.mock_calls) == 1
-    assert len(mock_verisure_config_flow.request_mfa.mock_calls) == 1
-    assert len(mock_verisure_config_flow.validate_mfa.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(verisure.login.mock_calls)).to_equal(1)
+    expect(len(verisure.request_mfa.mock_calls)).to_equal(1)
+    expect(len(verisure.validate_mfa.mock_calls)).to_equal(1)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (VerisureLoginError, "invalid_auth"),
-        (VerisureError, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=VerisureLoginError, error="invalid_auth"),
+    test.case("unknown", side_effect=VerisureError, error="unknown"),
 )
-async def test_verisure_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_verisure_config_flow: MagicMock,
-    side_effect: Exception,
+async def verisure_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    verisure: MagicMock = Depends(mock_verisure_config_flow),
+    *,
+    side_effect: type[Exception],
     error: str,
 ) -> None:
     """Test a flow with an invalid Verisure My Pages login."""
@@ -240,7 +263,7 @@ async def test_verisure_errors(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    mock_verisure_config_flow.login.side_effect = side_effect
+    verisure.login.side_effect = side_effect
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -250,14 +273,14 @@ async def test_verisure_errors(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "user"
-    assert result2.get("errors") == {"base": error}
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("step_id")).to_equal("user")
+    expect(result2.get("errors")).to_equal({"base": error})
 
-    mock_verisure_config_flow.login.side_effect = VerisureLoginError(
+    verisure.login.side_effect = VerisureLoginError(
         "Multifactor authentication enabled, disable or create MFA cookie"
     )
-    mock_verisure_config_flow.request_mfa.side_effect = side_effect
+    verisure.request_mfa.side_effect = side_effect
 
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"],
@@ -268,11 +291,11 @@ async def test_verisure_errors(
     )
     await hass.async_block_till_done()
 
-    mock_verisure_config_flow.request_mfa.side_effect = None
+    verisure.request_mfa.side_effect = None
 
-    assert result3.get("type") is FlowResultType.FORM
-    assert result3.get("step_id") == "user"
-    assert result3.get("errors") == {"base": "unknown_mfa"}
+    expect(result3.get("type")).to_be(FlowResultType.FORM)
+    expect(result3.get("step_id")).to_equal("user")
+    expect(result3.get("errors")).to_equal({"base": "unknown_mfa"})
 
     result4 = await hass.config_entries.flow.async_configure(
         result3["flow_id"],
@@ -283,51 +306,53 @@ async def test_verisure_errors(
     )
     await hass.async_block_till_done()
 
-    assert result4.get("type") is FlowResultType.FORM
-    assert result4.get("step_id") == "mfa"
+    expect(result4.get("type")).to_be(FlowResultType.FORM)
+    expect(result4.get("step_id")).to_equal("mfa")
 
-    mock_verisure_config_flow.validate_mfa.side_effect = side_effect
+    verisure.validate_mfa.side_effect = side_effect
 
     result5 = await hass.config_entries.flow.async_configure(
         result4["flow_id"],
-        {
-            "code": "123456",
-        },
+        {"code": "123456"},
     )
-    assert result5.get("type") is FlowResultType.FORM
-    assert result5.get("step_id") == "mfa"
-    assert result5.get("errors") == {"base": error}
+    expect(result5.get("type")).to_be(FlowResultType.FORM)
+    expect(result5.get("step_id")).to_equal("mfa")
+    expect(result5.get("errors")).to_equal({"base": error})
 
-    mock_verisure_config_flow.get_installations.return_value = {
+    verisure.get_installations.return_value = {
         k1: {k2: {k3: [v3[0]] for k3, v3 in v2.items()} for k2, v2 in v1.items()}
-        for k1, v1 in mock_verisure_config_flow.get_installations.return_value.items()
+        for k1, v1 in verisure.get_installations.return_value.items()
     }
-    mock_verisure_config_flow.validate_mfa.side_effect = None
-    mock_verisure_config_flow.login.side_effect = None
+    verisure.validate_mfa.side_effect = None
+    verisure.login.side_effect = None
 
     result6 = await hass.config_entries.flow.async_configure(
         result5["flow_id"],
-        {
-            "code": "654321",
-        },
+        {"code": "654321"},
     )
     await hass.async_block_till_done()
 
-    assert result6.get("type") is FlowResultType.CREATE_ENTRY
-    assert result6.get("title") == "ascending (12345th street)"
-    assert result6.get("data") == {
-        CONF_GIID: "12345",
-        CONF_EMAIL: "verisure_my_pages@example.com",
-        CONF_PASSWORD: "SuperS3cr3t!",
-    }
+    expect(result6.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result6.get("title")).to_equal("ascending (12345th street)")
+    expect(result6.get("data")).to_equal(
+        {
+            CONF_GIID: "12345",
+            CONF_EMAIL: "verisure_my_pages@example.com",
+            CONF_PASSWORD: "SuperS3cr3t!",
+        }
+    )
 
-    assert len(mock_verisure_config_flow.login.mock_calls) == 3
-    assert len(mock_verisure_config_flow.request_mfa.mock_calls) == 2
-    assert len(mock_verisure_config_flow.validate_mfa.mock_calls) == 2
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(verisure.login.mock_calls)).to_equal(3)
+    expect(len(verisure.request_mfa.mock_calls)).to_equal(2)
+    expect(len(verisure.validate_mfa.mock_calls)).to_equal(2)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_dhcp(hass: HomeAssistant) -> None:
+@test
+async def dhcp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that DHCP discovery works."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -337,23 +362,25 @@ async def test_dhcp(hass: HomeAssistant) -> None:
         context={"source": config_entries.SOURCE_DHCP},
     )
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
 
-async def test_reauth_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_verisure_config_flow: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    verisure: MagicMock = Depends(mock_verisure_config_flow),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test a reauthentication flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
-    assert result.get("step_id") == "reauth_confirm"
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {}
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result.get("step_id")).to_equal("reauth_confirm")
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({})
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -364,33 +391,37 @@ async def test_reauth_flow(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.ABORT
-    assert result2.get("reason") == "reauth_successful"
-    assert mock_config_entry.data == {
-        CONF_GIID: "12345",
-        CONF_EMAIL: "verisure_my_pages@example.com",
-        CONF_PASSWORD: "correct horse battery staple",
-    }
+    expect(result2.get("type")).to_be(FlowResultType.ABORT)
+    expect(result2.get("reason")).to_equal("reauth_successful")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_GIID: "12345",
+            CONF_EMAIL: "verisure_my_pages@example.com",
+            CONF_PASSWORD: "correct horse battery staple",
+        }
+    )
 
-    assert len(mock_verisure_config_flow.login.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(verisure.login.mock_calls)).to_equal(1)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_reauth_flow_with_mfa(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_verisure_config_flow: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_flow_with_mfa(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    verisure: MagicMock = Depends(mock_verisure_config_flow),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
-    """Test a reauthentication flow."""
-    mock_config_entry.add_to_hass(hass)
+    """Test a reauthentication flow with MFA."""
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
-    assert result.get("step_id") == "reauth_confirm"
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("errors") == {}
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result.get("step_id")).to_equal("reauth_confirm")
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({})
 
-    mock_verisure_config_flow.login.side_effect = VerisureLoginError(
+    verisure.login.side_effect = VerisureLoginError(
         "Multifactor authentication enabled, disable or create MFA cookie"
     )
 
@@ -403,54 +434,53 @@ async def test_reauth_flow_with_mfa(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "reauth_mfa"
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("step_id")).to_equal("reauth_mfa")
 
-    mock_verisure_config_flow.login.side_effect = None
+    verisure.login.side_effect = None
 
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"],
-        {
-            "code": "123456",
-        },
+        {"code": "123456"},
     )
     await hass.async_block_till_done()
 
-    assert result3.get("type") is FlowResultType.ABORT
-    assert result3.get("reason") == "reauth_successful"
-    assert mock_config_entry.data == {
-        CONF_GIID: "12345",
-        CONF_EMAIL: "verisure_my_pages@example.com",
-        CONF_PASSWORD: "correct horse battery staple!",
-    }
+    expect(result3.get("type")).to_be(FlowResultType.ABORT)
+    expect(result3.get("reason")).to_equal("reauth_successful")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_GIID: "12345",
+            CONF_EMAIL: "verisure_my_pages@example.com",
+            CONF_PASSWORD: "correct horse battery staple!",
+        }
+    )
 
-    assert len(mock_verisure_config_flow.login.mock_calls) == 2
-    assert len(mock_verisure_config_flow.request_mfa.mock_calls) == 1
-    assert len(mock_verisure_config_flow.validate_mfa.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(verisure.login.mock_calls)).to_equal(2)
+    expect(len(verisure.request_mfa.mock_calls)).to_equal(1)
+    expect(len(verisure.validate_mfa.mock_calls)).to_equal(1)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (VerisureLoginError, "invalid_auth"),
-        (VerisureError, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=VerisureLoginError, error="invalid_auth"),
+    test.case("unknown", side_effect=VerisureError, error="unknown"),
 )
-async def test_reauth_flow_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_verisure_config_flow: MagicMock,
-    mock_config_entry: MockConfigEntry,
-    side_effect: Exception,
+async def reauth_flow_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    verisure: MagicMock = Depends(mock_verisure_config_flow),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    *,
+    side_effect: type[Exception],
     error: str,
 ) -> None:
-    """Test a reauthentication flow."""
-    mock_config_entry.add_to_hass(hass)
+    """Test a reauthentication flow with errors."""
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    mock_verisure_config_flow.login.side_effect = side_effect
+    verisure.login.side_effect = side_effect
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -460,14 +490,14 @@ async def test_reauth_flow_errors(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("step_id") == "reauth_confirm"
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("errors") == {"base": error}
+    expect(result2.get("step_id")).to_equal("reauth_confirm")
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("errors")).to_equal({"base": error})
 
-    mock_verisure_config_flow.login.side_effect = VerisureLoginError(
+    verisure.login.side_effect = VerisureLoginError(
         "Multifactor authentication enabled, disable or create MFA cookie"
     )
-    mock_verisure_config_flow.request_mfa.side_effect = side_effect
+    verisure.request_mfa.side_effect = side_effect
 
     result3 = await hass.config_entries.flow.async_configure(
         result2["flow_id"],
@@ -478,11 +508,11 @@ async def test_reauth_flow_errors(
     )
     await hass.async_block_till_done()
 
-    assert result3.get("type") is FlowResultType.FORM
-    assert result3.get("step_id") == "reauth_confirm"
-    assert result3.get("errors") == {"base": "unknown_mfa"}
+    expect(result3.get("type")).to_be(FlowResultType.FORM)
+    expect(result3.get("step_id")).to_equal("reauth_confirm")
+    expect(result3.get("errors")).to_equal({"base": "unknown_mfa"})
 
-    mock_verisure_config_flow.request_mfa.side_effect = None
+    verisure.request_mfa.side_effect = None
 
     result4 = await hass.config_entries.flow.async_configure(
         result3["flow_id"],
@@ -493,49 +523,51 @@ async def test_reauth_flow_errors(
     )
     await hass.async_block_till_done()
 
-    assert result4.get("type") is FlowResultType.FORM
-    assert result4.get("step_id") == "reauth_mfa"
+    expect(result4.get("type")).to_be(FlowResultType.FORM)
+    expect(result4.get("step_id")).to_equal("reauth_mfa")
 
-    mock_verisure_config_flow.validate_mfa.side_effect = side_effect
+    verisure.validate_mfa.side_effect = side_effect
 
     result5 = await hass.config_entries.flow.async_configure(
         result4["flow_id"],
-        {
-            "code": "123456",
-        },
+        {"code": "123456"},
     )
-    assert result5.get("type") is FlowResultType.FORM
-    assert result5.get("step_id") == "reauth_mfa"
-    assert result5.get("errors") == {"base": error}
+    expect(result5.get("type")).to_be(FlowResultType.FORM)
+    expect(result5.get("step_id")).to_equal("reauth_mfa")
+    expect(result5.get("errors")).to_equal({"base": error})
 
-    mock_verisure_config_flow.validate_mfa.side_effect = None
-    mock_verisure_config_flow.login.side_effect = None
-    mock_verisure_config_flow.get_installations.return_value = {
+    verisure.validate_mfa.side_effect = None
+    verisure.login.side_effect = None
+    verisure.get_installations.return_value = {
         k1: {k2: {k3: [v3[0]] for k3, v3 in v2.items()} for k2, v2 in v1.items()}
-        for k1, v1 in mock_verisure_config_flow.get_installations.return_value.items()
+        for k1, v1 in verisure.get_installations.return_value.items()
     }
 
     await hass.config_entries.flow.async_configure(
         result5["flow_id"],
-        {
-            "code": "654321",
-        },
+        {"code": "654321"},
     )
     await hass.async_block_till_done()
 
-    assert mock_config_entry.data == {
-        CONF_GIID: "12345",
-        CONF_EMAIL: "verisure_my_pages@example.com",
-        CONF_PASSWORD: "SuperS3cr3t!",
-    }
+    expect(config_entry.data).to_equal(
+        {
+            CONF_GIID: "12345",
+            CONF_EMAIL: "verisure_my_pages@example.com",
+            CONF_PASSWORD: "SuperS3cr3t!",
+        }
+    )
 
-    assert len(mock_verisure_config_flow.login.mock_calls) == 4
-    assert len(mock_verisure_config_flow.request_mfa.mock_calls) == 2
-    assert len(mock_verisure_config_flow.validate_mfa.mock_calls) == 2
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(verisure.login.mock_calls)).to_equal(4)
+    expect(len(verisure.request_mfa.mock_calls)).to_equal(2)
+    expect(len(verisure.validate_mfa.mock_calls)).to_equal(2)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test options config flow."""
     entry = MockConfigEntry(domain=DOMAIN, unique_id="12345", data={}, version=2)
     entry.add_to_hass(hass)
@@ -544,18 +576,18 @@ async def test_options_flow(hass: HomeAssistant) -> None:
         "homeassistant.components.verisure.async_setup_entry",
         return_value=True,
     ):
-        assert await hass.config_entries.async_setup(entry.entry_id)
+        expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
         await hass.async_block_till_done()
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "init"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_LOCK_CODE_DIGITS: 4},
     )
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("data") == {CONF_LOCK_CODE_DIGITS: DEFAULT_LOCK_CODE_DIGITS}
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("data")).to_equal({CONF_LOCK_CODE_DIGITS: DEFAULT_LOCK_CODE_DIGITS})

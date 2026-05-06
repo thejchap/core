@@ -2,9 +2,8 @@
 
 from unittest.mock import AsyncMock, PropertyMock, patch
 
-from habluetooth import BluetoothServiceInfoBleak
 from HueBLE import ConnectionError, HueBleError, PairingError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.hue_ble.config_flow import Error
 from homeassistant.components.hue_ble.const import (
@@ -24,20 +23,31 @@ from . import (
     TEST_DEVICE_MAC,
     TEST_DEVICE_NAME,
 )
+from ._fixtures import mock_ble_device, mock_config_entry, mock_setup_entry
 
 from tests.common import MockConfigEntry
-from tests.components.bluetooth import BLEDevice, generate_ble_device
+from tests.components.bluetooth import generate_ble_device
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 AUTH_ERROR = ConnectionError()
 AUTH_ERROR.__cause__ = PairingError()
 
 
-async def test_user_form(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _ble_device: AsyncMock = Depends(mock_ble_device),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def user_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user form."""
-
     with patch(
         "homeassistant.components.hue_ble.config_flow.bluetooth.async_discovered_service_info",
         return_value=[NOT_HUE_BLE_DISCOVERY_INFO, HUE_BLE_SERVICE_INFO],
@@ -47,27 +57,31 @@ async def test_user_form(
             context={"source": SOURCE_USER},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["data_schema"].schema[CONF_MAC].container == {
-        HUE_BLE_SERVICE_INFO.address: (
-            f"{HUE_BLE_SERVICE_INFO.name} ({HUE_BLE_SERVICE_INFO.address})"
-        ),
-    }
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["data_schema"].schema[CONF_MAC].container).to_equal(
+        {
+            HUE_BLE_SERVICE_INFO.address: (
+                f"{HUE_BLE_SERVICE_INFO.name} ({HUE_BLE_SERVICE_INFO.address})"
+            ),
+        }
+    )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_MAC: HUE_BLE_SERVICE_INFO.address},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
-    assert result["description_placeholders"] == {
-        CONF_NAME: TEST_DEVICE_NAME,
-        CONF_MAC: TEST_DEVICE_MAC,
-        "url_pairing_mode": URL_PAIRING_MODE,
-        "url_factory_reset": URL_FACTORY_RESET,
-    }
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
+    expect(result["description_placeholders"]).to_equal(
+        {
+            CONF_NAME: TEST_DEVICE_NAME,
+            CONF_MAC: TEST_DEVICE_MAC,
+            "url_pairing_mode": URL_PAIRING_MODE,
+            "url_factory_reset": URL_FACTORY_RESET,
+        }
+    )
 
     with (
         patch(
@@ -92,22 +106,26 @@ async def test_user_form(
             {},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_DEVICE_NAME
-    assert result["result"].unique_id == dr.format_mac(TEST_DEVICE_MAC)
-    assert result["result"].data == {}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_DEVICE_NAME)
+    expect(result["result"].unique_id).to_equal(dr.format_mac(TEST_DEVICE_MAC))
+    expect(result["result"].data).to_equal({})
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize("discovery_info", [[NOT_HUE_BLE_DISCOVERY_INFO], []])
-async def test_user_form_no_device(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    discovery_info: list[BluetoothServiceInfoBleak],
+@test.cases(
+    test.case("not_hue_only", discovery_info=[NOT_HUE_BLE_DISCOVERY_INFO]),
+    test.case("empty", discovery_info=[]),
+)
+async def user_form_no_device(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    discovery_info: list,
 ) -> None:
     """Test user form with no devices."""
-
     with patch(
         "homeassistant.components.hue_ble.config_flow.bluetooth.async_discovered_service_info",
         return_value=discovery_info,
@@ -117,99 +135,88 @@ async def test_user_form_no_device(
             context={"source": SOURCE_USER},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
 
 
-@pytest.mark.parametrize(
-    (
-        "mock_return_device",
-        "mock_scanner_count",
-        "mock_connect",
-        "mock_support_on_off",
-        "mock_poll_state",
-        "error",
-    ),
-    [
-        (
-            None,
-            0,
-            None,
-            True,
-            None,
-            Error.NO_SCANNERS,
-        ),
-        (
-            None,
-            1,
-            None,
-            True,
-            None,
-            Error.NOT_FOUND,
-        ),
-        (
-            generate_ble_device(TEST_DEVICE_NAME, TEST_DEVICE_MAC),
-            1,
-            AUTH_ERROR,
-            True,
-            None,
-            Error.INVALID_AUTH,
-        ),
-        (
-            generate_ble_device(TEST_DEVICE_NAME, TEST_DEVICE_MAC),
-            1,
-            ConnectionError,
-            True,
-            None,
-            Error.CANNOT_CONNECT,
-        ),
-        (
-            generate_ble_device(TEST_DEVICE_NAME, TEST_DEVICE_MAC),
-            1,
-            None,
-            False,
-            None,
-            Error.NOT_SUPPORTED,
-        ),
-        (
-            generate_ble_device(TEST_DEVICE_NAME, TEST_DEVICE_MAC),
-            1,
-            None,
-            True,
-            HueBleError,
-            Error.UNKNOWN,
-        ),
-        (
-            generate_ble_device(TEST_DEVICE_NAME, TEST_DEVICE_MAC),
-            1,
-            HueBleError,
-            None,
-            None,
-            Error.UNKNOWN,
-        ),
-    ],
-    ids=[
+@test.cases(
+    test.case(
         "no_scanners",
+        mock_return_device=None,
+        mock_scanner_count=0,
+        mock_connect=None,
+        mock_support_on_off=True,
+        mock_poll_state=None,
+        error=Error.NO_SCANNERS,
+    ),
+    test.case(
         "not_found",
+        mock_return_device=None,
+        mock_scanner_count=1,
+        mock_connect=None,
+        mock_support_on_off=True,
+        mock_poll_state=None,
+        error=Error.NOT_FOUND,
+    ),
+    test.case(
         "invalid_auth",
+        mock_return_device=generate_ble_device(TEST_DEVICE_NAME, TEST_DEVICE_MAC),
+        mock_scanner_count=1,
+        mock_connect=AUTH_ERROR,
+        mock_support_on_off=True,
+        mock_poll_state=None,
+        error=Error.INVALID_AUTH,
+    ),
+    test.case(
         "cannot_connect",
+        mock_return_device=generate_ble_device(TEST_DEVICE_NAME, TEST_DEVICE_MAC),
+        mock_scanner_count=1,
+        mock_connect=ConnectionError,
+        mock_support_on_off=True,
+        mock_poll_state=None,
+        error=Error.CANNOT_CONNECT,
+    ),
+    test.case(
         "not_supported",
+        mock_return_device=generate_ble_device(TEST_DEVICE_NAME, TEST_DEVICE_MAC),
+        mock_scanner_count=1,
+        mock_connect=None,
+        mock_support_on_off=False,
+        mock_poll_state=None,
+        error=Error.NOT_SUPPORTED,
+    ),
+    test.case(
         "cannot_poll",
+        mock_return_device=generate_ble_device(TEST_DEVICE_NAME, TEST_DEVICE_MAC),
+        mock_scanner_count=1,
+        mock_connect=None,
+        mock_support_on_off=True,
+        mock_poll_state=HueBleError,
+        error=Error.UNKNOWN,
+    ),
+    test.case(
         "unknown",
-    ],
+        mock_return_device=generate_ble_device(TEST_DEVICE_NAME, TEST_DEVICE_MAC),
+        mock_scanner_count=1,
+        mock_connect=HueBleError,
+        mock_support_on_off=None,
+        mock_poll_state=None,
+        error=Error.UNKNOWN,
+    ),
 )
-async def test_user_form_exception(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_return_device: BLEDevice | None,
+async def user_form_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    mock_return_device,
     mock_scanner_count: int,
-    mock_connect: Exception | None,
-    mock_support_on_off: bool,
-    mock_poll_state: Exception | None,
+    mock_connect,
+    mock_support_on_off,
+    mock_poll_state,
     error: Error,
 ) -> None:
     """Test user form with errors."""
-
     with patch(
         "homeassistant.components.hue_ble.config_flow.bluetooth.async_discovered_service_info",
         return_value=[NOT_HUE_BLE_DISCOVERY_INFO, HUE_BLE_SERVICE_INFO],
@@ -219,21 +226,23 @@ async def test_user_form_exception(
             context={"source": SOURCE_USER},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["data_schema"].schema[CONF_MAC].container == {
-        HUE_BLE_SERVICE_INFO.address: (
-            f"{HUE_BLE_SERVICE_INFO.name} ({HUE_BLE_SERVICE_INFO.address})"
-        ),
-    }
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["data_schema"].schema[CONF_MAC].container).to_equal(
+        {
+            HUE_BLE_SERVICE_INFO.address: (
+                f"{HUE_BLE_SERVICE_INFO.name} ({HUE_BLE_SERVICE_INFO.address})"
+            ),
+        }
+    )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_MAC: HUE_BLE_SERVICE_INFO.address},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("confirm")
 
     with (
         patch(
@@ -263,8 +272,8 @@ async def test_user_form_exception(
             {},
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {"base": error.value}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({"base": error.value})
 
     with (
         patch(
@@ -289,50 +298,53 @@ async def test_user_form_exception(
             {},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_bluetooth_discovery_aborts(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+@test
+async def bluetooth_discovery_aborts(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test bluetooth form aborts."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_BLUETOOTH},
         data=HUE_BLE_SERVICE_INFO,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "discovery_unsupported"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("discovery_unsupported")
 
 
-async def test_bluetooth_form_exception_already_set_up(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def bluetooth_form_exception_already_set_up(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test bluetooth discovery form when device is already set up."""
-
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_BLUETOOTH},
         data=HUE_BLE_SERVICE_INFO,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "discovery_unsupported"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("discovery_unsupported")
 
 
-async def test_user_form_exception_already_set_up(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def user_form_exception_already_set_up(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test user form when device is already set up."""
-
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     with patch(
         "homeassistant.components.hue_ble.config_flow.bluetooth.async_discovered_service_info",
@@ -343,17 +355,19 @@ async def test_user_form_exception_already_set_up(
             context={"source": SOURCE_USER},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["data_schema"].schema[CONF_MAC].container == {
-        HUE_BLE_SERVICE_INFO.address: (
-            f"{HUE_BLE_SERVICE_INFO.name} ({HUE_BLE_SERVICE_INFO.address})"
-        ),
-    }
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["data_schema"].schema[CONF_MAC].container).to_equal(
+        {
+            HUE_BLE_SERVICE_INFO.address: (
+                f"{HUE_BLE_SERVICE_INFO.name} ({HUE_BLE_SERVICE_INFO.address})"
+            ),
+        }
+    )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_MAC: HUE_BLE_SERVICE_INFO.address},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

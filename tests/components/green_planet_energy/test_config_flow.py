@@ -6,46 +6,65 @@ from greenplanet_energy_api import (
     GreenPlanetEnergyAPIError,
     GreenPlanetEnergyConnectionError,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.green_planet_energy.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_api, mock_config_entry, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form_create_entry(
-    hass: HomeAssistant, mock_api: MagicMock, mock_setup_entry: AsyncMock
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form_create_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _api: MagicMock = Depends(mock_api),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test creating an entry."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Green Planet Energy"
-    assert result["data"] == {}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Green Planet Energy")
+    expect(result["data"]).to_equal({})
 
 
-@pytest.mark.parametrize(
-    ("exception", "error_base"),
-    [
-        (GreenPlanetEnergyConnectionError("Connection failed"), "cannot_connect"),
-        (GreenPlanetEnergyAPIError("API error"), "invalid_auth"),
-        (Exception("Unknown error"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "cannot_connect",
+        exception=GreenPlanetEnergyConnectionError("Connection failed"),
+        error_base="cannot_connect",
+    ),
+    test.case(
+        "invalid_auth",
+        exception=GreenPlanetEnergyAPIError("API error"),
+        error_base="invalid_auth",
+    ),
+    test.case("unknown", exception=Exception("Unknown error"), error_base="unknown"),
 )
-async def test_form_errors_and_recovery(
-    hass: HomeAssistant,
-    mock_api: MagicMock,
-    mock_setup_entry: AsyncMock,
+async def form_errors_and_recovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(mock_api),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
     exception: Exception,
     error_base: str,
 ) -> None:
@@ -54,34 +73,34 @@ async def test_form_errors_and_recovery(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    # Set the mock to raise an error
-    mock_api.get_electricity_prices.side_effect = exception
+    api.get_electricity_prices.side_effect = exception
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_base}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_base})
 
-    # Reset the mock to not raise an error and test recovery
-    mock_api.get_electricity_prices.side_effect = None
+    api.get_electricity_prices.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_form_already_configured(
-    hass: HomeAssistant,
-    mock_api: MagicMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def form_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _api: MagicMock = Depends(mock_api),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we abort if already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "single_instance_allowed"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")

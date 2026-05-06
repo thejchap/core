@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 from aiohttp.client_exceptions import ClientConnectorError
 from fullykiosk import FullyKioskError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.fully_kiosk.const import DOMAIN
 from homeassistant.config_entries import SOURCE_DHCP, SOURCE_MQTT, SOURCE_USER
@@ -20,20 +20,34 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.mqtt import MqttServiceInfo
 
+from ._fixtures import (
+    mock_config_entry,
+    mock_fully_kiosk_config_flow,
+    mock_setup_entry,
+)
+
 from tests.common import MockConfigEntry, async_load_fixture
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_user_flow(
-    hass: HomeAssistant,
-    mock_fully_kiosk_config_flow: MagicMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    fk_flow: MagicMock = Depends(mock_fully_kiosk_config_flow),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the full user initiated config flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -45,36 +59,45 @@ async def test_user_flow(
         },
     )
 
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2.get("title") == "Test device"
-    assert result2.get("data") == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PASSWORD: "test-password",
-        CONF_MAC: "aa:bb:cc:dd:ee:ff",
-        CONF_SSL: False,
-        CONF_VERIFY_SSL: False,
-    }
-    assert "result" in result2
-    assert result2["result"].unique_id == "12345"
+    expect(result2.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2.get("title")).to_equal("Test device")
+    expect(result2.get("data")).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_PASSWORD: "test-password",
+            CONF_MAC: "aa:bb:cc:dd:ee:ff",
+            CONF_SSL: False,
+            CONF_VERIFY_SSL: False,
+        }
+    )
+    expect("result" in result2).to_be(True)
+    expect(result2["result"].unique_id).to_equal("12345")
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert len(mock_fully_kiosk_config_flow.getDeviceInfo.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    expect(len(fk_flow.getDeviceInfo.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "reason"),
-    [
-        (FullyKioskError("error", "status"), "cannot_connect"),
-        (ClientConnectorError(None, Mock()), "cannot_connect"),
-        (TimeoutError, "cannot_connect"),
-        (RuntimeError, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "fully_error",
+        side_effect=FullyKioskError("error", "status"),
+        reason="cannot_connect",
+    ),
+    test.case(
+        "client_connector_error",
+        side_effect=ClientConnectorError(None, Mock()),
+        reason="cannot_connect",
+    ),
+    test.case("timeout", side_effect=TimeoutError, reason="cannot_connect"),
+    test.case("runtime", side_effect=RuntimeError, reason="unknown"),
 )
-async def test_errors(
-    hass: HomeAssistant,
-    mock_fully_kiosk_config_flow: MagicMock,
-    mock_setup_entry: AsyncMock,
-    side_effect: Exception,
+async def errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    fk_flow: MagicMock = Depends(mock_fully_kiosk_config_flow),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    side_effect: object,
     reason: str,
 ) -> None:
     """Test errors raised during flow."""
@@ -83,7 +106,7 @@ async def test_errors(
     )
     flow_id = result["flow_id"]
 
-    mock_fully_kiosk_config_flow.getDeviceInfo.side_effect = side_effect
+    fk_flow.getDeviceInfo.side_effect = side_effect
     result2 = await hass.config_entries.flow.async_configure(
         flow_id,
         user_input={
@@ -94,14 +117,14 @@ async def test_errors(
         },
     )
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("step_id") == "user"
-    assert result2.get("errors") == {"base": reason}
+    expect(result2.get("type")).to_be(FlowResultType.FORM)
+    expect(result2.get("step_id")).to_equal("user")
+    expect(result2.get("errors")).to_equal({"base": reason})
 
-    assert len(mock_fully_kiosk_config_flow.getDeviceInfo.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(len(fk_flow.getDeviceInfo.mock_calls)).to_equal(1)
+    expect(len(setup_entry.mock_calls)).to_equal(0)
 
-    mock_fully_kiosk_config_flow.getDeviceInfo.side_effect = None
+    fk_flow.getDeviceInfo.side_effect = None
     result3 = await hass.config_entries.flow.async_configure(
         flow_id,
         user_input={
@@ -112,35 +135,39 @@ async def test_errors(
         },
     )
 
-    assert result3.get("type") is FlowResultType.CREATE_ENTRY
-    assert result3.get("title") == "Test device"
-    assert result3.get("data") == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PASSWORD: "test-password",
-        CONF_MAC: "aa:bb:cc:dd:ee:ff",
-        CONF_SSL: True,
-        CONF_VERIFY_SSL: False,
-    }
-    assert "result" in result3
-    assert result3["result"].unique_id == "12345"
+    expect(result3.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3.get("title")).to_equal("Test device")
+    expect(result3.get("data")).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_PASSWORD: "test-password",
+            CONF_MAC: "aa:bb:cc:dd:ee:ff",
+            CONF_SSL: True,
+            CONF_VERIFY_SSL: False,
+        }
+    )
+    expect("result" in result3).to_be(True)
+    expect(result3["result"].unique_id).to_equal("12345")
 
-    assert len(mock_fully_kiosk_config_flow.getDeviceInfo.mock_calls) == 2
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(fk_flow.getDeviceInfo.mock_calls)).to_equal(2)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_duplicate_updates_existing_entry(
-    hass: HomeAssistant,
-    mock_fully_kiosk_config_flow: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def duplicate_updates_existing_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    fk_flow: MagicMock = Depends(mock_fully_kiosk_config_flow),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test adding existing device updates existing entry."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -152,26 +179,30 @@ async def test_duplicate_updates_existing_entry(
         },
     )
 
-    assert result2.get("type") is FlowResultType.ABORT
-    assert result2.get("reason") == "already_configured"
-    assert mock_config_entry.data == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PASSWORD: "test-password",
-        CONF_MAC: "aa:bb:cc:dd:ee:ff",
-        CONF_SSL: True,
-        CONF_VERIFY_SSL: True,
-    }
+    expect(result2.get("type")).to_be(FlowResultType.ABORT)
+    expect(result2.get("reason")).to_equal("already_configured")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_PASSWORD: "test-password",
+            CONF_MAC: "aa:bb:cc:dd:ee:ff",
+            CONF_SSL: True,
+            CONF_VERIFY_SSL: True,
+        }
+    )
 
-    assert len(mock_fully_kiosk_config_flow.getDeviceInfo.mock_calls) == 1
+    expect(len(fk_flow.getDeviceInfo.mock_calls)).to_equal(1)
 
 
-async def test_dhcp_discovery_updates_entry(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+@test
+async def dhcp_discovery_updates_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test DHCP discovery updates config entries."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -183,23 +214,27 @@ async def test_dhcp_discovery_updates_entry(
         ),
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "already_configured"
-    assert mock_config_entry.data == {
-        CONF_HOST: "127.0.0.2",
-        CONF_PASSWORD: "mocked-password",
-        CONF_MAC: "aa:bb:cc:dd:ee:ff",
-        CONF_SSL: False,
-        CONF_VERIFY_SSL: False,
-    }
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("already_configured")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOST: "127.0.0.2",
+            CONF_PASSWORD: "mocked-password",
+            CONF_MAC: "aa:bb:cc:dd:ee:ff",
+            CONF_SSL: False,
+            CONF_VERIFY_SSL: False,
+        }
+    )
 
 
-async def test_dhcp_unknown_device(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def dhcp_unknown_device(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test unknown DHCP discovery aborts flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -211,14 +246,16 @@ async def test_dhcp_unknown_device(
         ),
     )
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "unknown"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("unknown")
 
 
-async def test_mqtt_discovery_flow(
-    hass: HomeAssistant,
-    mock_fully_kiosk_config_flow: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def mqtt_discovery_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    fk_flow: MagicMock = Depends(mock_fully_kiosk_config_flow),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test MQTT discovery configuration flow."""
     payload = await async_load_fixture(hass, "mqtt-discovery-deviceinfo.json", DOMAIN)
@@ -235,10 +272,10 @@ async def test_mqtt_discovery_flow(
             timestamp=None,
         ),
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "discovery_confirm"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("discovery_confirm")
 
-    confirmResult = await hass.config_entries.flow.async_configure(
+    confirm_result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
             CONF_PASSWORD: "test-password",
@@ -247,34 +284,37 @@ async def test_mqtt_discovery_flow(
         },
     )
 
-    assert confirmResult
-    assert confirmResult.get("type") is FlowResultType.CREATE_ENTRY
-    assert confirmResult.get("title") == "Test device"
-    assert confirmResult.get("data") == {
-        CONF_HOST: "192.168.1.234",
-        CONF_PASSWORD: "test-password",
-        CONF_MAC: "aa:bb:cc:dd:ee:ff",
-        CONF_SSL: False,
-        CONF_VERIFY_SSL: False,
-    }
-    assert "result" in confirmResult
-    assert confirmResult["result"].unique_id == "12345"
+    expect(confirm_result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(confirm_result.get("title")).to_equal("Test device")
+    expect(confirm_result.get("data")).to_equal(
+        {
+            CONF_HOST: "192.168.1.234",
+            CONF_PASSWORD: "test-password",
+            CONF_MAC: "aa:bb:cc:dd:ee:ff",
+            CONF_SSL: False,
+            CONF_VERIFY_SSL: False,
+        }
+    )
+    expect("result" in confirm_result).to_be(True)
+    expect(confirm_result["result"].unique_id).to_equal("12345")
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert len(mock_fully_kiosk_config_flow.getDeviceInfo.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    expect(len(fk_flow.getDeviceInfo.mock_calls)).to_equal(1)
 
 
-async def test_reconfigure(
-    hass: HomeAssistant,
-    mock_fully_kiosk_config_flow: MagicMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    fk_flow: MagicMock = Depends(mock_fully_kiosk_config_flow),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test the reconfigure flow."""
-    mock_config_entry.add_to_hass(hass)
-    result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -286,33 +326,35 @@ async def test_reconfigure(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.data[CONF_HOST] == "2.2.2.2"
-    assert mock_config_entry.data[CONF_PASSWORD] == "new-password"
-    assert mock_config_entry.data[CONF_SSL] is True
-    assert mock_config_entry.data[CONF_VERIFY_SSL] is True
-    assert len(mock_fully_kiosk_config_flow.getDeviceInfo.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data[CONF_HOST]).to_equal("2.2.2.2")
+    expect(config_entry.data[CONF_PASSWORD]).to_equal("new-password")
+    expect(config_entry.data[CONF_SSL]).to_be(True)
+    expect(config_entry.data[CONF_VERIFY_SSL]).to_be(True)
+    expect(len(fk_flow.getDeviceInfo.mock_calls)).to_equal(1)
 
 
-async def test_reconfigure_unique_id_mismatch(
-    hass: HomeAssistant,
-    mock_fully_kiosk_config_flow: MagicMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure_unique_id_mismatch(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    fk_flow: MagicMock = Depends(mock_fully_kiosk_config_flow),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reconfigure aborts when device returns a different unique ID."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    mock_fully_kiosk_config_flow.getDeviceInfo.return_value = {
+    fk_flow.getDeviceInfo.return_value = {
         "deviceName": "Other device",
         "deviceID": "67890",
         "Mac": "FF:EE:DD:CC:BB:AA",
     }
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    result = await config_entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -324,35 +366,42 @@ async def test_reconfigure_unique_id_mismatch(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "unique_id_mismatch"
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("unique_id_mismatch")
+    expect(len(setup_entry.mock_calls)).to_equal(0)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "reason"),
-    [
-        (FullyKioskError("error", "status"), "cannot_connect"),
-        (ClientConnectorError(None, Mock()), "cannot_connect"),
-        (TimeoutError, "cannot_connect"),
-        (RuntimeError, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "fully_error",
+        side_effect=FullyKioskError("error", "status"),
+        reason="cannot_connect",
+    ),
+    test.case(
+        "client_connector_error",
+        side_effect=ClientConnectorError(None, Mock()),
+        reason="cannot_connect",
+    ),
+    test.case("timeout", side_effect=TimeoutError, reason="cannot_connect"),
+    test.case("runtime", side_effect=RuntimeError, reason="unknown"),
 )
-async def test_reconfigure_errors(
-    hass: HomeAssistant,
-    mock_fully_kiosk_config_flow: MagicMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    side_effect: Exception,
+async def reconfigure_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    fk_flow: MagicMock = Depends(mock_fully_kiosk_config_flow),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    *,
+    side_effect: object,
     reason: str,
 ) -> None:
     """Test error handling during reconfigure flow."""
-    mock_config_entry.add_to_hass(hass)
-    result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
-    mock_fully_kiosk_config_flow.getDeviceInfo.side_effect = side_effect
+    fk_flow.getDeviceInfo.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
@@ -363,11 +412,11 @@ async def test_reconfigure_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": reason}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": reason})
 
-    # Verify we can recover from this disaster
-    mock_fully_kiosk_config_flow.getDeviceInfo.side_effect = None
+    # Verify recovery from the error.
+    fk_flow.getDeviceInfo.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
@@ -378,10 +427,10 @@ async def test_reconfigure_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.data[CONF_HOST] == "2.2.2.2"
-    assert mock_config_entry.data[CONF_PASSWORD] == "new-password"
-    assert mock_config_entry.data[CONF_SSL] is True
-    assert mock_config_entry.data[CONF_VERIFY_SSL] is True
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data[CONF_HOST]).to_equal("2.2.2.2")
+    expect(config_entry.data[CONF_PASSWORD]).to_equal("new-password")
+    expect(config_entry.data[CONF_SSL]).to_be(True)
+    expect(config_entry.data[CONF_VERIFY_SSL]).to_be(True)
+    expect(len(setup_entry.mock_calls)).to_equal(1)

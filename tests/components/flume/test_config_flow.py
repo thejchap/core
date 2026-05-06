@@ -3,9 +3,9 @@
 from http import HTTPStatus
 from unittest.mock import patch
 
-import pytest
 import requests.exceptions
-from requests_mock.mocker import Mocker
+import requests_mock as rm
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.flume.const import DOMAIN
@@ -18,27 +18,44 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import DEVICE_LIST, DEVICE_LIST_URL
+from ._fixtures import (
+    DEVICE_LIST,
+    DEVICE_LIST_URL,
+    access_token,
+    device_list,
+    device_list_timeout,
+    requests_mocker,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.usefixtures("access_token", "device_list")
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _access: None = Depends(access_token),
+    _device: None = Depends(device_list),
+) -> None:
     """Test we get the form and can setup from user input."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
-    with (
-        patch(
-            "homeassistant.components.flume.async_setup_entry",
-            return_value=True,
-        ) as mock_setup_entry,
-    ):
+    with patch(
+        "homeassistant.components.flume.async_setup_entry",
+        return_value=True,
+    ) as mock_setup_entry:
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {
@@ -50,25 +67,32 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "test-username"
-    assert result2["data"] == {
-        CONF_USERNAME: "test-username",
-        CONF_PASSWORD: "test-password",
-        CONF_CLIENT_ID: "client_id",
-        CONF_CLIENT_SECRET: "client_secret",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("test-username")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_USERNAME: "test-username",
+            CONF_PASSWORD: "test-password",
+            CONF_CLIENT_ID: "client_id",
+            CONF_CLIENT_SECRET: "client_secret",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("access_token")
-async def test_form_invalid_auth(hass: HomeAssistant, requests_mock: Mocker) -> None:
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _access: None = Depends(access_token),
+    mocker: rm.Mocker = Depends(requests_mocker),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    requests_mock.register_uri(
+    mocker.register_uri(
         "GET",
         DEVICE_LIST_URL,
         status_code=HTTPStatus.UNAUTHORIZED,
@@ -85,12 +109,17 @@ async def test_form_invalid_auth(hass: HomeAssistant, requests_mock: Mocker) -> 
         },
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"password": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"password": "invalid_auth"})
 
 
-@pytest.mark.usefixtures("access_token", "device_list_timeout")
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _access: None = Depends(access_token),
+    _device: None = Depends(device_list_timeout),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -106,12 +135,17 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-@pytest.mark.usefixtures("access_token")
-async def test_reauth(hass: HomeAssistant, requests_mock: Mocker) -> None:
+@test
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _access: None = Depends(access_token),
+    mocker: rm.Mocker = Depends(requests_mocker),
+) -> None:
     """Test we can reauth."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -125,20 +159,18 @@ async def test_reauth(hass: HomeAssistant, requests_mock: Mocker) -> None:
     entry.add_to_hass(hass)
 
     result = await entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_PASSWORD: "test-password",
-        },
+        {CONF_PASSWORD: "test-password"},
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"password": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"password": "invalid_auth"})
 
-    requests_mock.register_uri(
+    mocker.register_uri(
         "GET",
         DEVICE_LIST_URL,
         exc=requests.exceptions.ConnectTimeout,
@@ -153,51 +185,47 @@ async def test_reauth(hass: HomeAssistant, requests_mock: Mocker) -> None:
     ):
         result3 = await hass.config_entries.flow.async_configure(
             result2["flow_id"],
-            {
-                CONF_PASSWORD: "test-password",
-            },
+            {CONF_PASSWORD: "test-password"},
         )
-        # The existing token file was removed
-        assert len(mock_unlink.mock_calls) == 1
+        expect(len(mock_unlink.mock_calls)).to_equal(1)
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "cannot_connect"}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": "cannot_connect"})
 
-    requests_mock.register_uri(
+    mocker.register_uri(
         "GET",
         DEVICE_LIST_URL,
         status_code=HTTPStatus.OK,
-        json={
-            "data": DEVICE_LIST,
-        },
+        json={"data": DEVICE_LIST},
     )
 
-    with (
-        patch(
-            "homeassistant.components.flume.async_setup_entry",
-            return_value=True,
-        ) as mock_setup_entry,
-    ):
+    with patch(
+        "homeassistant.components.flume.async_setup_entry",
+        return_value=True,
+    ) as mock_setup_entry:
         result4 = await hass.config_entries.flow.async_configure(
             result3["flow_id"],
-            {
-                CONF_PASSWORD: "test-password",
-            },
+            {CONF_PASSWORD: "test-password"},
         )
 
-    assert mock_setup_entry.called
-    assert result4["type"] is FlowResultType.ABORT
-    assert result4["reason"] == "reauth_successful"
+    expect(mock_setup_entry.called).to_be(True)
+    expect(result4["type"]).to_be(FlowResultType.ABORT)
+    expect(result4["reason"]).to_equal("reauth_successful")
 
 
-@pytest.mark.usefixtures("access_token")
-async def test_form_no_devices(hass: HomeAssistant, requests_mock: Mocker) -> None:
+@test
+async def form_no_devices(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _access: None = Depends(access_token),
+    mocker: rm.Mocker = Depends(requests_mocker),
+) -> None:
     """Test a device list response that contains no values will raise an error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    requests_mock.register_uri(
+    mocker.register_uri(
         "GET",
         DEVICE_LIST_URL,
         status_code=HTTPStatus.OK,
@@ -214,5 +242,5 @@ async def test_form_no_devices(hass: HomeAssistant, requests_mock: Mocker) -> No
         },
     )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})

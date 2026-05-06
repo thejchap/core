@@ -4,7 +4,7 @@ from ipaddress import IPv4Address
 from unittest.mock import AsyncMock, MagicMock
 
 from homevolt import HomevoltAuthenticationError, HomevoltConnectionError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.homevolt.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF
@@ -13,7 +13,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
+from ._fixtures import (
+    mock_config_entry,
+    mock_homevolt_client,
+    mock_setup_entry,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 DISCOVERY_INFO = ZeroconfServiceInfo(
     ip_address=IPv4Address("192.168.1.123"),
@@ -26,92 +33,101 @@ DISCOVERY_INFO = ZeroconfServiceInfo(
 )
 
 
-async def test_full_flow_success(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_homevolt_client: MagicMock
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _client: MagicMock = Depends(mock_homevolt_client),
 ) -> None:
     """Test a complete successful user flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
-    user_input = {
-        CONF_HOST: "192.168.1.100",
-    }
+    user_input = {CONF_HOST: "192.168.1.100"}
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Homevolt"
-    assert result["data"] == {CONF_HOST: "192.168.1.100", CONF_PASSWORD: None}
-    assert result["result"].unique_id == "40580137858664"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Homevolt")
+    expect(result["data"]).to_equal({CONF_HOST: "192.168.1.100", CONF_PASSWORD: None})
+    expect(result["result"].unique_id).to_equal("40580137858664")
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_flow_auth_error_then_password_success(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_homevolt_client: MagicMock
+@test
+async def flow_auth_error_then_password_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: MagicMock = Depends(mock_homevolt_client),
 ) -> None:
     """Test flow when authentication is required."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
-    user_input = {
-        CONF_HOST: "192.168.1.100",
-    }
+    user_input = {CONF_HOST: "192.168.1.100"}
 
-    mock_homevolt_client.update_info.side_effect = HomevoltAuthenticationError
+    client.update_info.side_effect = HomevoltAuthenticationError
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "credentials"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("credentials")
+    expect(result["errors"]).to_equal({})
 
-    # Now provide password - should succeed
-    mock_homevolt_client.update_info.side_effect = None
+    client.update_info.side_effect = None
 
-    password_input = {
-        CONF_PASSWORD: "test-password",
-    }
+    password_input = {CONF_PASSWORD: "test-password"}
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], password_input
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Homevolt"
-    assert result["data"] == {
-        CONF_HOST: "192.168.1.100",
-        CONF_PASSWORD: "test-password",
-    }
-    assert result["result"].unique_id == "40580137858664"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Homevolt")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "192.168.1.100",
+            CONF_PASSWORD: "test-password",
+        }
+    )
+    expect(result["result"].unique_id).to_equal("40580137858664")
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_error"),
-    [
-        (HomevoltConnectionError, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "connection", exception=HomevoltConnectionError, expected_error="cannot_connect"
+    ),
+    test.case("unknown", exception=Exception, expected_error="unknown"),
 )
-async def test_step_user_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_homevolt_client: MagicMock,
-    exception: Exception,
+async def step_user_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: MagicMock = Depends(mock_homevolt_client),
+    *,
+    exception: type[Exception],
     expected_error: str,
 ) -> None:
     """Test error cases for the user step with recovery."""
@@ -119,236 +135,249 @@ async def test_step_user_errors(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
-    user_input = {
-        CONF_HOST: "192.168.1.100",
-    }
+    user_input = {CONF_HOST: "192.168.1.100"}
 
-    mock_homevolt_client.update_info.side_effect = exception
+    client.update_info.side_effect = exception
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": expected_error})
 
-    mock_homevolt_client.update_info.side_effect = None
+    client.update_info.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Homevolt"
-    assert result["data"] == {CONF_HOST: "192.168.1.100", CONF_PASSWORD: None}
-    assert result["result"].unique_id == "40580137858664"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Homevolt")
+    expect(result["data"]).to_equal({CONF_HOST: "192.168.1.100", CONF_PASSWORD: None})
+    expect(result["result"].unique_id).to_equal("40580137858664")
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_duplicate_entry(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_homevolt_client: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def duplicate_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _client: MagicMock = Depends(mock_homevolt_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that a duplicate device_id aborts the flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
-    user_input = {
-        CONF_HOST: "192.168.1.200",
-    }
+    user_input = {CONF_HOST: "192.168.1.200"}
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_credentials_step_invalid_password(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_homevolt_client: MagicMock
+@test
+async def credentials_step_invalid_password(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: MagicMock = Depends(mock_homevolt_client),
 ) -> None:
     """Test invalid password in credentials step shows error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    user_input = {
-        CONF_HOST: "192.168.1.100",
-    }
+    user_input = {CONF_HOST: "192.168.1.100"}
 
-    mock_homevolt_client.update_info.side_effect = HomevoltAuthenticationError
+    client.update_info.side_effect = HomevoltAuthenticationError
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "credentials"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("credentials")
 
-    # Provide wrong password - should show error
-    password_input = {
-        CONF_PASSWORD: "wrong-password",
-    }
+    password_input = {CONF_PASSWORD: "wrong-password"}
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], password_input
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "credentials"
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("credentials")
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
-    mock_homevolt_client.update_info.side_effect = None
+    client.update_info.side_effect = None
 
-    password_input = {
-        CONF_PASSWORD: "correct-password",
-    }
+    password_input = {CONF_PASSWORD: "correct-password"}
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], password_input
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Homevolt"
-    assert result["data"] == {
-        CONF_HOST: "192.168.1.100",
-        CONF_PASSWORD: "correct-password",
-    }
-    assert result["result"].unique_id == "40580137858664"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Homevolt")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "192.168.1.100",
+            CONF_PASSWORD: "correct-password",
+        }
+    )
+    expect(result["result"].unique_id).to_equal("40580137858664")
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_reauth_success(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_homevolt_client: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _client: MagicMock = Depends(mock_homevolt_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test successful reauthentication flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["description_placeholders"] == {
-        "host": "127.0.0.1",
-        "name": "Homevolt",
-    }
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["description_placeholders"]).to_equal(
+        {
+            "host": "127.0.0.1",
+            "name": "Homevolt",
+        }
+    )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PASSWORD: "new-password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.unique_id == "40580137858664"
-    assert mock_config_entry.data == {
-        CONF_HOST: "127.0.0.1",
-        CONF_PASSWORD: "new-password",
-    }
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.unique_id).to_equal("40580137858664")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOST: "127.0.0.1",
+            CONF_PASSWORD: "new-password",
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_error"),
-    [
-        (HomevoltAuthenticationError, "invalid_auth"),
-        (HomevoltConnectionError, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "auth", exception=HomevoltAuthenticationError, expected_error="invalid_auth"
+    ),
+    test.case(
+        "connection", exception=HomevoltConnectionError, expected_error="cannot_connect"
+    ),
+    test.case("unknown", exception=Exception, expected_error="unknown"),
 )
-async def test_reauth_flow_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_homevolt_client: MagicMock,
-    mock_config_entry: MockConfigEntry,
-    exception: Exception,
+async def reauth_flow_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: MagicMock = Depends(mock_homevolt_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    *,
+    exception: type[Exception],
     expected_error: str,
 ) -> None:
     """Test reauthentication flow with errors and recovery."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_homevolt_client.update_info.side_effect = exception
+    client.update_info.side_effect = exception
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PASSWORD: "wrong-password"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({"base": expected_error})
 
-    mock_homevolt_client.update_info.side_effect = None
+    client.update_info.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PASSWORD: "correct-password"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data == {
-        CONF_HOST: "127.0.0.1",
-        CONF_PASSWORD: "correct-password",
-    }
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOST: "127.0.0.1",
+            CONF_PASSWORD: "correct-password",
+        }
+    )
 
 
-async def test_zeroconf_confirm_flow_success(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_homevolt_client: MagicMock
+@test
+async def zeroconf_confirm_flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _client: MagicMock = Depends(mock_homevolt_client),
 ) -> None:
     """Test zeroconf flow shows confirm step before creating entry."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_ZEROCONF},
         data=DISCOVERY_INFO,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zeroconf_confirm"
-    assert result["description_placeholders"] == {"host": "192.168.1.123"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
+    expect(result["description_placeholders"]).to_equal({"host": "192.168.1.123"})
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Homevolt"
-    assert result["data"] == {CONF_HOST: "192.168.1.123", CONF_PASSWORD: None}
-    assert result["result"].unique_id == "40580137858664"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Homevolt")
+    expect(result["data"]).to_equal({CONF_HOST: "192.168.1.123", CONF_PASSWORD: None})
+    expect(result["result"].unique_id).to_equal("40580137858664")
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_zeroconf_duplicate_aborts(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_homevolt_client: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def zeroconf_duplicate_aborts(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _client: MagicMock = Depends(mock_homevolt_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test zeroconf flow aborts when unique id is already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -356,20 +385,20 @@ async def test_zeroconf_duplicate_aborts(
         data=DISCOVERY_INFO,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert mock_config_entry.data[CONF_HOST] == "192.168.1.123"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(config_entry.data[CONF_HOST]).to_equal("192.168.1.123")
 
 
-async def test_zeroconf_confirm_with_password_success(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_homevolt_client: MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
+@test
+async def zeroconf_confirm_with_password_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: MagicMock = Depends(mock_homevolt_client),
 ) -> None:
     """Test zeroconf confirm collects password and creates entry when auth is required."""
-
-    mock_homevolt_client.update_info.side_effect = HomevoltAuthenticationError
+    client.update_info.side_effect = HomevoltAuthenticationError
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -377,36 +406,38 @@ async def test_zeroconf_confirm_with_password_success(
         data=DISCOVERY_INFO,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zeroconf_confirm"
-    assert result["description_placeholders"] == {"host": "192.168.1.123"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
+    expect(result["description_placeholders"]).to_equal({"host": "192.168.1.123"})
 
-    mock_homevolt_client.update_info.side_effect = None
+    client.update_info.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PASSWORD: "test-password"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Homevolt"
-    assert result["data"] == {
-        CONF_HOST: "192.168.1.123",
-        CONF_PASSWORD: "test-password",
-    }
-    assert result["result"].unique_id == "40580137858664"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Homevolt")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "192.168.1.123",
+            CONF_PASSWORD: "test-password",
+        }
+    )
+    expect(result["result"].unique_id).to_equal("40580137858664")
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_zeroconf_confirm_with_password_invalid_then_success(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_homevolt_client: MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
+@test
+async def zeroconf_confirm_with_password_invalid_then_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: MagicMock = Depends(mock_homevolt_client),
 ) -> None:
     """Test zeroconf confirm shows error on invalid password, then succeeds."""
-
-    mock_homevolt_client.update_info.side_effect = HomevoltAuthenticationError
+    client.update_info.side_effect = HomevoltAuthenticationError
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -414,52 +445,60 @@ async def test_zeroconf_confirm_with_password_invalid_then_success(
         data=DISCOVERY_INFO,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zeroconf_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PASSWORD: "wrong-password"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "zeroconf_confirm"
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
-    mock_homevolt_client.update_info.side_effect = None
+    client.update_info.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_PASSWORD: "correct-password"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Homevolt"
-    assert result["data"] == {
-        CONF_HOST: "192.168.1.123",
-        CONF_PASSWORD: "correct-password",
-    }
-    assert result["result"].unique_id == "40580137858664"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Homevolt")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "192.168.1.123",
+            CONF_PASSWORD: "correct-password",
+        }
+    )
+    expect(result["result"].unique_id).to_equal("40580137858664")
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_reason"),
-    [
-        (HomevoltConnectionError, "cannot_connect"),
-        (Exception("Unexpected error"), "unknown"),
-    ],
-    ids=["connection_error", "unknown_error"],
+@test.cases(
+    test.case(
+        "connection_error",
+        exception=HomevoltConnectionError,
+        expected_reason="cannot_connect",
+    ),
+    test.case(
+        "unknown_error",
+        exception=Exception("Unexpected error"),
+        expected_reason="unknown",
+    ),
 )
-async def test_zeroconf_error_aborts(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_homevolt_client: MagicMock,
-    exception: Exception,
+async def zeroconf_error_aborts(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: MagicMock = Depends(mock_homevolt_client),
+    *,
+    exception: object,
     expected_reason: str,
 ) -> None:
     """Test zeroconf flow aborts on error during discovery."""
-    mock_homevolt_client.update_info.side_effect = exception
+    client.update_info.side_effect = exception
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -467,5 +506,5 @@ async def test_zeroconf_error_aborts(
         data=DISCOVERY_INFO,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == expected_reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(expected_reason)

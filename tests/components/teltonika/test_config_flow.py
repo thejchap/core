@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from teltasync import TeltonikaAuthenticationError, TeltonikaConnectionError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.teltonika.const import DOMAIN
@@ -13,19 +13,36 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
+from ._fixtures import (
+    mock_config_entry,
+    mock_setup_entry,
+    mock_teltasync,
+    mock_teltasync_client,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form_user_flow(
-    hass: HomeAssistant, mock_teltasync: MagicMock, mock_setup_entry: AsyncMock
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form_user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _teltasync: MagicMock = Depends(mock_teltasync),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we get the form and can create an entry."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -37,30 +54,42 @@ async def test_form_user_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "RUTX50 Test"
-    assert result["data"] == {
-        CONF_HOST: "https://192.168.1.1",
-        CONF_USERNAME: "admin",
-        CONF_PASSWORD: "password",
-        CONF_VERIFY_SSL: False,
-    }
-    assert result["result"].unique_id == "1234567890"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("RUTX50 Test")
+    expect(dict(result["data"])).to_equal(
+        {
+            CONF_HOST: "https://192.168.1.1",
+            CONF_USERNAME: "admin",
+            CONF_PASSWORD: "password",
+            CONF_VERIFY_SSL: False,
+        }
+    )
+    expect(result["result"].unique_id).to_equal("1234567890")
 
 
-@pytest.mark.parametrize(
-    ("exception", "error_key"),
-    [
-        (TeltonikaAuthenticationError("Invalid credentials"), "invalid_auth"),
-        (TeltonikaConnectionError("Connection failed"), "cannot_connect"),
-        (ValueError("Unexpected error"), "unknown"),
-    ],
-    ids=["invalid_auth", "cannot_connect", "unexpected_exception"],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        exception=TeltonikaAuthenticationError("Invalid credentials"),
+        error_key="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        exception=TeltonikaConnectionError("Connection failed"),
+        error_key="cannot_connect",
+    ),
+    test.case(
+        "unknown",
+        exception=ValueError("Unexpected error"),
+        error_key="unknown",
+    ),
 )
-async def test_form_error_with_recovery(
-    hass: HomeAssistant,
-    mock_teltasync_client: MagicMock,
-    mock_setup_entry: AsyncMock,
+async def form_error_with_recovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    teltasync_client: MagicMock = Depends(mock_teltasync_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    *,
     exception: Exception,
     error_key: str,
 ) -> None:
@@ -69,8 +98,7 @@ async def test_form_error_with_recovery(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    # First attempt with error
-    mock_teltasync_client.get_device_info.side_effect = exception
+    teltasync_client.get_device_info.side_effect = exception
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -82,16 +110,15 @@ async def test_form_error_with_recovery(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_key}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_key})
 
-    # Recover with working connection
     device_info = MagicMock()
     device_info.device_name = "RUTX50 Test"
     device_info.device_identifier = "1234567890"
-    mock_teltasync_client.get_device_info.side_effect = None
-    mock_teltasync_client.get_device_info.return_value = device_info
-    mock_teltasync_client.validate_credentials.return_value = True
+    teltasync_client.get_device_info.side_effect = None
+    teltasync_client.get_device_info.return_value = device_info
+    teltasync_client.validate_credentials.return_value = True
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -104,17 +131,21 @@ async def test_form_error_with_recovery(
     )
 
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "RUTX50 Test"
-    assert result["data"][CONF_HOST] == "https://192.168.1.1"
-    assert result["result"].unique_id == "1234567890"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("RUTX50 Test")
+    expect(result["data"][CONF_HOST]).to_equal("https://192.168.1.1")
+    expect(result["result"].unique_id).to_equal("1234567890")
 
 
-async def test_form_duplicate_entry(
-    hass: HomeAssistant, mock_teltasync: MagicMock, mock_config_entry: MockConfigEntry
+@test
+async def form_duplicate_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _teltasync: MagicMock = Depends(mock_teltasync),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test duplicate config entry is handled."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -130,25 +161,49 @@ async def test_form_duplicate_entry(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("host_input", "expected_base_url", "expected_host"),
-    [
-        ("192.168.1.1", "https://192.168.1.1/api", "https://192.168.1.1"),
-        ("http://192.168.1.1", "http://192.168.1.1/api", "http://192.168.1.1"),
-        ("https://192.168.1.1", "https://192.168.1.1/api", "https://192.168.1.1"),
-        ("https://192.168.1.1/api", "https://192.168.1.1/api", "https://192.168.1.1"),
-        ("device.local", "https://device.local/api", "https://device.local"),
-    ],
+@test.cases(
+    test.case(
+        "ip",
+        host_input="192.168.1.1",
+        expected_base_url="https://192.168.1.1/api",
+        expected_host="https://192.168.1.1",
+    ),
+    test.case(
+        "with_http",
+        host_input="http://192.168.1.1",
+        expected_base_url="http://192.168.1.1/api",
+        expected_host="http://192.168.1.1",
+    ),
+    test.case(
+        "with_https",
+        host_input="https://192.168.1.1",
+        expected_base_url="https://192.168.1.1/api",
+        expected_host="https://192.168.1.1",
+    ),
+    test.case(
+        "with_https_and_api",
+        host_input="https://192.168.1.1/api",
+        expected_base_url="https://192.168.1.1/api",
+        expected_host="https://192.168.1.1",
+    ),
+    test.case(
+        "hostname",
+        host_input="device.local",
+        expected_base_url="https://device.local/api",
+        expected_host="https://device.local",
+    ),
 )
-async def test_host_url_construction(
-    hass: HomeAssistant,
-    mock_teltasync: MagicMock,
-    mock_teltasync_client: MagicMock,
-    mock_setup_entry: AsyncMock,
+async def host_url_construction(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    teltasync: MagicMock = Depends(mock_teltasync),
+    teltasync_client: MagicMock = Depends(mock_teltasync_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    *,
     host_input: str,
     expected_base_url: str,
     expected_host: str,
@@ -168,45 +223,30 @@ async def test_host_url_construction(
         },
     )
 
-    # Verify Teltasync was called with correct base URL
-    assert mock_teltasync_client.get_device_info.call_count == 1
-    call_args = mock_teltasync.call_args_list[0]
-    assert call_args.kwargs["base_url"] == expected_base_url
-    assert call_args.kwargs["verify_ssl"] is False
+    expect(teltasync_client.get_device_info.call_count).to_equal(1)
+    call_args = teltasync.call_args_list[0]
+    expect(call_args.kwargs["base_url"]).to_equal(expected_base_url)
+    expect(call_args.kwargs["verify_ssl"]).to_be(False)
 
-    # Verify the result is a created entry with normalized host
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].data[CONF_HOST] == expected_host
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].data[CONF_HOST]).to_equal(expected_host)
 
 
-async def test_form_user_flow_http_fallback(
-    hass: HomeAssistant, mock_teltasync_client: MagicMock, mock_setup_entry: AsyncMock
+@test
+async def form_user_flow_http_fallback(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    teltasync_client: MagicMock = Depends(mock_teltasync_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test we fall back to HTTP when HTTPS fails."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    # First call (HTTPS) fails
-    https_client = MagicMock()
-    https_client.get_device_info.side_effect = TeltonikaConnectionError(
-        "HTTPS unavailable"
-    )
-    https_client.close = AsyncMock()
-
-    # Second call (HTTP) succeeds
-    device_info = MagicMock()
-    device_info.device_name = "RUTX50 Test"
-    device_info.device_identifier = "TESTFALLBACK"
-
-    http_client = MagicMock()
-    http_client.get_device_info = AsyncMock(return_value=device_info)
-    http_client.validate_credentials = AsyncMock(return_value=True)
-    http_client.close = AsyncMock()
-
-    mock_teltasync_client.get_device_info.side_effect = [
+    teltasync_client.get_device_info.side_effect = [
         TeltonikaConnectionError("HTTPS unavailable"),
-        mock_teltasync_client.get_device_info.return_value,
+        teltasync_client.get_device_info.return_value,
     ]
 
     result = await hass.config_entries.flow.async_configure(
@@ -219,15 +259,18 @@ async def test_form_user_flow_http_fallback(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_HOST] == "http://192.168.1.1"
-    assert mock_teltasync_client.get_device_info.call_count == 2
-    # HTTPS client should be closed before falling back
-    assert mock_teltasync_client.close.call_count == 2
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_HOST]).to_equal("http://192.168.1.1")
+    expect(teltasync_client.get_device_info.call_count).to_equal(2)
+    expect(teltasync_client.close.call_count).to_equal(2)
 
 
-async def test_dhcp_discovery(
-    hass: HomeAssistant, mock_teltasync_client: MagicMock, mock_setup_entry: AsyncMock
+@test
+async def dhcp_discovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    teltasync_client: MagicMock = Depends(mock_teltasync_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test DHCP discovery flow."""
     result = await hass.config_entries.flow.async_init(
@@ -240,16 +283,15 @@ async def test_dhcp_discovery(
         ),
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "dhcp_confirm"
-    assert "name" in result["description_placeholders"]
-    assert "host" in result["description_placeholders"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("dhcp_confirm")
+    expect("name" in result["description_placeholders"]).to_be(True)
+    expect("host" in result["description_placeholders"]).to_be(True)
 
-    # Configure device info for the actual setup
     device_info = MagicMock()
     device_info.device_name = "RUTX50 Discovered"
     device_info.device_identifier = "DISCOVERED123"
-    mock_teltasync_client.get_device_info.return_value = device_info
+    teltasync_client.get_device_info.return_value = device_info
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -259,42 +301,47 @@ async def test_dhcp_discovery(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "RUTX50 Discovered"
-    assert result["data"][CONF_HOST] == "https://192.168.1.50"
-    assert result["data"][CONF_USERNAME] == "admin"
-    assert result["data"][CONF_PASSWORD] == "password"
-    assert result["result"].unique_id == "DISCOVERED123"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("RUTX50 Discovered")
+    expect(result["data"][CONF_HOST]).to_equal("https://192.168.1.50")
+    expect(result["data"][CONF_USERNAME]).to_equal("admin")
+    expect(result["data"][CONF_PASSWORD]).to_equal("password")
+    expect(result["result"].unique_id).to_equal("DISCOVERED123")
 
 
-async def test_dhcp_discovery_already_configured(
-    hass: HomeAssistant, mock_teltasync: MagicMock, mock_config_entry: MockConfigEntry
+@test
+async def dhcp_discovery_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _teltasync: MagicMock = Depends(mock_teltasync),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test DHCP discovery when device is already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_DHCP},
         data=DhcpServiceInfo(
-            ip="192.168.1.50",  # Different IP
+            ip="192.168.1.50",
             macaddress="209727112233",
             hostname="teltonika",
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    # Verify IP was updated
-    assert mock_config_entry.data[CONF_HOST] == "192.168.1.50"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(config_entry.data[CONF_HOST]).to_equal("192.168.1.50")
 
 
-async def test_dhcp_discovery_cannot_connect(
-    hass: HomeAssistant, mock_teltasync_client: MagicMock
+@test
+async def dhcp_discovery_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    teltasync_client: MagicMock = Depends(mock_teltasync_client),
 ) -> None:
     """Test DHCP discovery when device is not reachable."""
-    # Simulate device not reachable via API
-    mock_teltasync_client.get_device_info.side_effect = TeltonikaConnectionError(
+    teltasync_client.get_device_info.side_effect = TeltonikaConnectionError(
         "Connection failed"
     )
 
@@ -308,29 +355,37 @@ async def test_dhcp_discovery_cannot_connect(
         ),
     )
 
-    # Should abort if device is not reachable
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-@pytest.mark.parametrize(
-    ("exception", "error_key"),
-    [
-        (TeltonikaAuthenticationError("Invalid credentials"), "invalid_auth"),
-        (TeltonikaConnectionError("Connection failed"), "cannot_connect"),
-        (ValueError("Unexpected error"), "unknown"),
-    ],
-    ids=["invalid_auth", "cannot_connect", "unexpected_exception"],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        exception=TeltonikaAuthenticationError("Invalid credentials"),
+        error_key="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        exception=TeltonikaConnectionError("Connection failed"),
+        error_key="cannot_connect",
+    ),
+    test.case(
+        "unknown",
+        exception=ValueError("Unexpected error"),
+        error_key="unknown",
+    ),
 )
-async def test_dhcp_confirm_error_with_recovery(
-    hass: HomeAssistant,
-    mock_teltasync_client: MagicMock,
-    mock_setup_entry: AsyncMock,
+async def dhcp_confirm_error_with_recovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    teltasync_client: MagicMock = Depends(mock_teltasync_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    *,
     exception: Exception,
     error_key: str,
 ) -> None:
     """Test DHCP confirmation handles errors and can recover."""
-    # Start the DHCP flow
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_DHCP},
@@ -341,8 +396,7 @@ async def test_dhcp_confirm_error_with_recovery(
         ),
     )
 
-    # First attempt with error
-    mock_teltasync_client.get_device_info.side_effect = exception
+    teltasync_client.get_device_info.side_effect = exception
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -352,17 +406,16 @@ async def test_dhcp_confirm_error_with_recovery(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_key}
-    assert result["step_id"] == "dhcp_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_key})
+    expect(result["step_id"]).to_equal("dhcp_confirm")
 
-    # Recover with working connection
     device_info = MagicMock()
     device_info.device_name = "RUTX50 Discovered"
     device_info.device_identifier = "DISCOVERED123"
-    mock_teltasync_client.get_device_info.side_effect = None
-    mock_teltasync_client.get_device_info.return_value = device_info
-    mock_teltasync_client.validate_credentials.return_value = True
+    teltasync_client.get_device_info.side_effect = None
+    teltasync_client.get_device_info.return_value = device_info
+    teltasync_client.validate_credentials.return_value = True
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -373,14 +426,17 @@ async def test_dhcp_confirm_error_with_recovery(
     )
 
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "RUTX50 Discovered"
-    assert result["data"][CONF_HOST] == "https://192.168.1.50"
-    assert result["result"].unique_id == "DISCOVERED123"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("RUTX50 Discovered")
+    expect(result["data"][CONF_HOST]).to_equal("https://192.168.1.50")
+    expect(result["result"].unique_id).to_equal("DISCOVERED123")
 
 
-async def test_validate_credentials_false(
-    hass: HomeAssistant, mock_teltasync_client: MagicMock
+@test
+async def validate_credentials_false(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    teltasync_client: MagicMock = Depends(mock_teltasync_client),
 ) -> None:
     """Test config flow when validate_credentials returns False."""
     result = await hass.config_entries.flow.async_init(
@@ -391,8 +447,8 @@ async def test_validate_credentials_false(
     device_info.device_name = "Test Device"
     device_info.device_identifier = "TEST123"
 
-    mock_teltasync_client.get_device_info.return_value = device_info
-    mock_teltasync_client.validate_credentials.return_value = False
+    teltasync_client.get_device_info.return_value = device_info
+    teltasync_client.validate_credentials.return_value = False
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -404,22 +460,24 @@ async def test_validate_credentials_false(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_reauth_flow_success(
-    hass: HomeAssistant,
-    mock_teltasync_client: MagicMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: MagicMock = Depends(mock_teltasync_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test successful reauth flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -431,35 +489,45 @@ async def test_reauth_flow_success(
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data[CONF_USERNAME] == "admin"
-    assert mock_config_entry.data[CONF_PASSWORD] == "new_password"
-    assert mock_config_entry.data[CONF_HOST] == "192.168.1.1"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data[CONF_USERNAME]).to_equal("admin")
+    expect(config_entry.data[CONF_PASSWORD]).to_equal("new_password")
+    expect(config_entry.data[CONF_HOST]).to_equal("192.168.1.1")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (TeltonikaAuthenticationError("Invalid credentials"), "invalid_auth"),
-        (TeltonikaConnectionError("Connection failed"), "cannot_connect"),
-        (ValueError("Unexpected error"), "unknown"),
-    ],
-    ids=["invalid_auth", "cannot_connect", "unexpected_exception"],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        side_effect=TeltonikaAuthenticationError("Invalid credentials"),
+        expected_error="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        side_effect=TeltonikaConnectionError("Connection failed"),
+        expected_error="cannot_connect",
+    ),
+    test.case(
+        "unknown",
+        side_effect=ValueError("Unexpected error"),
+        expected_error="unknown",
+    ),
 )
-async def test_reauth_flow_errors_with_recovery(
-    hass: HomeAssistant,
-    mock_teltasync_client: MagicMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+async def reauth_flow_errors_with_recovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    teltasync_client: MagicMock = Depends(mock_teltasync_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    *,
     side_effect: Exception,
     expected_error: str,
 ) -> None:
     """Test reauth flow error handling with successful recovery."""
-    mock_config_entry.add_to_hass(hass)
-    result = await mock_config_entry.start_reauth_flow(hass)
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
-    mock_teltasync_client.get_device_info.side_effect = side_effect
+    teltasync_client.get_device_info.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -469,11 +537,11 @@ async def test_reauth_flow_errors_with_recovery(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": expected_error}
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": expected_error})
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_teltasync_client.get_device_info.side_effect = None
+    teltasync_client.get_device_info.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -485,26 +553,28 @@ async def test_reauth_flow_errors_with_recovery(
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data[CONF_USERNAME] == "admin"
-    assert mock_config_entry.data[CONF_PASSWORD] == "new_password"
-    assert mock_config_entry.data[CONF_HOST] == "192.168.1.1"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data[CONF_USERNAME]).to_equal("admin")
+    expect(config_entry.data[CONF_PASSWORD]).to_equal("new_password")
+    expect(config_entry.data[CONF_HOST]).to_equal("192.168.1.1")
 
 
-async def test_reauth_flow_wrong_account(
-    hass: HomeAssistant,
-    mock_teltasync_client: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_flow_wrong_account(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    teltasync_client: MagicMock = Depends(mock_teltasync_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reauth flow aborts when device serial doesn't match."""
-    mock_config_entry.add_to_hass(hass)
-    result = await mock_config_entry.start_reauth_flow(hass)
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reauth_flow(hass)
 
     device_info = MagicMock()
     device_info.device_name = "RUTX50 Different"
     device_info.device_identifier = "DIFFERENT1234567890"
-    mock_teltasync_client.get_device_info = AsyncMock(return_value=device_info)
+    teltasync_client.get_device_info = AsyncMock(return_value=device_info)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -516,5 +586,5 @@ async def test_reauth_flow_wrong_account(
 
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "wrong_account"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("wrong_account")

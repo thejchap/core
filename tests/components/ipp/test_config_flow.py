@@ -3,7 +3,7 @@
 import dataclasses
 from ipaddress import ip_address
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pyipp import (
     IPPConnectionError,
@@ -13,7 +13,7 @@ from pyipp import (
     IPPVersionNotSupportedError,
     Printer,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.ipp.const import CONF_BASE_PATH, DOMAIN
 from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF
@@ -28,24 +28,61 @@ from . import (
 )
 
 from tests.common import MockConfigEntry, load_fixture
+from tests.components.ipp._fixtures import (
+    mock_config_entry,
+    mock_ipp_config_flow,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _mock_zeroconf() -> MagicMock:
+    """Patch zeroconf so tests don't require a real zeroconf instance."""
+    from zeroconf import DNSCache
+
+    with (
+        patch("homeassistant.components.zeroconf.HaZeroconf") as mock_zc,
+        patch("homeassistant.components.zeroconf.discovery.AsyncServiceBrowser"),
+    ):
+        zc = mock_zc.return_value
+        zc.async_add_service_listener = AsyncMock()
+        zc.async_remove_service_listener = AsyncMock()
+        zc.async_register_service = AsyncMock()
+        zc.async_update_service = AsyncMock()
+        zc.cache = DNSCache()
+        yield mock_zc
 
 
-async def test_show_user_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _mn: None = Depends(mock_network),
+    _mz: MagicMock = Depends(_mock_zeroconf),
+) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def show_user_form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test that the user set up form is served."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
 
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
 
-async def test_show_zeroconf_form(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
+@test
+async def show_zeroconf_form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_ipp_config_flow: MagicMock = Depends(mock_ipp_config_flow),
 ) -> None:
     """Test that the zeroconf confirmation form is served."""
     discovery_info = dataclasses.replace(MOCK_ZEROCONF_IPP_SERVICE_INFO)
@@ -55,213 +92,144 @@ async def test_show_zeroconf_form(
         data=discovery_info,
     )
 
-    assert result["step_id"] == "zeroconf_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["description_placeholders"] == {CONF_NAME: "EPSON XP-6000 Series"}
-
-
-async def test_connection_error(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
-) -> None:
-    """Test we show user form on IPP connection error."""
-    mock_ipp_config_flow.printer.side_effect = IPPConnectionError
-
-    user_input = MOCK_USER_INPUT.copy()
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_USER},
-        data=user_input,
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["description_placeholders"]).to_equal(
+        {CONF_NAME: "EPSON XP-6000 Series"}
     )
 
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
 
-
-async def test_zeroconf_connection_error(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
+@test.cases(
+    test.case(
+        "connection_error",
+        exc=IPPConnectionError,
+        source=SOURCE_USER,
+        expected_type=FlowResultType.FORM,
+        expected_step="user",
+        expected_errors={"base": "cannot_connect"},
+        expected_reason=None,
+    ),
+    test.case(
+        "zeroconf_connection_error",
+        exc=IPPConnectionError,
+        source=SOURCE_ZEROCONF,
+        expected_type=FlowResultType.ABORT,
+        expected_step=None,
+        expected_errors=None,
+        expected_reason="cannot_connect",
+    ),
+    test.case(
+        "user_connection_upgrade_required",
+        exc=IPPConnectionUpgradeRequired,
+        source=SOURCE_USER,
+        expected_type=FlowResultType.FORM,
+        expected_step="user",
+        expected_errors={"base": "connection_upgrade"},
+        expected_reason=None,
+    ),
+    test.case(
+        "zeroconf_connection_upgrade_required",
+        exc=IPPConnectionUpgradeRequired,
+        source=SOURCE_ZEROCONF,
+        expected_type=FlowResultType.ABORT,
+        expected_step=None,
+        expected_errors=None,
+        expected_reason="connection_upgrade",
+    ),
+    test.case(
+        "user_parse_error",
+        exc=IPPParseError,
+        source=SOURCE_USER,
+        expected_type=FlowResultType.ABORT,
+        expected_step=None,
+        expected_errors=None,
+        expected_reason="parse_error",
+    ),
+    test.case(
+        "zeroconf_parse_error",
+        exc=IPPParseError,
+        source=SOURCE_ZEROCONF,
+        expected_type=FlowResultType.ABORT,
+        expected_step=None,
+        expected_errors=None,
+        expected_reason="parse_error",
+    ),
+    test.case(
+        "user_ipp_error",
+        exc=IPPError,
+        source=SOURCE_USER,
+        expected_type=FlowResultType.ABORT,
+        expected_step=None,
+        expected_errors=None,
+        expected_reason="ipp_error",
+    ),
+    test.case(
+        "zeroconf_ipp_error",
+        exc=IPPError,
+        source=SOURCE_ZEROCONF,
+        expected_type=FlowResultType.ABORT,
+        expected_step=None,
+        expected_errors=None,
+        expected_reason="ipp_error",
+    ),
+    test.case(
+        "user_ipp_version_error",
+        exc=IPPVersionNotSupportedError,
+        source=SOURCE_USER,
+        expected_type=FlowResultType.ABORT,
+        expected_step=None,
+        expected_errors=None,
+        expected_reason="ipp_version_error",
+    ),
+    test.case(
+        "zeroconf_ipp_version_error",
+        exc=IPPVersionNotSupportedError,
+        source=SOURCE_ZEROCONF,
+        expected_type=FlowResultType.ABORT,
+        expected_step=None,
+        expected_errors=None,
+        expected_reason="ipp_version_error",
+    ),
+)
+async def init_errors(
+    exc: type[Exception],
+    source: str,
+    expected_type: FlowResultType,
+    expected_step: str | None,
+    expected_errors: dict | None,
+    expected_reason: str | None,
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_ipp_config_flow: MagicMock = Depends(mock_ipp_config_flow),
 ) -> None:
-    """Test we abort zeroconf flow on IPP connection error."""
-    mock_ipp_config_flow.printer.side_effect = IPPConnectionError
+    """Test error handling during init."""
+    mock_ipp_config_flow.printer.side_effect = exc
 
-    discovery_info = dataclasses.replace(MOCK_ZEROCONF_IPP_SERVICE_INFO)
+    data: dict | object
+    if source == SOURCE_USER:
+        data = MOCK_USER_INPUT.copy()
+    else:
+        data = dataclasses.replace(MOCK_ZEROCONF_IPP_SERVICE_INFO)
+
     result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_ZEROCONF},
-        data=discovery_info,
+        DOMAIN, context={"source": source}, data=data
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(expected_type)
+    if expected_step is not None:
+        expect(result["step_id"]).to_equal(expected_step)
+    if expected_errors is not None:
+        expect(result["errors"]).to_equal(expected_errors)
+    if expected_reason is not None:
+        expect(result["reason"]).to_equal(expected_reason)
 
 
-async def test_zeroconf_confirm_connection_error(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
-) -> None:
-    """Test we abort zeroconf flow on IPP connection error."""
-    mock_ipp_config_flow.printer.side_effect = IPPConnectionError
-
-    discovery_info = dataclasses.replace(MOCK_ZEROCONF_IPP_SERVICE_INFO)
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_ZEROCONF}, data=discovery_info
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
-
-
-async def test_user_connection_upgrade_required(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
-) -> None:
-    """Test we show the user form if connection upgrade required by server."""
-    mock_ipp_config_flow.printer.side_effect = IPPConnectionUpgradeRequired
-
-    user_input = MOCK_USER_INPUT.copy()
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_USER},
-        data=user_input,
-    )
-
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "connection_upgrade"}
-
-
-async def test_zeroconf_connection_upgrade_required(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
-) -> None:
-    """Test we abort zeroconf flow on IPP connection error."""
-    mock_ipp_config_flow.printer.side_effect = IPPConnectionUpgradeRequired
-
-    discovery_info = dataclasses.replace(MOCK_ZEROCONF_IPP_SERVICE_INFO)
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_ZEROCONF},
-        data=discovery_info,
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "connection_upgrade"
-
-
-async def test_user_parse_error(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
-) -> None:
-    """Test we abort user flow on IPP parse error."""
-    mock_ipp_config_flow.printer.side_effect = IPPParseError
-
-    user_input = MOCK_USER_INPUT.copy()
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_USER},
-        data=user_input,
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "parse_error"
-
-
-async def test_zeroconf_parse_error(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
-) -> None:
-    """Test we abort zeroconf flow on IPP parse error."""
-    mock_ipp_config_flow.printer.side_effect = IPPParseError
-
-    discovery_info = dataclasses.replace(MOCK_ZEROCONF_IPP_SERVICE_INFO)
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_ZEROCONF},
-        data=discovery_info,
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "parse_error"
-
-
-async def test_user_ipp_error(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
-) -> None:
-    """Test we abort the user flow on IPP error."""
-    mock_ipp_config_flow.printer.side_effect = IPPError
-
-    user_input = MOCK_USER_INPUT.copy()
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_USER},
-        data=user_input,
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "ipp_error"
-
-
-async def test_zeroconf_ipp_error(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
-) -> None:
-    """Test we abort zeroconf flow on IPP error."""
-    mock_ipp_config_flow.printer.side_effect = IPPError
-
-    discovery_info = dataclasses.replace(MOCK_ZEROCONF_IPP_SERVICE_INFO)
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_ZEROCONF},
-        data=discovery_info,
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "ipp_error"
-
-
-async def test_user_ipp_version_error(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
-) -> None:
-    """Test we abort user flow on IPP version not supported error."""
-    mock_ipp_config_flow.printer.side_effect = IPPVersionNotSupportedError
-
-    user_input = {**MOCK_USER_INPUT}
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_USER},
-        data=user_input,
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "ipp_version_error"
-
-
-async def test_zeroconf_ipp_version_error(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
-) -> None:
-    """Test we abort zeroconf flow on IPP version not supported error."""
-    mock_ipp_config_flow.printer.side_effect = IPPVersionNotSupportedError
-
-    discovery_info = dataclasses.replace(MOCK_ZEROCONF_IPP_SERVICE_INFO)
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_ZEROCONF},
-        data=discovery_info,
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "ipp_version_error"
-
-
-async def test_user_device_exists_abort(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_ipp_config_flow: MagicMock,
+@test
+async def user_device_exists_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_ipp_config_flow: MagicMock = Depends(mock_ipp_config_flow),
 ) -> None:
     """Test we abort user flow if printer already configured."""
     mock_config_entry.add_to_hass(hass)
@@ -273,14 +241,16 @@ async def test_user_device_exists_abort(
         data=user_input,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_zeroconf_device_exists_abort(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_ipp_config_flow: MagicMock,
+@test
+async def zeroconf_device_exists_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_ipp_config_flow: MagicMock = Depends(mock_ipp_config_flow),
 ) -> None:
     """Test we abort zeroconf flow if printer already configured."""
     mock_config_entry.add_to_hass(hass)
@@ -292,14 +262,16 @@ async def test_zeroconf_device_exists_abort(
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_zeroconf_with_uuid_device_exists_abort(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_ipp_config_flow: MagicMock,
+@test
+async def zeroconf_with_uuid_device_exists_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_ipp_config_flow: MagicMock = Depends(mock_ipp_config_flow),
 ) -> None:
     """Test we abort zeroconf flow if printer already configured."""
     mock_config_entry.add_to_hass(hass)
@@ -316,16 +288,18 @@ async def test_zeroconf_with_uuid_device_exists_abort(
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_zeroconf_with_uuid_device_exists_abort_new_host(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_ipp_config_flow: MagicMock,
+@test
+async def zeroconf_with_uuid_device_exists_abort_new_host(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_ipp_config_flow: MagicMock = Depends(mock_ipp_config_flow),
 ) -> None:
-    """Test we abort zeroconf flow if printer already configured."""
+    """Test we abort zeroconf flow if printer already configured, updating host."""
     mock_config_entry.add_to_hass(hass)
 
     discovery_info = dataclasses.replace(
@@ -342,14 +316,16 @@ async def test_zeroconf_with_uuid_device_exists_abort_new_host(
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert mock_config_entry.data[CONF_HOST] == "1.2.3.9"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(mock_config_entry.data[CONF_HOST]).to_equal("1.2.3.9")
 
 
-async def test_zeroconf_empty_unique_id(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
+@test
+async def zeroconf_empty_unique_id(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_ipp_config_flow: MagicMock = Depends(mock_ipp_config_flow),
 ) -> None:
     """Test zeroconf flow if printer lacks (empty) unique identification."""
     printer = mock_ipp_config_flow.printer.return_value
@@ -366,27 +342,26 @@ async def test_zeroconf_empty_unique_id(
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "192.168.1.31", CONF_BASE_PATH: "/ipp/print"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "EPSON XP-6000 Series"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("EPSON XP-6000 Series")
 
-    assert result["data"]
-    assert result["data"][CONF_HOST] == "192.168.1.31"
-    assert result["data"][CONF_UUID] == "cfe92100-67c4-11d4-a45f-f8d027761251"
-
-    assert result["result"]
-    assert result["result"].unique_id == "cfe92100-67c4-11d4-a45f-f8d027761251"
+    expect(result["data"][CONF_HOST]).to_equal("192.168.1.31")
+    expect(result["data"][CONF_UUID]).to_equal("cfe92100-67c4-11d4-a45f-f8d027761251")
+    expect(result["result"].unique_id).to_equal("cfe92100-67c4-11d4-a45f-f8d027761251")
 
 
-async def test_zeroconf_no_unique_id(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
+@test
+async def zeroconf_no_unique_id(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_ipp_config_flow: MagicMock = Depends(mock_ipp_config_flow),
 ) -> None:
     """Test zeroconf flow if printer lacks unique identification."""
     printer = mock_ipp_config_flow.printer.return_value
@@ -399,27 +374,25 @@ async def test_zeroconf_no_unique_id(
         data=discovery_info,
     )
 
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "192.168.1.31", CONF_BASE_PATH: "/ipp/print"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "EPSON XP-6000 Series"
-
-    assert result["data"]
-    assert result["data"][CONF_HOST] == "192.168.1.31"
-    assert result["data"][CONF_UUID] == "cfe92100-67c4-11d4-a45f-f8d027761251"
-
-    assert result["result"]
-    assert result["result"].unique_id == "cfe92100-67c4-11d4-a45f-f8d027761251"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("EPSON XP-6000 Series")
+    expect(result["data"][CONF_HOST]).to_equal("192.168.1.31")
+    expect(result["data"][CONF_UUID]).to_equal("cfe92100-67c4-11d4-a45f-f8d027761251")
+    expect(result["result"].unique_id).to_equal("cfe92100-67c4-11d4-a45f-f8d027761251")
 
 
-async def test_full_user_flow_implementation(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
+@test
+async def full_user_flow_implementation(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_ipp_config_flow: MagicMock = Depends(mock_ipp_config_flow),
 ) -> None:
     """Test the full manual user flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
@@ -427,30 +400,28 @@ async def test_full_user_flow_implementation(
         context={"source": SOURCE_USER},
     )
 
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "192.168.1.31", CONF_BASE_PATH: "/ipp/print"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "192.168.1.31"
-
-    assert result["data"]
-    assert result["data"][CONF_HOST] == "192.168.1.31"
-    assert result["data"][CONF_UUID] == "cfe92100-67c4-11d4-a45f-f8d027761251"
-
-    assert result["result"]
-    assert result["result"].unique_id == "cfe92100-67c4-11d4-a45f-f8d027761251"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("192.168.1.31")
+    expect(result["data"][CONF_HOST]).to_equal("192.168.1.31")
+    expect(result["data"][CONF_UUID]).to_equal("cfe92100-67c4-11d4-a45f-f8d027761251")
+    expect(result["result"].unique_id).to_equal("cfe92100-67c4-11d4-a45f-f8d027761251")
 
 
-async def test_full_zeroconf_flow_implementation(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
+@test
+async def full_zeroconf_flow_implementation(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_ipp_config_flow: MagicMock = Depends(mock_ipp_config_flow),
 ) -> None:
-    """Test the full manual user flow from start to finish."""
+    """Test the full zeroconf flow from start to finish."""
     discovery_info = dataclasses.replace(MOCK_ZEROCONF_IPP_SERVICE_INFO)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -458,31 +429,29 @@ async def test_full_zeroconf_flow_implementation(
         data=discovery_info,
     )
 
-    assert result["step_id"] == "zeroconf_confirm"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "EPSON XP-6000 Series"
-
-    assert result["data"]
-    assert result["data"][CONF_HOST] == "192.168.1.31"
-    assert result["data"][CONF_NAME] == "EPSON XP-6000 Series"
-    assert result["data"][CONF_UUID] == "cfe92100-67c4-11d4-a45f-f8d027761251"
-    assert not result["data"][CONF_SSL]
-
-    assert result["result"]
-    assert result["result"].unique_id == "cfe92100-67c4-11d4-a45f-f8d027761251"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("EPSON XP-6000 Series")
+    expect(result["data"][CONF_HOST]).to_equal("192.168.1.31")
+    expect(result["data"][CONF_NAME]).to_equal("EPSON XP-6000 Series")
+    expect(result["data"][CONF_UUID]).to_equal("cfe92100-67c4-11d4-a45f-f8d027761251")
+    expect(bool(result["data"][CONF_SSL])).to_be(False)
+    expect(result["result"].unique_id).to_equal("cfe92100-67c4-11d4-a45f-f8d027761251")
 
 
-async def test_full_zeroconf_tls_flow_implementation(
-    hass: HomeAssistant,
-    mock_ipp_config_flow: MagicMock,
+@test
+async def full_zeroconf_tls_flow_implementation(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_ipp_config_flow: MagicMock = Depends(mock_ipp_config_flow),
 ) -> None:
-    """Test the full manual user flow from start to finish."""
+    """Test the full zeroconf TLS flow from start to finish."""
     discovery_info = dataclasses.replace(MOCK_ZEROCONF_IPPS_SERVICE_INFO)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -490,29 +459,31 @@ async def test_full_zeroconf_tls_flow_implementation(
         data=discovery_info,
     )
 
-    assert result["step_id"] == "zeroconf_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result["description_placeholders"] == {CONF_NAME: "EPSON XP-6000 Series"}
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["description_placeholders"]).to_equal(
+        {CONF_NAME: "EPSON XP-6000 Series"}
+    )
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "EPSON XP-6000 Series"
-
-    assert result["data"]
-    assert result["data"][CONF_HOST] == "192.168.1.31"
-    assert result["data"][CONF_NAME] == "EPSON XP-6000 Series"
-    assert result["data"][CONF_UUID] == "cfe92100-67c4-11d4-a45f-f8d027761251"
-    assert result["data"][CONF_SSL]
-
-    assert result["result"]
-    assert result["result"].unique_id == "cfe92100-67c4-11d4-a45f-f8d027761251"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("EPSON XP-6000 Series")
+    expect(result["data"][CONF_HOST]).to_equal("192.168.1.31")
+    expect(result["data"][CONF_NAME]).to_equal("EPSON XP-6000 Series")
+    expect(result["data"][CONF_UUID]).to_equal("cfe92100-67c4-11d4-a45f-f8d027761251")
+    expect(bool(result["data"][CONF_SSL])).to_be(True)
+    expect(result["result"].unique_id).to_equal("cfe92100-67c4-11d4-a45f-f8d027761251")
 
 
-async def test_zeroconf_empty_unique_id_uses_serial(hass: HomeAssistant) -> None:
-    """Test zeroconf flow if printer lacks (empty) unique identification with serial fallback."""
+@test
+async def zeroconf_empty_unique_id_uses_serial(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Test zeroconf flow if printer lacks (empty) unique id with serial fallback."""
     fixture = await hass.async_add_executor_job(
         load_fixture, "ipp/printer_without_uuid.json"
     )
@@ -535,19 +506,15 @@ async def test_zeroconf_empty_unique_id_uses_serial(hass: HomeAssistant) -> None
             data=discovery_info,
         )
 
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={CONF_HOST: "192.168.1.31", CONF_BASE_PATH: "/ipp/print"},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "EPSON XP-6000 Series"
-
-    assert result["data"]
-    assert result["data"][CONF_HOST] == "192.168.1.31"
-    assert result["data"][CONF_UUID] == ""
-
-    assert result["result"]
-    assert result["result"].unique_id == "555534593035345555"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("EPSON XP-6000 Series")
+    expect(result["data"][CONF_HOST]).to_equal("192.168.1.31")
+    expect(result["data"][CONF_UUID]).to_equal("")
+    expect(result["result"].unique_id).to_equal("555534593035345555")

@@ -1,14 +1,12 @@
 """Test the iotty config flow."""
 
 from http import HTTPStatus
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
-import multidict
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.application_credentials import (
-    DOMAIN as APPLICATION_CREDENTIALS_DOMAIN,
     ClientCredential,
     async_import_client_credential,
 )
@@ -17,50 +15,48 @@ from homeassistant.components.iotty.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_entry_oauth2_flow
-from homeassistant.setup import async_setup_component
 
 from .conftest import CLIENT_ID, CLIENT_SECRET, REDIRECT_URI
+from ._fixtures import mock_setup_entry, setup_credentials
 
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    aioclient_mock as aioclient_mock_fx,
+    current_request_with_host,
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
-from tests.typing import ClientSessionGenerator
 
 
-@pytest.fixture
-async def setup_credentials(hass: HomeAssistant) -> None:
-    """Fixture to setup application credentials component."""
-    await async_setup_component(hass, APPLICATION_CREDENTIALS_DOMAIN, {})
-    await async_import_client_credential(
-        hass,
-        DOMAIN,
-        ClientCredential(CLIENT_ID, CLIENT_SECRET),
-    )
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-@pytest.fixture
-def current_request_with_host(current_request: MagicMock) -> None:
-    """Mock current request with a host header."""
-    new_headers = multidict.CIMultiDict(current_request.get.return_value.headers)
-    new_headers[config_entry_oauth2_flow.HEADER_FRONTEND_BASE] = "https://example.com"
-    current_request.get.return_value = current_request.get.return_value.clone(
-        headers=new_headers
-    )
-
-
-async def test_config_flow_no_credentials(hass: HomeAssistant) -> None:
+@test
+async def config_flow_no_credentials(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow base case with no credentials registered."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "missing_credentials"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("missing_credentials")
 
 
-@pytest.mark.usefixtures("current_request_with_host", "setup_credentials")
-async def test_full_flow(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_setup_entry: AsyncMock,
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _credentials: None = Depends(setup_credentials),
+    _request: None = Depends(current_request_with_host),
+    hass_client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Check full flow."""
 
@@ -72,7 +68,7 @@ async def test_full_flow(
         DOMAIN, context={"source": config_entries.SOURCE_USER, "entry_id": DOMAIN}
     )
 
-    assert result.get("type") is FlowResultType.EXTERNAL_STEP
+    expect(result.get("type")).to_be(FlowResultType.EXTERNAL_STEP)
 
     state = config_entry_oauth2_flow._encode_jwt(
         hass,
@@ -82,10 +78,10 @@ async def test_full_flow(
         },
     )
 
-    client = await hass_client_no_auth()
+    client = await hass_client()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == HTTPStatus.OK
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(HTTPStatus.OK)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
@@ -99,5 +95,5 @@ async def test_full_flow(
 
     await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(setup_entry.mock_calls)).to_equal(1)

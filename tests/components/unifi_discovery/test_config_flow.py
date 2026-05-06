@@ -1,8 +1,10 @@
 """Test the UniFi Discovery config flow."""
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.unifi_discovery.const import DOMAIN
@@ -12,6 +14,8 @@ from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo
 
 from . import DEVICE_HOSTNAME, DEVICE_IP_ADDRESS, DEVICE_MAC_ADDRESS, _patch_discovery
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 DHCP_DISCOVERY = DhcpServiceInfo(
     hostname=DEVICE_HOSTNAME,
@@ -29,15 +33,21 @@ SSDP_DISCOVERY = SsdpServiceInfo(
 )
 
 
-@pytest.mark.parametrize(
-    ("source", "data"),
-    [
-        (config_entries.SOURCE_DHCP, DHCP_DISCOVERY),
-        (config_entries.SOURCE_SSDP, SSDP_DISCOVERY),
-    ],
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test.cases(
+    test.case("dhcp", source=config_entries.SOURCE_DHCP, data=DHCP_DISCOVERY),
+    test.case("ssdp", source=config_entries.SOURCE_SSDP, data=SSDP_DISCOVERY),
 )
-async def test_dhcp_ssdp_abort_with_discovery_started(
-    hass: HomeAssistant, source: str, data: DhcpServiceInfo | SsdpServiceInfo
+async def dhcp_ssdp_abort_with_discovery_started(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    source: str,
+    data: DhcpServiceInfo | SsdpServiceInfo,
 ) -> None:
     """Test DHCP and SSDP discovery triggers scanner and aborts."""
     with _patch_discovery() as mock_scanner:
@@ -48,20 +58,21 @@ async def test_dhcp_ssdp_abort_with_discovery_started(
         )
         await hass.async_block_till_done(wait_background_tasks=True)
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "discovery_started"
-    assert mock_scanner.async_scan.call_count == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("discovery_started")
+    expect(mock_scanner.async_scan.call_count).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("source", "data"),
-    [
-        (config_entries.SOURCE_DHCP, DHCP_DISCOVERY),
-        (config_entries.SOURCE_SSDP, SSDP_DISCOVERY),
-    ],
+@test.cases(
+    test.case("dhcp", source=config_entries.SOURCE_DHCP, data=DHCP_DISCOVERY),
+    test.case("ssdp", source=config_entries.SOURCE_SSDP, data=SSDP_DISCOVERY),
 )
-async def test_dhcp_ssdp_abort_already_in_progress(
-    hass: HomeAssistant, source: str, data: DhcpServiceInfo | SsdpServiceInfo
+async def dhcp_ssdp_abort_already_in_progress(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    source: str,
+    data: DhcpServiceInfo | SsdpServiceInfo,
 ) -> None:
     """Test DHCP and SSDP abort when another flow is already in progress."""
     with (
@@ -78,11 +89,15 @@ async def test_dhcp_ssdp_abort_already_in_progress(
         )
         await hass.async_block_till_done(wait_background_tasks=True)
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_in_progress"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_in_progress")
 
 
-async def test_user_flow_aborts(hass: HomeAssistant) -> None:
+@test
+async def user_flow_aborts(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user-initiated flow aborts."""
     with _patch_discovery() as mock_scanner:
         result = await hass.config_entries.flow.async_init(
@@ -91,6 +106,6 @@ async def test_user_flow_aborts(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done(wait_background_tasks=True)
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "discovery_started"
-    assert mock_scanner.async_scan.call_count == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("discovery_started")
+    expect(mock_scanner.async_scan.call_count).to_equal(1)

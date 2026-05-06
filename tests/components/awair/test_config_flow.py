@@ -1,10 +1,11 @@
 """Define tests for the Awair config flow."""
 
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from aiohttp.client_exceptions import ClientConnectorError
 from python_awair.exceptions import AuthError, AwairError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.awair.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF
@@ -21,21 +22,44 @@ from .const import (
 )
 
 from tests.common import MockConfigEntry
+from tests.components.awair._fixtures import (
+    cloud_devices,
+    local_devices,
+    mock_zeroconf,
+    no_devices,
+    user,
+)
+from tests.hass_fixtures import hass, mock_network
 
 
-async def test_show_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def show_form(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that the form is served with no input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.MENU).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_invalid_access_token(hass: HomeAssistant) -> None:
+@test
+async def invalid_access_token(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that errors are shown when the access token is invalid."""
-
     with patch("python_awair.AwairClient.query", side_effect=AuthError()):
         menu_step = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=CLOUD_CONFIG
@@ -51,12 +75,16 @@ async def test_invalid_access_token(hass: HomeAssistant) -> None:
             CLOUD_CONFIG,
         )
 
-        assert result["errors"] == {CONF_ACCESS_TOKEN: "invalid_access_token"}
+        expect(result["errors"]).to_equal({CONF_ACCESS_TOKEN: "invalid_access_token"})
 
 
-async def test_unexpected_api_error(hass: HomeAssistant) -> None:
+@test
+async def unexpected_api_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test that we abort on generic errors."""
-
     with patch("python_awair.AwairClient.query", side_effect=AwairError()):
         menu_step = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=CLOUD_CONFIG
@@ -72,13 +100,19 @@ async def test_unexpected_api_error(hass: HomeAssistant) -> None:
             CLOUD_CONFIG,
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "unknown"
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result["reason"]).to_equal("unknown")
 
 
-async def test_duplicate_error(hass: HomeAssistant, user, cloud_devices) -> None:
+@test
+async def duplicate_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    user: Any = Depends(user),
+    cloud_devices: Any = Depends(cloud_devices),
+) -> None:
     """Test that errors are shown when adding a duplicate config."""
-
     with patch(
         "python_awair.AwairClient.query",
         side_effect=[user, cloud_devices],
@@ -101,13 +135,19 @@ async def test_duplicate_error(hass: HomeAssistant, user, cloud_devices) -> None
             CLOUD_CONFIG,
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured_account"
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result["reason"]).to_equal("already_configured_account")
 
 
-async def test_no_devices_error(hass: HomeAssistant, user, no_devices) -> None:
+@test
+async def no_devices_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    user: Any = Depends(user),
+    no_devices: Any = Depends(no_devices),
+) -> None:
     """Test that errors are shown when the API returns no devices."""
-
     with patch("python_awair.AwairClient.query", side_effect=[user, no_devices]):
         menu_step = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}, data=CLOUD_CONFIG
@@ -123,11 +163,18 @@ async def test_no_devices_error(hass: HomeAssistant, user, no_devices) -> None:
             CLOUD_CONFIG,
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "no_devices_found"
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result["reason"]).to_equal("no_devices_found")
 
 
-async def test_reauth(hass: HomeAssistant, user, cloud_devices) -> None:
+@test
+async def reauth(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    user: Any = Depends(user),
+    cloud_devices: Any = Depends(cloud_devices),
+) -> None:
     """Test reauth flow."""
     mock_config = MockConfigEntry(
         domain=DOMAIN,
@@ -137,9 +184,9 @@ async def test_reauth(hass: HomeAssistant, user, cloud_devices) -> None:
     mock_config.add_to_hass(hass)
 
     result = await mock_config.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
 
     with patch("python_awair.AwairClient.query", side_effect=AuthError()):
         result = await hass.config_entries.flow.async_configure(
@@ -147,9 +194,9 @@ async def test_reauth(hass: HomeAssistant, user, cloud_devices) -> None:
             user_input={CONF_ACCESS_TOKEN: "bad"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {CONF_ACCESS_TOKEN: "invalid_access_token"}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({CONF_ACCESS_TOKEN: "invalid_access_token"})
 
     with (
         patch(
@@ -166,13 +213,18 @@ async def test_reauth(hass: HomeAssistant, user, cloud_devices) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    mock_setup_entry.assert_called_once()
-    assert dict(mock_config.data) == {CONF_ACCESS_TOKEN: "good"}
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+    expect(dict(mock_config.data)).to_equal({CONF_ACCESS_TOKEN: "good"})
 
 
-async def test_reauth_error(hass: HomeAssistant) -> None:
+@test
+async def reauth_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test reauth flow."""
     mock_config = MockConfigEntry(
         domain=DOMAIN,
@@ -182,9 +234,9 @@ async def test_reauth_error(hass: HomeAssistant) -> None:
     mock_config.add_to_hass(hass)
 
     result = await mock_config.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
 
     with patch("python_awair.AwairClient.query", side_effect=AwairError()):
         result = await hass.config_entries.flow.async_configure(
@@ -192,13 +244,19 @@ async def test_reauth_error(hass: HomeAssistant) -> None:
             user_input=CLOUD_CONFIG,
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "unknown"
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result["reason"]).to_equal("unknown")
 
 
-async def test_create_cloud_entry(hass: HomeAssistant, user, cloud_devices) -> None:
+@test
+async def create_cloud_entry(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    user: Any = Depends(user),
+    cloud_devices: Any = Depends(cloud_devices),
+) -> None:
     """Test overall flow when using cloud api."""
-
     with (
         patch(
             "python_awair.AwairClient.query",
@@ -223,15 +281,22 @@ async def test_create_cloud_entry(hass: HomeAssistant, user, cloud_devices) -> N
             CLOUD_CONFIG,
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "foo@bar.com"
-        assert result["data"][CONF_ACCESS_TOKEN] == CLOUD_CONFIG[CONF_ACCESS_TOKEN]
-        assert result["result"].unique_id == CLOUD_UNIQUE_ID
+        expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+        expect(result["title"]).to_equal("foo@bar.com")
+        expect(result["data"][CONF_ACCESS_TOKEN]).to_equal(
+            CLOUD_CONFIG[CONF_ACCESS_TOKEN]
+        )
+        expect(result["result"].unique_id).to_equal(CLOUD_UNIQUE_ID)
 
 
-async def test_create_local_entry(hass: HomeAssistant, local_devices) -> None:
+@test
+async def create_local_entry(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    local_devices: Any = Depends(local_devices),
+) -> None:
     """Test overall flow when using local API."""
-
     with (
         patch("python_awair.AwairClient.query", side_effect=[local_devices]),
         patch(
@@ -248,7 +313,6 @@ async def test_create_local_entry(hass: HomeAssistant, local_devices) -> None:
             {"next_step_id": "local"},
         )
 
-        # We're being shown the local instructions
         form_step = await hass.config_entries.flow.async_configure(
             form_step["flow_id"],
             {},
@@ -259,17 +323,20 @@ async def test_create_local_entry(hass: HomeAssistant, local_devices) -> None:
             LOCAL_CONFIG,
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "Awair Element (24947)"
-        assert result["data"][CONF_HOST] == LOCAL_CONFIG[CONF_HOST]
-        assert result["result"].unique_id == LOCAL_UNIQUE_ID
+        expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+        expect(result["title"]).to_equal("Awair Element (24947)")
+        expect(result["data"][CONF_HOST]).to_equal(LOCAL_CONFIG[CONF_HOST])
+        expect(result["result"].unique_id).to_equal(LOCAL_UNIQUE_ID)
 
 
-async def test_create_local_entry_from_discovery(
-    hass: HomeAssistant, local_devices
+@test
+async def create_local_entry_from_discovery(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    local_devices: Any = Depends(local_devices),
 ) -> None:
     """Test local API when device discovered after instructions shown."""
-
     menu_step = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data=LOCAL_CONFIG
     )
@@ -279,7 +346,6 @@ async def test_create_local_entry_from_discovery(
         {"next_step_id": "local"},
     )
 
-    # Create discovered entry in progress
     with patch("python_awair.AwairClient.query", side_effect=[local_devices]):
         await hass.config_entries.flow.async_init(
             DOMAIN,
@@ -287,7 +353,6 @@ async def test_create_local_entry_from_discovery(
             context={"source": SOURCE_ZEROCONF},
         )
 
-    # We're being shown the local instructions
     form_step = await hass.config_entries.flow.async_configure(
         form_step["flow_id"],
         {},
@@ -305,15 +370,19 @@ async def test_create_local_entry_from_discovery(
             {"device": LOCAL_CONFIG[CONF_HOST]},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Awair Element (24947)"
-    assert result["data"][CONF_HOST] == LOCAL_CONFIG[CONF_HOST]
-    assert result["result"].unique_id == LOCAL_UNIQUE_ID
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal("Awair Element (24947)")
+    expect(result["data"][CONF_HOST]).to_equal(LOCAL_CONFIG[CONF_HOST])
+    expect(result["result"].unique_id).to_equal(LOCAL_UNIQUE_ID)
 
 
-async def test_create_local_entry_awair_error(hass: HomeAssistant) -> None:
+@test
+async def create_local_entry_awair_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test overall flow when using local API and device is returns error."""
-
     with patch(
         "python_awair.AwairClient.query",
         side_effect=AwairError(),
@@ -327,7 +396,6 @@ async def test_create_local_entry_awair_error(hass: HomeAssistant) -> None:
             {"next_step_id": "local"},
         )
 
-        # We're being shown the local instructions
         form_step = await hass.config_entries.flow.async_configure(
             form_step["flow_id"],
             {},
@@ -338,14 +406,18 @@ async def test_create_local_entry_awair_error(hass: HomeAssistant) -> None:
             LOCAL_CONFIG,
         )
 
-        # User is returned to form to try again
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "local_pick"
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["step_id"]).to_equal("local_pick")
 
 
-async def test_create_zeroconf_entry(hass: HomeAssistant, local_devices) -> None:
+@test
+async def create_zeroconf_entry(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    local_devices: Any = Depends(local_devices),
+) -> None:
     """Test overall flow when using discovery."""
-
     with (
         patch("python_awair.AwairClient.query", side_effect=[local_devices]),
         patch(
@@ -362,15 +434,19 @@ async def test_create_zeroconf_entry(hass: HomeAssistant, local_devices) -> None
             {},
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == "Awair Element (24947)"
-        assert result["data"][CONF_HOST] == ZEROCONF_DISCOVERY.host
-        assert result["result"].unique_id == LOCAL_UNIQUE_ID
+        expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+        expect(result["title"]).to_equal("Awair Element (24947)")
+        expect(result["data"][CONF_HOST]).to_equal(ZEROCONF_DISCOVERY.host)
+        expect(result["result"].unique_id).to_equal(LOCAL_UNIQUE_ID)
 
 
-async def test_unsuccessful_create_zeroconf_entry(hass: HomeAssistant) -> None:
+@test
+async def unsuccessful_create_zeroconf_entry(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+) -> None:
     """Test overall flow when using discovery and device is unreachable."""
-
     with patch(
         "python_awair.AwairClient.query",
         side_effect=ClientConnectorError(Mock(), OSError()),
@@ -379,14 +455,17 @@ async def test_unsuccessful_create_zeroconf_entry(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": SOURCE_ZEROCONF}, data=ZEROCONF_DISCOVERY
         )
 
-        assert result["type"] is FlowResultType.ABORT
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
 
 
-async def test_zeroconf_discovery_update_configuration(
-    hass: HomeAssistant, local_devices: Any
+@test
+async def zeroconf_discovery_update_configuration(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    local_devices: Any = Depends(local_devices),
 ) -> None:
     """Test updating an existing Awair config entry with discovery info."""
-
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: "127.0.0.1"},
@@ -407,15 +486,19 @@ async def test_zeroconf_discovery_update_configuration(
             data=ZEROCONF_DISCOVERY,
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured_device"
+        expect(result["type"] is FlowResultType.ABORT).to_be(True)
+        expect(result["reason"]).to_equal("already_configured_device")
 
-        assert config_entry.data[CONF_HOST] == ZEROCONF_DISCOVERY.host
-        assert mock_setup_entry.call_count == 0
+        expect(config_entry.data[CONF_HOST]).to_equal(ZEROCONF_DISCOVERY.host)
+        expect(mock_setup_entry.call_count).to_equal(0)
 
 
-async def test_zeroconf_during_onboarding(
-    hass: HomeAssistant, local_devices: Any
+@test
+async def zeroconf_during_onboarding(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    local_devices: Any = Depends(local_devices),
 ) -> None:
     """Test the zeroconf creates an entry during onboarding."""
     with (
@@ -433,10 +516,10 @@ async def test_zeroconf_during_onboarding(
             DOMAIN, context={"source": SOURCE_ZEROCONF}, data=ZEROCONF_DISCOVERY
         )
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == "Awair Element (24947)"
-    assert "data" in result
-    assert result["data"][CONF_HOST] == ZEROCONF_DISCOVERY.host
-    assert "result" in result
-    assert result["result"].unique_id == LOCAL_UNIQUE_ID
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result.get("type") is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result.get("title")).to_equal("Awair Element (24947)")
+    expect("data" in result).to_be(True)
+    expect(result["data"][CONF_HOST]).to_equal(ZEROCONF_DISCOVERY.host)
+    expect("result" in result).to_be(True)
+    expect(result["result"].unique_id).to_equal(LOCAL_UNIQUE_ID)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)

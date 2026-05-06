@@ -1,10 +1,9 @@
 """Test the Traccar Server config flow."""
 
-from collections.abc import Generator
 from unittest.mock import AsyncMock
 
-import pytest
 from pytraccar import TraccarAuthenticationException, TraccarException
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.traccar_server.const import (
@@ -25,19 +24,29 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_traccar_api_client
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(
-    hass: HomeAssistant,
-    mock_traccar_api_client: Generator[AsyncMock],
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(mock_traccar_api_client),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -48,37 +57,38 @@ async def test_form(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "1.1.1.1:8082"
-    assert result["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: "8082",
-        CONF_API_TOKEN: "test-token",
-        CONF_SSL: False,
-        CONF_VERIFY_SSL: True,
-    }
-    assert result["result"].state is ConfigEntryState.LOADED
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("1.1.1.1:8082")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_PORT: "8082",
+            CONF_API_TOKEN: "test-token",
+            CONF_SSL: False,
+            CONF_VERIFY_SSL: True,
+        }
+    )
+    expect(result["result"].state).to_be(ConfigEntryState.LOADED)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (TraccarException, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("cannot_connect", side_effect=TraccarException, error="cannot_connect"),
+    test.case("unknown", side_effect=Exception, error="unknown"),
 )
-async def test_form_cannot_connect(
-    hass: HomeAssistant,
-    side_effect: Exception,
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_traccar_api_client),
+    *,
+    side_effect: type[Exception],
     error: str,
-    mock_traccar_api_client: Generator[AsyncMock],
 ) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    mock_traccar_api_client.get_server.side_effect = side_effect
+    client.get_server.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -88,10 +98,10 @@ async def test_form_cannot_connect(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    mock_traccar_api_client.get_server.side_effect = None
+    client.get_server.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -102,32 +112,35 @@ async def test_form_cannot_connect(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "1.1.1.1:8082"
-    assert result["data"] == {
-        CONF_HOST: "1.1.1.1",
-        CONF_PORT: "8082",
-        CONF_API_TOKEN: "test-token",
-        CONF_SSL: False,
-        CONF_VERIFY_SSL: True,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("1.1.1.1:8082")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_PORT: "8082",
+            CONF_API_TOKEN: "test-token",
+            CONF_SSL: False,
+            CONF_VERIFY_SSL: True,
+        }
+    )
+    expect(result["result"].state).to_be(ConfigEntryState.LOADED)
 
-    assert result["result"].state is ConfigEntryState.LOADED
 
-
-async def test_options(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_traccar_api_client: Generator[AsyncMock],
+@test
+async def options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _client: AsyncMock = Depends(mock_traccar_api_client),
 ) -> None:
     """Test options flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    expect(bool(await hass.config_entries.async_setup(config_entry.entry_id))).to_be(True)
 
-    assert mock_config_entry.options.get(CONF_MAX_ACCURACY) == 5.0
+    expect(config_entry.options.get(CONF_MAX_ACCURACY)).to_equal(5.0)
 
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -135,23 +148,27 @@ async def test_options(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert mock_config_entry.options == {
-        CONF_MAX_ACCURACY: 2.0,
-        CONF_EVENTS: [],
-        CONF_CUSTOM_ATTRIBUTES: [],
-        CONF_SKIP_ACCURACY_FILTER_FOR: [],
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal(
+        {
+            CONF_MAX_ACCURACY: 2.0,
+            CONF_EVENTS: [],
+            CONF_CUSTOM_ATTRIBUTES: [],
+            CONF_SKIP_ACCURACY_FILTER_FOR: [],
+        }
+    )
 
 
-async def test_abort_already_configured(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_traccar_api_client: Generator[AsyncMock],
+@test
+async def abort_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _client: AsyncMock = Depends(mock_traccar_api_client),
 ) -> None:
     """Test abort for existing server."""
-    mock_config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    expect(bool(await hass.config_entries.async_setup(config_entry.entry_id))).to_be(True)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -166,30 +183,32 @@ async def test_abort_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reauth_flow(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_traccar_api_client: Generator[AsyncMock],
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _client: AsyncMock = Depends(mock_traccar_api_client),
 ) -> None:
     """Test reauth flow."""
-    mock_config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    expect(bool(await hass.config_entries.async_setup(config_entry.entry_id))).to_be(True)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={
             "source": config_entries.SOURCE_REAUTH,
-            "entry_id": mock_config_entry.entry_id,
+            "entry_id": config_entry.entry_id,
         },
-        data=mock_config_entry.data,
+        data=config_entry.data,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -199,42 +218,44 @@ async def test_reauth_flow(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
-    # Verify the config entry was updated
-    assert mock_config_entry.data[CONF_API_TOKEN] == "new-token"
+    expect(config_entry.data[CONF_API_TOKEN]).to_equal("new-token")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (TraccarAuthenticationException, "invalid_auth"),
-        (TraccarException, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        side_effect=TraccarAuthenticationException,
+        error="invalid_auth",
+    ),
+    test.case("cannot_connect", side_effect=TraccarException, error="cannot_connect"),
+    test.case("unknown", side_effect=Exception, error="unknown"),
 )
-async def test_reauth_flow_errors(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_traccar_api_client: Generator[AsyncMock],
-    side_effect: Exception,
+async def reauth_flow_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    client: AsyncMock = Depends(mock_traccar_api_client),
+    *,
+    side_effect: type[Exception],
     error: str,
 ) -> None:
     """Test reauth flow with errors."""
-    mock_config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    expect(bool(await hass.config_entries.async_setup(config_entry.entry_id))).to_be(True)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={
             "source": config_entries.SOURCE_REAUTH,
-            "entry_id": mock_config_entry.entry_id,
+            "entry_id": config_entry.entry_id,
         },
-        data=mock_config_entry.data,
+        data=config_entry.data,
     )
 
-    mock_traccar_api_client.get_server.side_effect = side_effect
+    client.get_server.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -243,11 +264,10 @@ async def test_reauth_flow_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
 
-    # Test recovery after error
-    mock_traccar_api_client.get_server.side_effect = None
+    client.get_server.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -257,5 +277,5 @@ async def test_reauth_flow_errors(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")

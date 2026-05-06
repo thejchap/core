@@ -1,13 +1,13 @@
 """Tests for the Alexa Devices config flow."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from aioamazondevices.exceptions import (
     CannotAuthenticate,
     CannotConnect,
     CannotRetrieveData,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.alexa_devices.const import (
     CONF_LOGIN_DATA,
@@ -19,23 +19,39 @@ from homeassistant.const import CONF_CODE, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .const import TEST_CODE, TEST_PASSWORD, TEST_USER_ID, TEST_USERNAME
+from .const import TEST_CODE, TEST_PASSWORD, TEST_USERNAME
 
 from tests.common import MockConfigEntry
+from tests.components.alexa_devices._fixtures import (
+    mock_amazon_devices_client,
+    mock_config_entry,
+    mock_setup_entry,
+    mock_zeroconf,
+)
+from tests.hass_fixtures import hass, mock_network
 
 
-async def test_full_flow(
-    hass: HomeAssistant,
-    mock_amazon_devices_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test
+async def full_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    mock_amazon_devices_client: AsyncMock = Depends(mock_amazon_devices_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test full flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -45,36 +61,37 @@ async def test_full_flow(
             CONF_CODE: TEST_CODE,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_USERNAME
-    assert result["data"] == {
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: TEST_PASSWORD,
-        CONF_LOGIN_DATA: {
-            "customer_info": {"user_id": TEST_USER_ID},
-            CONF_SITE: "https://www.amazon.com",
-        },
-    }
-    assert result["result"].unique_id == TEST_USER_ID
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(TEST_USERNAME)
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: TEST_PASSWORD,
+            CONF_LOGIN_DATA: {
+                "customer_info": {"user_id": TEST_USERNAME},
+                CONF_SITE: "https://www.amazon.com",
+            },
+        }
+    )
+    expect(result["result"].unique_id).to_equal(TEST_USERNAME)
     mock_amazon_devices_client.login.login_mode_interactive.assert_called_once_with(
         "023123"
     )
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (CannotConnect, "cannot_connect"),
-        (CannotAuthenticate, "invalid_auth"),
-        (CannotRetrieveData, "cannot_retrieve_data"),
-    ],
+@test.cases(
+    test.case("cannot_connect", CannotConnect, "cannot_connect"),
+    test.case("invalid_auth", CannotAuthenticate, "invalid_auth"),
+    test.case("cannot_retrieve_data", CannotRetrieveData, "cannot_retrieve_data"),
 )
-async def test_flow_errors(
-    hass: HomeAssistant,
-    mock_amazon_devices_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    exception: Exception,
+async def flow_errors(
+    exception: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    mock_amazon_devices_client: AsyncMock = Depends(mock_amazon_devices_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test flow errors."""
     mock_amazon_devices_client.login.login_mode_interactive.side_effect = exception
@@ -84,8 +101,8 @@ async def test_flow_errors(
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -96,8 +113,8 @@ async def test_flow_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["errors"]).to_equal({"base": error})
 
     mock_amazon_devices_client.login.login_mode_interactive.side_effect = None
 
@@ -109,14 +126,17 @@ async def test_flow_errors(
             CONF_CODE: TEST_CODE,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
 
 
-async def test_already_configured(
-    hass: HomeAssistant,
-    mock_amazon_devices_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def already_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_amazon_devices_client: AsyncMock = Depends(mock_amazon_devices_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test duplicate flow."""
     mock_config_entry.add_to_hass(hass)
@@ -126,8 +146,8 @@ async def test_already_configured(
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -138,21 +158,24 @@ async def test_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reauth_successful(
-    hass: HomeAssistant,
-    mock_amazon_devices_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_successful(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_amazon_devices_client: AsyncMock = Depends(mock_amazon_devices_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test starting a reauthentication flow."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -162,41 +185,42 @@ async def test_reauth_successful(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("reauth_successful")
 
-    assert mock_config_entry.data == {
-        CONF_CODE: "000000",
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: "other_fake_password",
-        CONF_LOGIN_DATA: {
-            "customer_info": {"user_id": TEST_USER_ID},
-            CONF_SITE: "https://www.amazon.com",
-        },
-    }
+    expect(mock_config_entry.data).to_equal(
+        {
+            CONF_CODE: "000000",
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: "other_fake_password",
+            CONF_LOGIN_DATA: {
+                "customer_info": {"user_id": TEST_USERNAME},
+                CONF_SITE: "https://www.amazon.com",
+            },
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (CannotConnect, "cannot_connect"),
-        (CannotAuthenticate, "invalid_auth"),
-        (CannotRetrieveData, "cannot_retrieve_data"),
-    ],
+@test.cases(
+    test.case("cannot_connect", CannotConnect, "cannot_connect"),
+    test.case("invalid_auth", CannotAuthenticate, "invalid_auth"),
+    test.case("cannot_retrieve_data", CannotRetrieveData, "cannot_retrieve_data"),
 )
-async def test_reauth_not_successful(
-    hass: HomeAssistant,
-    mock_amazon_devices_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    side_effect: Exception,
+async def reauth_not_successful(
+    side_effect: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    mock_amazon_devices_client: AsyncMock = Depends(mock_amazon_devices_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test starting a reauthentication flow but no connection found."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     mock_amazon_devices_client.login.login_mode_interactive.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
@@ -207,9 +231,9 @@ async def test_reauth_not_successful(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {"base": error}
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({"base": error})
 
     mock_amazon_devices_client.login.login_mode_interactive.side_effect = None
 
@@ -221,34 +245,38 @@ async def test_reauth_not_successful(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data == {
-        CONF_CODE: "111111",
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: "fake_password",
-        CONF_LOGIN_DATA: {
-            "customer_info": {"user_id": TEST_USER_ID},
-            CONF_SITE: "https://www.amazon.com",
-        },
-    }
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_config_entry.data).to_equal(
+        {
+            CONF_CODE: "111111",
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: "fake_password",
+            CONF_LOGIN_DATA: {
+                "customer_info": {"user_id": TEST_USERNAME},
+                CONF_SITE: "https://www.amazon.com",
+            },
+        }
+    )
 
 
-async def test_reconfigure_successful(
-    hass: HomeAssistant,
-    mock_amazon_devices_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure_successful(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_amazon_devices_client: AsyncMock = Depends(mock_amazon_devices_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that the entry can be reconfigured."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reconfigure")
 
-    # original entry
-    assert mock_config_entry.data[CONF_USERNAME] == TEST_USERNAME
+    expect(mock_config_entry.data[CONF_USERNAME]).to_equal(TEST_USERNAME)
 
     new_password = "new_fake_password"
 
@@ -260,42 +288,42 @@ async def test_reconfigure_successful(
         },
     )
 
-    assert reconfigure_result["type"] is FlowResultType.ABORT
-    assert reconfigure_result["reason"] == "reconfigure_successful"
+    expect(reconfigure_result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(reconfigure_result["reason"]).to_equal("reconfigure_successful")
 
-    # changed entry
-    assert mock_config_entry.data == {
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: new_password,
-        CONF_LOGIN_DATA: {
-            "customer_info": {"user_id": TEST_USER_ID},
-            CONF_SITE: "https://www.amazon.com",
-        },
-    }
+    expect(mock_config_entry.data).to_equal(
+        {
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: new_password,
+            CONF_LOGIN_DATA: {
+                "customer_info": {"user_id": TEST_USERNAME},
+                CONF_SITE: "https://www.amazon.com",
+            },
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (CannotConnect, "cannot_connect"),
-        (CannotAuthenticate, "invalid_auth"),
-        (CannotRetrieveData, "cannot_retrieve_data"),
-    ],
+@test.cases(
+    test.case("cannot_connect", CannotConnect, "cannot_connect"),
+    test.case("invalid_auth", CannotAuthenticate, "invalid_auth"),
+    test.case("cannot_retrieve_data", CannotRetrieveData, "cannot_retrieve_data"),
 )
-async def test_reconfigure_fails(
-    hass: HomeAssistant,
-    mock_amazon_devices_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    side_effect: Exception,
+async def reconfigure_fails(
+    side_effect: type[Exception],
     error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    mock_amazon_devices_client: AsyncMock = Depends(mock_amazon_devices_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that the host can be reconfigured."""
     mock_config_entry.add_to_hass(hass)
     result = await mock_config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     mock_amazon_devices_client.login.login_mode_interactive.side_effect = side_effect
 
@@ -307,9 +335,9 @@ async def test_reconfigure_fails(
         },
     )
 
-    assert reconfigure_result["type"] is FlowResultType.FORM
-    assert reconfigure_result["step_id"] == "reconfigure"
-    assert reconfigure_result["errors"] == {"base": error}
+    expect(reconfigure_result["type"] is FlowResultType.FORM).to_be(True)
+    expect(reconfigure_result["step_id"]).to_equal("reconfigure")
+    expect(reconfigure_result["errors"]).to_equal({"base": error})
 
     mock_amazon_devices_client.login.login_mode_interactive.side_effect = None
 
@@ -321,13 +349,15 @@ async def test_reconfigure_fails(
         },
     )
 
-    assert reconfigure_result["type"] is FlowResultType.ABORT
-    assert reconfigure_result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.data == {
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: TEST_PASSWORD,
-        CONF_LOGIN_DATA: {
-            "customer_info": {"user_id": TEST_USER_ID},
-            CONF_SITE: "https://www.amazon.com",
-        },
-    }
+    expect(reconfigure_result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(reconfigure_result["reason"]).to_equal("reconfigure_successful")
+    expect(mock_config_entry.data).to_equal(
+        {
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: TEST_PASSWORD,
+            CONF_LOGIN_DATA: {
+                "customer_info": {"user_id": TEST_USERNAME},
+                CONF_SITE: "https://www.amazon.com",
+            },
+        }
+    )

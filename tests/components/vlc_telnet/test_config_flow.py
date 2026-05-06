@@ -1,10 +1,12 @@
 """Test the VLC media player Telnet config flow."""
 
+from __future__ import annotations
+
 from typing import Any
 from unittest.mock import patch
 
 from aiovlc.exceptions import AuthError, ConnectError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.vlc_telnet.const import DOMAIN
@@ -13,44 +15,51 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.parametrize(
-    ("input_data", "entry_data"),
-    [
-        (
-            {
-                "password": "test-password",
-                "host": "1.1.1.1",
-                "port": 8888,
-            },
-            {
-                "password": "test-password",
-                "host": "1.1.1.1",
-                "port": 8888,
-            },
-        ),
-        (
-            {
-                "password": "test-password",
-            },
-            {
-                "password": "test-password",
-                "host": "localhost",
-                "port": 4212,
-            },
-        ),
-    ],
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test.cases(
+    test.case(
+        "with_full_input",
+        input_data={
+            "password": "test-password",
+            "host": "1.1.1.1",
+            "port": 8888,
+        },
+        entry_data={
+            "password": "test-password",
+            "host": "1.1.1.1",
+            "port": 8888,
+        },
+    ),
+    test.case(
+        "with_password_only",
+        input_data={"password": "test-password"},
+        entry_data={
+            "password": "test-password",
+            "host": "localhost",
+            "port": 4212,
+        },
+    ),
 )
-async def test_user_flow(
-    hass: HomeAssistant, input_data: dict[str, Any], entry_data: dict[str, Any]
+async def user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    input_data: dict[str, Any],
+    entry_data: dict[str, Any],
 ) -> None:
     """Test successful user flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     with (
         patch("homeassistant.components.vlc_telnet.config_flow.Client.connect"),
@@ -67,14 +76,17 @@ async def test_user_flow(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == entry_data["host"]
-    assert result["data"] == entry_data
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(entry_data["host"])
+    expect(dict(result["data"])).to_equal(entry_data)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize("source", [config_entries.SOURCE_USER])
-async def test_abort_already_configured(hass: HomeAssistant, source: str) -> None:
+@test
+async def abort_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle already configured host."""
     entry_data = {
         "password": "test-password",
@@ -88,33 +100,45 @@ async def test_abort_already_configured(hass: HomeAssistant, source: str) -> Non
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
-        context={"source": source},
+        context={"source": config_entries.SOURCE_USER},
         data=entry_data,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize("source", [config_entries.SOURCE_USER])
-@pytest.mark.parametrize(
-    ("error", "connect_side_effect", "login_side_effect"),
-    [
-        ("invalid_auth", None, AuthError),
-        ("cannot_connect", ConnectError, None),
-        ("unknown", Exception, None),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        error="invalid_auth",
+        connect_side_effect=None,
+        login_side_effect=AuthError,
+    ),
+    test.case(
+        "cannot_connect",
+        error="cannot_connect",
+        connect_side_effect=ConnectError,
+        login_side_effect=None,
+    ),
+    test.case(
+        "unknown",
+        error="unknown",
+        connect_side_effect=Exception,
+        login_side_effect=None,
+    ),
 )
-async def test_errors(
-    hass: HomeAssistant,
+async def errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
     error: str,
     connect_side_effect: Exception | None,
     login_side_effect: Exception | None,
-    source: str,
 ) -> None:
     """Test we handle form errors."""
     result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": source}
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
     with (
@@ -135,11 +159,15 @@ async def test_errors(
             {"password": "test-password"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": error}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": error})
 
 
-async def test_reauth_flow(hass: HomeAssistant) -> None:
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test successful reauth flow."""
     entry_data: dict[str, Any] = {
         "password": "old-password",
@@ -168,22 +196,36 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert dict(entry.data) == {**entry_data, "password": "new-password"}
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+    expect(dict(entry.data)).to_equal({**entry_data, "password": "new-password"})
 
 
-@pytest.mark.parametrize(
-    ("error", "connect_side_effect", "login_side_effect"),
-    [
-        ("invalid_auth", None, AuthError),
-        ("cannot_connect", ConnectError, None),
-        ("unknown", Exception, None),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        error="invalid_auth",
+        connect_side_effect=None,
+        login_side_effect=AuthError,
+    ),
+    test.case(
+        "cannot_connect",
+        error="cannot_connect",
+        connect_side_effect=ConnectError,
+        login_side_effect=None,
+    ),
+    test.case(
+        "unknown",
+        error="unknown",
+        connect_side_effect=Exception,
+        login_side_effect=None,
+    ),
 )
-async def test_reauth_errors(
-    hass: HomeAssistant,
+async def reauth_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
     error: str,
     connect_side_effect: Exception | None,
     login_side_effect: Exception | None,
@@ -219,11 +261,15 @@ async def test_reauth_errors(
             {"password": "test-password"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": error}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": error})
 
 
-async def test_hassio_flow(hass: HomeAssistant) -> None:
+@test
+async def hassio_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test successful hassio flow."""
     with (
         patch("homeassistant.components.vlc_telnet.config_flow.Client.connect"),
@@ -254,19 +300,24 @@ async def test_hassio_flow(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
-        result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {}
+        )
 
-        assert result2["type"] is FlowResultType.CREATE_ENTRY
-        assert result2["title"] == test_data.config["name"]
-        assert result2["data"] == test_data.config
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result2["title"]).to_equal(test_data.config["name"])
+        expect(dict(result2["data"])).to_equal(test_data.config)
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_hassio_already_configured(hass: HomeAssistant) -> None:
+@test
+async def hassio_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test successful hassio flow."""
-
     entry_data = {
         "password": "test-password",
         "host": "1.1.1.1",
@@ -285,19 +336,33 @@ async def test_hassio_already_configured(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-@pytest.mark.parametrize(
-    ("error", "connect_side_effect", "login_side_effect"),
-    [
-        ("invalid_auth", None, AuthError),
-        ("cannot_connect", ConnectError, None),
-        ("unknown", Exception, None),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        error="invalid_auth",
+        connect_side_effect=None,
+        login_side_effect=AuthError,
+    ),
+    test.case(
+        "cannot_connect",
+        error="cannot_connect",
+        connect_side_effect=ConnectError,
+        login_side_effect=None,
+    ),
+    test.case(
+        "unknown",
+        error="unknown",
+        connect_side_effect=Exception,
+        login_side_effect=None,
+    ),
 )
-async def test_hassio_errors(
-    hass: HomeAssistant,
+async def hassio_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
     error: str,
     connect_side_effect: Exception | None,
     login_side_effect: Exception | None,
@@ -334,9 +399,11 @@ async def test_hassio_errors(
         )
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.FORM
+        expect(result["type"]).to_be(FlowResultType.FORM)
 
-        result2 = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {}
+        )
 
-        assert result2["type"] is FlowResultType.ABORT
-        assert result2["reason"] == error
+        expect(result2["type"]).to_be(FlowResultType.ABORT)
+        expect(result2["reason"]).to_equal(error)

@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 from microBeesPy import MicroBeesException
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.microbees.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -12,19 +12,44 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_entry_oauth2_flow
 
 from . import setup_integration
-from .conftest import CLIENT_ID, MICROBEES_AUTH_URI, MICROBEES_TOKEN_URI, SCOPES
+from ._fixtures import (
+    CLIENT_ID,
+    MICROBEES_AUTH_URI,
+    MICROBEES_TOKEN_URI,
+    SCOPES,
+    config_entry,
+    microbees,
+    setup_credentials,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    aioclient_mock,
+    current_request_with_host,
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
 from tests.typing import ClientSessionGenerator
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_full_flow(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    microbees: AsyncMock,
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _request: None = Depends(current_request_with_host),
+    _credentials: None = Depends(setup_credentials),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client_no_auth_fn: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock_fn: AiohttpClientMocker = Depends(aioclient_mock),
+    microbees_mock: AsyncMock = Depends(microbees),
 ) -> None:
     """Check full flow."""
     result = await hass.config_entries.flow.async_init(
@@ -37,8 +62,8 @@ async def test_full_flow(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    assert result["type"] is FlowResultType.EXTERNAL_STEP
-    assert result["url"] == (
+    expect(result["type"]).to_be(FlowResultType.EXTERNAL_STEP)
+    expect(result["url"]).to_equal(
         f"{MICROBEES_AUTH_URI}?"
         f"response_type=code&client_id={CLIENT_ID}&"
         "redirect_uri=https://example.com/auth/external/callback&"
@@ -46,12 +71,12 @@ async def test_full_flow(
         f"&scope={'+'.join(SCOPES)}"
     )
 
-    client = await hass_client_no_auth()
+    client = await hass_client_no_auth_fn()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
-    aioclient_mock.clear_requests()
-    aioclient_mock.post(
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
+    aioclient_mock_fn.clear_requests()
+    aioclient_mock_fn.post(
         MICROBEES_TOKEN_URI,
         json={
             "access_token": "mock-access-token",
@@ -68,28 +93,31 @@ async def test_full_flow(
     ) as mock_setup:
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup.mock_calls) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(mock_setup.mock_calls)).to_equal(1)
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test@microbees.com"
-    assert "result" in result
-    assert result["result"].unique_id == "54321"
-    assert "token" in result["result"].data
-    assert result["result"].data["token"]["access_token"] == "mock-access-token"
-    assert result["result"].data["token"]["refresh_token"] == "mock-refresh-token"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("test@microbees.com")
+    expect("result" in result).to_be(True)
+    expect(result["result"].unique_id).to_equal("54321")
+    expect("token" in result["result"].data).to_be(True)
+    expect(result["result"].data["token"]["access_token"]).to_equal("mock-access-token")
+    expect(result["result"].data["token"]["refresh_token"]).to_equal(
+        "mock-refresh-token"
+    )
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_config_non_unique_profile(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    microbees: AsyncMock,
-    config_entry: MockConfigEntry,
-    aioclient_mock: AiohttpClientMocker,
+@test
+async def config_non_unique_profile(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client_no_auth_fn: ClientSessionGenerator = Depends(hass_client_no_auth),
+    microbees_mock: AsyncMock = Depends(microbees),
+    config_entry_obj: MockConfigEntry = Depends(config_entry),
+    aioclient_mock_fn: AiohttpClientMocker = Depends(aioclient_mock),
 ) -> None:
     """Test setup a non-unique profile."""
-    await setup_integration(hass, config_entry)
+    await setup_integration(hass, config_entry_obj)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -101,8 +129,8 @@ async def test_config_non_unique_profile(
         },
     )
 
-    assert result["type"] is FlowResultType.EXTERNAL_STEP
-    assert result["url"] == (
+    expect(result["type"]).to_be(FlowResultType.EXTERNAL_STEP)
+    expect(result["url"]).to_equal(
         f"{MICROBEES_AUTH_URI}?"
         f"response_type=code&client_id={CLIENT_ID}&"
         "redirect_uri=https://example.com/auth/external/callback&"
@@ -110,13 +138,13 @@ async def test_config_non_unique_profile(
         f"&scope={'+'.join(SCOPES)}"
     )
 
-    client = await hass_client_no_auth()
+    client = await hass_client_no_auth_fn()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
-    aioclient_mock.clear_requests()
-    aioclient_mock.post(
+    aioclient_mock_fn.clear_requests()
+    aioclient_mock_fn.post(
         MICROBEES_TOKEN_URI,
         json={
             "access_token": "mock-access-token",
@@ -129,24 +157,25 @@ async def test_config_non_unique_profile(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_config_reauth_profile(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    config_entry: MockConfigEntry,
-    microbees: AsyncMock,
+@test
+async def config_reauth_profile(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client_no_auth_fn: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock_fn: AiohttpClientMocker = Depends(aioclient_mock),
+    config_entry_obj: MockConfigEntry = Depends(config_entry),
+    microbees_mock: AsyncMock = Depends(microbees),
 ) -> None:
     """Test reauth an existing profile reauthenticates the config entry."""
-    await setup_integration(hass, config_entry)
+    await setup_integration(hass, config_entry_obj)
 
-    result = await config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    result = await config_entry_obj.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     state = config_entry_oauth2_flow._encode_jwt(
@@ -156,20 +185,20 @@ async def test_config_reauth_profile(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{MICROBEES_AUTH_URI}?"
         f"response_type=code&client_id={CLIENT_ID}&"
         "redirect_uri=https://example.com/auth/external/callback&"
         f"state={state}"
         f"&scope={'+'.join(SCOPES)}"
     )
-    client = await hass_client_no_auth()
+    client = await hass_client_no_auth_fn()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
-    aioclient_mock.clear_requests()
-    aioclient_mock.post(
+    aioclient_mock_fn.clear_requests()
+    aioclient_mock_fn.post(
         MICROBEES_TOKEN_URI,
         json={
             "access_token": "mock-access-token",
@@ -182,25 +211,26 @@ async def test_config_reauth_profile(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(bool(result)).to_be(True)
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_config_reauth_wrong_account(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    config_entry: MockConfigEntry,
-    microbees: AsyncMock,
+@test
+async def config_reauth_wrong_account(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client_no_auth_fn: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock_fn: AiohttpClientMocker = Depends(aioclient_mock),
+    config_entry_obj: MockConfigEntry = Depends(config_entry),
+    microbees_mock: AsyncMock = Depends(microbees),
 ) -> None:
     """Test reauth with wrong account."""
-    await setup_integration(hass, config_entry)
-    microbees.return_value.getMyProfile.return_value.id = "12345"
-    result = await config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    await setup_integration(hass, config_entry_obj)
+    microbees_mock.return_value.getMyProfile.return_value.id = "12345"
+    result = await config_entry_obj.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     state = config_entry_oauth2_flow._encode_jwt(
@@ -210,20 +240,20 @@ async def test_config_reauth_wrong_account(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{MICROBEES_AUTH_URI}?"
         f"response_type=code&client_id={CLIENT_ID}&"
         "redirect_uri=https://example.com/auth/external/callback&"
         f"state={state}"
         f"&scope={'+'.join(SCOPES)}"
     )
-    client = await hass_client_no_auth()
+    client = await hass_client_no_auth_fn()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
-    aioclient_mock.clear_requests()
-    aioclient_mock.post(
+    aioclient_mock_fn.clear_requests()
+    aioclient_mock_fn.post(
         MICROBEES_TOKEN_URI,
         json={
             "access_token": "mock-access-token",
@@ -236,17 +266,18 @@ async def test_config_reauth_wrong_account(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "wrong_account"
+    expect(bool(result)).to_be(True)
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("wrong_account")
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_config_flow_with_invalid_credentials(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    microbees: AsyncMock,
+@test
+async def config_flow_with_invalid_credentials(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client_no_auth_fn: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock_fn: AiohttpClientMocker = Depends(aioclient_mock),
+    microbees_mock: AsyncMock = Depends(microbees),
 ) -> None:
     """Test flow with invalid credentials."""
     result = await hass.config_entries.flow.async_init(
@@ -260,8 +291,8 @@ async def test_config_flow_with_invalid_credentials(
         },
     )
 
-    assert result["type"] is FlowResultType.EXTERNAL_STEP
-    assert result["url"] == (
+    expect(result["type"]).to_be(FlowResultType.EXTERNAL_STEP)
+    expect(result["url"]).to_equal(
         f"{MICROBEES_AUTH_URI}?"
         f"response_type=code&client_id={CLIENT_ID}&"
         "redirect_uri=https://example.com/auth/external/callback&"
@@ -269,13 +300,13 @@ async def test_config_flow_with_invalid_credentials(
         f"&scope={'+'.join(SCOPES)}"
     )
 
-    client = await hass_client_no_auth()
+    client = await hass_client_no_auth_fn()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
-    aioclient_mock.clear_requests()
-    aioclient_mock.post(
+    aioclient_mock_fn.clear_requests()
+    aioclient_mock_fn.post(
         MICROBEES_TOKEN_URI,
         json={
             "status": 401,
@@ -284,31 +315,37 @@ async def test_config_flow_with_invalid_credentials(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "oauth_error"
+    expect(bool(result)).to_be(True)
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("oauth_error")
 
 
-@pytest.mark.parametrize(
-    ("exception", "error"),
-    [
-        (MicroBeesException("Invalid auth"), "invalid_auth"),
-        (Exception("Unexpected error"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        exception=MicroBeesException("Invalid auth"),
+        error="invalid_auth",
+    ),
+    test.case(
+        "unknown",
+        exception=Exception("Unexpected error"),
+        error="unknown",
+    ),
 )
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_unexpected_exceptions(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    config_entry: MockConfigEntry,
-    microbees: AsyncMock,
+async def unexpected_exceptions(
+    *,
     exception: Exception,
     error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client_no_auth_fn: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock_fn: AiohttpClientMocker = Depends(aioclient_mock),
+    config_entry_obj: MockConfigEntry = Depends(config_entry),
+    microbees_mock: AsyncMock = Depends(microbees),
 ) -> None:
     """Test unknown error from server."""
-    await setup_integration(hass, config_entry)
-    microbees.return_value.getMyProfile.side_effect = exception
+    await setup_integration(hass, config_entry_obj)
+    microbees_mock.return_value.getMyProfile.side_effect = exception
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -320,8 +357,8 @@ async def test_unexpected_exceptions(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    assert result["type"] is FlowResultType.EXTERNAL_STEP
-    assert result["url"] == (
+    expect(result["type"]).to_be(FlowResultType.EXTERNAL_STEP)
+    expect(result["url"]).to_equal(
         f"{MICROBEES_AUTH_URI}?"
         f"response_type=code&client_id={CLIENT_ID}&"
         "redirect_uri=https://example.com/auth/external/callback&"
@@ -329,12 +366,12 @@ async def test_unexpected_exceptions(
         f"&scope={'+'.join(SCOPES)}"
     )
 
-    client = await hass_client_no_auth()
+    client = await hass_client_no_auth_fn()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
-    aioclient_mock.clear_requests()
-    aioclient_mock.post(
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
+    aioclient_mock_fn.clear_requests()
+    aioclient_mock_fn.post(
         MICROBEES_TOKEN_URI,
         json={
             "access_token": "mock-access-token",
@@ -347,6 +384,6 @@ async def test_unexpected_exceptions(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == error
+    expect(bool(result)).to_be(True)
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(error)

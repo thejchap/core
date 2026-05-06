@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from lojack_api import ApiError, AuthenticationError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.lojack.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -11,22 +11,31 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_lojack_client, mock_setup_entry
 from .const import TEST_PASSWORD, TEST_USER_ID, TEST_USERNAME
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_full_user_flow(
-    hass: HomeAssistant,
-    mock_lojack_client: MagicMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: MagicMock = Depends(mock_lojack_client),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -36,27 +45,40 @@ async def test_full_user_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == f"LoJack ({TEST_USERNAME})"
-    assert result["data"] == {
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: TEST_PASSWORD,
-    }
-    assert result["result"].unique_id == TEST_USER_ID
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"LoJack ({TEST_USERNAME})")
+    expect(result["data"]).to_equal(
+        {
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: TEST_PASSWORD,
+        }
+    )
+    expect(result["result"].unique_id).to_equal(TEST_USER_ID)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (AuthenticationError("Invalid credentials"), "invalid_auth"),
-        (ApiError("Connection failed"), "cannot_connect"),
-        (Exception("Unknown error"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_auth",
+        side_effect=AuthenticationError("Invalid credentials"),
+        expected_error="invalid_auth",
+    ),
+    test.case(
+        "cannot_connect",
+        side_effect=ApiError("Connection failed"),
+        expected_error="cannot_connect",
+    ),
+    test.case(
+        "unknown",
+        side_effect=Exception("Unknown error"),
+        expected_error="unknown",
+    ),
 )
-async def test_user_flow_errors(
-    hass: HomeAssistant,
-    mock_lojack_client: MagicMock,
-    mock_setup_entry: AsyncMock,
+async def user_flow_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: MagicMock = Depends(mock_lojack_client),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
     side_effect: Exception,
     expected_error: str,
 ) -> None:
@@ -64,7 +86,7 @@ async def test_user_flow_errors(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with patch(
         "homeassistant.components.lojack.config_flow.LoJackClient.create",
@@ -78,11 +100,11 @@ async def test_user_flow_errors(
             },
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": expected_error})
 
-    # Verify flow recovers after error
+    # Verify flow recovers after error.
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -90,22 +112,24 @@ async def test_user_flow_errors(
             CONF_PASSWORD: TEST_PASSWORD,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_user_flow_already_configured(
-    hass: HomeAssistant,
-    mock_lojack_client: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def user_flow_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: MagicMock = Depends(mock_lojack_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that duplicate accounts are rejected."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -115,5 +139,5 @@ async def test_user_flow_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

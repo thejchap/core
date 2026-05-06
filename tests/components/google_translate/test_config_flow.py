@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.google_translate.const import CONF_TLD, DOMAIN
@@ -10,18 +10,31 @@ from homeassistant.components.tts import CONF_LANG
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-async def test_user_step(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@test
+async def user_step(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test user step create entry result."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -32,17 +45,22 @@ async def test_user_step(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> No
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Google Translate text-to-speech"
-    assert result["data"] == {
-        CONF_LANG: "de",
-        CONF_TLD: "de",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Google Translate text-to-speech")
+    expect(result["data"]).to_equal(
+        {
+            CONF_LANG: "de",
+            CONF_TLD: "de",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_already_configured(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test user step already configured entry."""
     config_entry = MockConfigEntry(
@@ -53,8 +71,8 @@ async def test_already_configured(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -64,24 +82,29 @@ async def test_already_configured(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert len(mock_setup_entry.mock_calls) == 0
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(len(setup_entry.mock_calls)).to_equal(0)
 
 
-async def test_onboarding_flow(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def onboarding_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the onboarding configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "onboarding"}
     )
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == "Google Translate text-to-speech"
-    assert result.get("data") == {
-        CONF_LANG: "en",
-        CONF_TLD: "com",
-    }
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal("Google Translate text-to-speech")
+    expect(result.get("data")).to_equal(
+        {
+            CONF_LANG: "en",
+            CONF_TLD: "com",
+        }
+    )
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)

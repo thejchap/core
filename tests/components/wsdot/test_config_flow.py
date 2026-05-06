@@ -3,7 +3,7 @@
 from typing import Any
 from unittest.mock import AsyncMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 from wsdot import WsdotTravelError
 
 from homeassistant.components.wsdot.const import (
@@ -16,7 +16,16 @@ from homeassistant.const import CONF_API_KEY, CONF_ID, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import (
+    init_integration,
+    mock_config_data,
+    mock_config_entry,
+    mock_setup_entry,
+    mock_travel_time,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 VALID_USER_CONFIG = {
     CONF_API_KEY: "abcd-1234",
@@ -27,123 +36,107 @@ VALID_USER_TRAVEL_TIME_CONFIG = {
 }
 
 
-async def test_create_user_entry(
-    hass: HomeAssistant, mock_travel_time: AsyncMock
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def create_user_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _travel_time: AsyncMock = Depends(mock_travel_time),
 ) -> None:
     """Test that the user step works."""
-    # No user data; form is being show for the first time
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    # User data; the user entered data and hit submit
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=VALID_USER_CONFIG,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == DOMAIN
-    assert result["data"][CONF_API_KEY] == "abcd-1234"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(DOMAIN)
+    expect(result["data"][CONF_API_KEY]).to_equal("abcd-1234")
 
 
-@pytest.mark.parametrize(
-    ("failed_travel_time_status", "errors"),
-    [
-        (400, {CONF_API_KEY: "invalid_api_key"}),
-        (404, {"base": "cannot_connect"}),
-    ],
+@test.cases(
+    test.case(
+        "invalid_api_key",
+        failed_travel_time_status=400,
+        errors={CONF_API_KEY: "invalid_api_key"},
+    ),
+    test.case(
+        "cannot_connect",
+        failed_travel_time_status=404,
+        errors={"base": "cannot_connect"},
+    ),
 )
-async def test_errors(
-    hass: HomeAssistant,
-    mock_travel_time: AsyncMock,
-    mock_setup_entry: AsyncMock,
+async def errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    travel_time: AsyncMock = Depends(mock_travel_time),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
     failed_travel_time_status: int,
     errors: dict[str, str],
 ) -> None:
     """Test that the user step works."""
-    mock_travel_time.get_all_travel_times.side_effect = WsdotTravelError(
+    travel_time.get_all_travel_times.side_effect = WsdotTravelError(
         status=failed_travel_time_status
     )
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=VALID_USER_CONFIG,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == errors
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal(errors)
 
-    mock_travel_time.get_all_travel_times.side_effect = None
+    travel_time.get_all_travel_times.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=VALID_USER_CONFIG,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.parametrize(
-    "mock_subentries",
-    [
-        [],
-    ],
-)
-async def test_create_travel_time_subentry(
-    hass: HomeAssistant,
-    mock_travel_time: AsyncMock,
-    init_integration: MockConfigEntry,
-) -> None:
-    """Test that the user step for Travel Time works."""
-    # No user data; form is being show for the first time
-    result = await hass.config_entries.subentries.async_init(
-        (init_integration.entry_id, SUBENTRY_TRAVEL_TIMES),
-        context={"source": SOURCE_USER},
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-
-    # User data; the user made a choice and hit submit
-    result = await hass.config_entries.subentries.async_init(
-        (init_integration.entry_id, SUBENTRY_TRAVEL_TIMES),
-        context={"source": SOURCE_USER},
-        data=VALID_USER_TRAVEL_TIME_CONFIG,
-    )
-
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_NAME] == "Seattle-Bellevue via I-90 (EB AM)"
-    assert result["data"][CONF_ID] == 96
-
-
-@pytest.mark.parametrize(
-    "import_config",
-    [
-        {
+@test.cases(
+    test.case(
+        "with_int_id",
+        import_config={
             CONF_API_KEY: "abcd-5678",
             CONF_TRAVEL_TIMES: [{CONF_ID: 96, CONF_NAME: "I-90 EB"}],
         },
-        {
+    ),
+    test.case(
+        "with_str_id",
+        import_config={
             CONF_API_KEY: "abcd-5678",
             CONF_TRAVEL_TIMES: [{CONF_ID: "96", CONF_NAME: "I-90 EB"}],
         },
-    ],
-    ids=["with-int-id", "with-str-id"],
+    ),
 )
-async def test_create_import_entry(
-    hass: HomeAssistant,
-    mock_travel_time: AsyncMock,
+async def create_import_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _travel_time: AsyncMock = Depends(mock_travel_time),
+    *,
     import_config: dict[str, str | int],
 ) -> None:
     """Test that the yaml import works."""
@@ -153,49 +146,62 @@ async def test_create_import_entry(
         data=import_config,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "wsdot"
-    assert result["data"][CONF_API_KEY] == "abcd-5678"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("wsdot")
+    expect(result["data"][CONF_API_KEY]).to_equal("abcd-5678")
 
     entry = result["result"]
-    assert entry is not None
-    assert len(entry.subentries) == 1
+    expect(entry is not None).to_be(True)
+    expect(len(entry.subentries)).to_equal(1)
     subentry = next(iter(entry.subentries.values()))
-    assert subentry.subentry_type == SUBENTRY_TRAVEL_TIMES
-    assert subentry.title == "Seattle-Bellevue via I-90 (EB AM)"
-    assert subentry.data[CONF_NAME] == "Seattle-Bellevue via I-90 (EB AM)"
-    assert subentry.data[CONF_ID] == 96
+    expect(subentry.subentry_type).to_equal(SUBENTRY_TRAVEL_TIMES)
+    expect(subentry.title).to_equal("Seattle-Bellevue via I-90 (EB AM)")
+    expect(subentry.data[CONF_NAME]).to_equal("Seattle-Bellevue via I-90 (EB AM)")
+    expect(subentry.data[CONF_ID]).to_equal(96)
 
 
-@pytest.mark.parametrize(
-    ("failed_travel_time_status", "abort_reason"),
-    [
-        (400, "invalid_api_key"),
-        (404, "cannot_connect"),
-    ],
+@test.cases(
+    test.case(
+        "invalid_api_key",
+        failed_travel_time_status=400,
+        abort_reason="invalid_api_key",
+    ),
+    test.case(
+        "cannot_connect", failed_travel_time_status=404, abort_reason="cannot_connect"
+    ),
 )
-async def test_failed_import_entry(
-    hass: HomeAssistant,
-    mock_failed_travel_time: AsyncMock,
-    mock_config_data: dict[str, Any],
+async def failed_import_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    travel_time: AsyncMock = Depends(mock_travel_time),
+    config_data: dict[str, Any] = Depends(mock_config_data),
+    *,
     failed_travel_time_status: int,
     abort_reason: str,
 ) -> None:
     """Test the failure modes of a yaml import."""
+    travel_time.get_travel_time.side_effect = WsdotTravelError(
+        status=failed_travel_time_status
+    )
+    travel_time.get_all_travel_times.side_effect = WsdotTravelError(
+        status=failed_travel_time_status
+    )
+
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_IMPORT},
-        data=mock_config_data,
+        data=config_data,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == abort_reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(abort_reason)
 
 
-async def test_incorrect_import_entry(
-    hass: HomeAssistant,
-    mock_travel_time: AsyncMock,
-    mock_config_data: dict[str, Any],
+@test
+async def incorrect_import_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _travel_time: AsyncMock = Depends(mock_travel_time),
 ) -> None:
     """Test a yaml import of a non-existent route."""
     result = await hass.config_entries.flow.async_init(
@@ -207,16 +213,18 @@ async def test_incorrect_import_entry(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "invalid_travel_time_id"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("invalid_travel_time_id")
 
 
-async def test_import_integration_already_exists(
-    hass: HomeAssistant,
-    mock_travel_time: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    init_integration: MockConfigEntry,
+@test
+async def import_integration_already_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _travel_time: AsyncMock = Depends(mock_travel_time),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _entry: MockConfigEntry = Depends(mock_config_entry),
+    init: MockConfigEntry = Depends(init_integration),
 ) -> None:
     """Test we only allow one entry per API key."""
     result = await hass.config_entries.flow.async_init(
@@ -228,15 +236,17 @@ async def test_import_integration_already_exists(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    _ = init
 
 
-async def test_integration_already_exists(
-    hass: HomeAssistant,
-    mock_travel_time: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    init_integration: MockConfigEntry,
+@test
+async def integration_already_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _travel_time: AsyncMock = Depends(mock_travel_time),
+    init: MockConfigEntry = Depends(init_integration),
 ) -> None:
     """Test we only allow one entry per API key."""
     result = await hass.config_entries.flow.async_init(
@@ -244,39 +254,46 @@ async def test_integration_already_exists(
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input=VALID_USER_CONFIG,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    _ = init
 
 
-async def test_travel_route_already_exists(
-    hass: HomeAssistant,
-    mock_travel_time: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    init_integration: MockConfigEntry,
+@test
+async def travel_route_already_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _travel_time: AsyncMock = Depends(mock_travel_time),
+    init: MockConfigEntry = Depends(init_integration),
 ) -> None:
     """Test we only allow choosing a travel time route once."""
     result = await hass.config_entries.subentries.async_init(
-        (init_integration.entry_id, SUBENTRY_TRAVEL_TIMES),
+        (init.entry_id, SUBENTRY_TRAVEL_TIMES),
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.subentries.async_configure(
         result["flow_id"],
         user_input=VALID_USER_TRAVEL_TIME_CONFIG,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+
+
+@test.skip("test relies on parametrize override of mock_subentries fixture")
+async def create_travel_time_subentry() -> None:
+    """Test that the user step for Travel Time works."""

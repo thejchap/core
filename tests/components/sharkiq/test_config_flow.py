@@ -3,8 +3,8 @@
 from unittest.mock import patch
 
 import aiohttp
-import pytest
 from sharkiq import AylaApi, SharkIqAuthError, SharkIqError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.sharkiq.const import DOMAIN
@@ -22,9 +22,19 @@ from .const import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_setup_success_no_region(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def setup_success_no_region(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth flow."""
     mock_config = MockConfigEntry(
         domain=DOMAIN, unique_id=UNIQUE_ID, data=CONFIG_NO_REGION
@@ -34,17 +44,20 @@ async def test_setup_success_no_region(hass: HomeAssistant) -> None:
     with patch("homeassistant.components.sharkiq.async_setup_entry", return_value=True):
         result = await async_setup_component(hass=hass, domain=DOMAIN, config={})
 
-    assert result is True
+    expect(result).to_be(True)
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch("sharkiq.AylaApi.async_sign_in", return_value=True),
@@ -59,28 +72,33 @@ async def test_form(hass: HomeAssistant) -> None:
             CONFIG,
         )
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == f"{TEST_USERNAME:s}"
-    assert result2["data"] == {
-        "username": TEST_USERNAME,
-        "password": TEST_PASSWORD,
-        "region": TEST_REGION,
-    }
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(f"{TEST_USERNAME:s}")
+    expect(result2["data"]).to_equal(
+        {
+            "username": TEST_USERNAME,
+            "password": TEST_PASSWORD,
+            "region": TEST_REGION,
+        }
+    )
 
     await hass.async_block_till_done()
     mock_setup_entry.assert_called_once()
 
 
-@pytest.mark.parametrize(
-    ("exc", "base_error"),
-    [
-        (SharkIqAuthError, "invalid_auth"),
-        (aiohttp.ClientError, "cannot_connect"),
-        (TypeError, "cannot_connect"),
-        (SharkIqError, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", exc=SharkIqAuthError, base_error="invalid_auth"),
+    test.case("client_error", exc=aiohttp.ClientError, base_error="cannot_connect"),
+    test.case("type_error", exc=TypeError, base_error="cannot_connect"),
+    test.case("shark_error", exc=SharkIqError, base_error="unknown"),
 )
-async def test_form_error(hass: HomeAssistant, exc: Exception, base_error: str) -> None:
+async def form_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    exc: type[Exception],
+    base_error: str,
+) -> None:
     """Test form errors."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -95,11 +113,15 @@ async def test_form_error(hass: HomeAssistant, exc: Exception, base_error: str) 
             CONFIG,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"].get("base") == base_error
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"].get("base")).to_equal(base_error)
 
 
-async def test_reauth_success(hass: HomeAssistant) -> None:
+@test
+async def reauth_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth flow."""
     mock_config = MockConfigEntry(domain=DOMAIN, unique_id=UNIQUE_ID, data=CONFIG)
     mock_config.add_to_hass(hass)
@@ -114,22 +136,45 @@ async def test_reauth_success(hass: HomeAssistant) -> None:
             result["flow_id"], user_input=CONFIG
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "result_type", "msg_field", "msg"),
-    [
-        (SharkIqAuthError, "form", "errors", "invalid_auth"),
-        (aiohttp.ClientError, "abort", "reason", "cannot_connect"),
-        (TypeError, "abort", "reason", "cannot_connect"),
-        (SharkIqError, "abort", "reason", "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "auth_form",
+        side_effect=SharkIqAuthError,
+        result_type="form",
+        msg_field="errors",
+        msg="invalid_auth",
+    ),
+    test.case(
+        "client_abort",
+        side_effect=aiohttp.ClientError,
+        result_type="abort",
+        msg_field="reason",
+        msg="cannot_connect",
+    ),
+    test.case(
+        "type_abort",
+        side_effect=TypeError,
+        result_type="abort",
+        msg_field="reason",
+        msg="cannot_connect",
+    ),
+    test.case(
+        "unknown_abort",
+        side_effect=SharkIqError,
+        result_type="abort",
+        msg_field="reason",
+        msg="unknown",
+    ),
 )
-async def test_reauth(
-    hass: HomeAssistant,
-    side_effect: Exception,
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    side_effect: type[Exception],
     result_type: str,
     msg_field: str,
     msg: str,
@@ -151,5 +196,5 @@ async def test_reauth(
         if msg_field == "errors":
             msg_value = msg_value.get("base")
 
-        assert result["type"] == result_type
-        assert msg_value == msg
+        expect(result["type"]).to_equal(result_type)
+        expect(msg_value).to_equal(msg)

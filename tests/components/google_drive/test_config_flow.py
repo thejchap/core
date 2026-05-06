@@ -3,8 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from google_drive_api.exceptions import GoogleDriveApiError
-import pytest
-from syrupy.assertion import SnapshotAssertion
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.google_drive.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -12,11 +11,25 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_entry_oauth2_flow
 
-from .conftest import CLIENT_ID, TEST_USER_EMAIL
+from ._fixtures import (
+    CLIENT_ID,
+    TEST_USER_EMAIL,
+    config_entry as config_entry_fx,
+    mock_api,
+    mock_instance_id,
+    setup_credentials,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    aioclient_mock as aioclient_mock_fx,
+    current_request_with_host,
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
-from tests.typing import ClientSessionGenerator
 
 GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
@@ -25,13 +38,23 @@ FOLDER_NAME = "folder name"
 TITLE = "Google Drive"
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_full_flow(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_api: MagicMock,
-    snapshot: SnapshotAssertion,
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _request: None = Depends(current_request_with_host),
+    _credentials: None = Depends(setup_credentials),
+    _instance: None = Depends(mock_instance_id),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    api: MagicMock = Depends(mock_api),
 ) -> None:
     """Check full flow."""
     result = await hass.config_entries.flow.async_init(
@@ -45,26 +68,23 @@ async def test_full_flow(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/drive.file"
         "&access_type=offline&prompt=consent"
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
-    # Prepare API responses
-    mock_api.get_user = AsyncMock(
+    api.get_user = AsyncMock(
         return_value={"user": {"emailAddress": TEST_USER_EMAIL}}
     )
-    mock_api.list_files = AsyncMock(return_value={"files": []})
-    mock_api.create_file = AsyncMock(
-        return_value={"id": FOLDER_ID, "name": FOLDER_NAME}
-    )
+    api.list_files = AsyncMock(return_value={"files": []})
+    api.create_file = AsyncMock(return_value={"id": FOLDER_ID, "name": FOLDER_NAME})
 
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
@@ -81,32 +101,36 @@ async def test_full_flow(
     ) as mock_setup:
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup.mock_calls) == 1
-    assert len(aioclient_mock.mock_calls) == 1
-    assert [tuple(mock_call) for mock_call in mock_api.mock_calls] == snapshot
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(mock_setup.mock_calls)).to_equal(1)
+    expect(len(aioclient_mock.mock_calls)).to_equal(1)
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == TITLE
-    assert result.get("description_placeholders") == {
-        "folder_name": FOLDER_NAME,
-        "url": f"https://drive.google.com/drive/folders/{FOLDER_ID}",
-    }
-    assert "result" in result
-    assert result.get("result").unique_id == TEST_USER_EMAIL
-    assert "token" in result.get("result").data
-    assert result.get("result").data["token"].get("access_token") == "mock-access-token"
-    assert (
-        result.get("result").data["token"].get("refresh_token") == "mock-refresh-token"
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal(TITLE)
+    expect(result.get("description_placeholders")).to_equal(
+        {
+            "folder_name": FOLDER_NAME,
+            "url": f"https://drive.google.com/drive/folders/{FOLDER_ID}",
+        }
+    )
+    expect("result" in result).to_be(True)
+    expect(result.get("result").unique_id).to_equal(TEST_USER_EMAIL)
+    expect("token" in result.get("result").data).to_be(True)
+    expect(result.get("result").data["token"].get("access_token")).to_equal(
+        "mock-access-token"
+    )
+    expect(result.get("result").data["token"].get("refresh_token")).to_equal(
+        "mock-refresh-token"
     )
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_create_folder_error(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_api: MagicMock,
+@test
+async def create_folder_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    api: MagicMock = Depends(mock_api),
 ) -> None:
     """Test case where creating the folder fails."""
     result = await hass.config_entries.flow.async_init(
@@ -120,24 +144,23 @@ async def test_create_folder_error(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/drive.file"
         "&access_type=offline&prompt=consent"
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
-    # Prepare API responses
-    mock_api.get_user = AsyncMock(
+    api.get_user = AsyncMock(
         return_value={"user": {"emailAddress": TEST_USER_EMAIL}}
     )
-    mock_api.list_files = AsyncMock(return_value={"files": []})
-    mock_api.create_file = AsyncMock(side_effect=GoogleDriveApiError("some error"))
+    api.list_files = AsyncMock(return_value={"files": []})
+    api.create_file = AsyncMock(side_effect=GoogleDriveApiError("some error"))
 
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
@@ -150,32 +173,35 @@ async def test_create_folder_error(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "create_folder_failure"
-    assert result.get("description_placeholders") == {"message": "some error"}
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("create_folder_failure")
+    expect(result.get("description_placeholders")).to_equal({"message": "some error"})
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-@pytest.mark.parametrize(
-    ("exception", "expected_abort_reason", "expected_placeholders"),
-    [
-        (
-            GoogleDriveApiError("some error"),
-            "access_not_configured",
-            {"message": "some error"},
-        ),
-        (Exception, "unknown", None),
-    ],
-    ids=["api_not_enabled", "general_exception"],
+@test.cases(
+    test.case(
+        "api_not_enabled",
+        exception=GoogleDriveApiError("some error"),
+        expected_abort_reason="access_not_configured",
+        expected_placeholders={"message": "some error"},
+    ),
+    test.case(
+        "general_exception",
+        exception=Exception,
+        expected_abort_reason="unknown",
+        expected_placeholders=None,
+    ),
 )
-async def test_get_email_error(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    mock_api: MagicMock,
-    exception: Exception,
-    expected_abort_reason,
-    expected_placeholders,
+async def get_email_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    api: MagicMock = Depends(mock_api),
+    *,
+    exception: Exception | type[Exception],
+    expected_abort_reason: str,
+    expected_placeholders: dict[str, str] | None,
 ) -> None:
     """Test case where getting the email address fails."""
     result = await hass.config_entries.flow.async_init(
@@ -189,20 +215,19 @@ async def test_get_email_error(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/drive.file"
         "&access_type=offline&prompt=consent"
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
-    # Prepare API responses
-    mock_api.get_user = AsyncMock(side_effect=exception)
+    api.get_user = AsyncMock(side_effect=exception)
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
         json={
@@ -214,38 +239,37 @@ async def test_get_email_error(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == expected_abort_reason
-    assert result.get("description_placeholders") == expected_placeholders
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal(expected_abort_reason)
+    expect(result.get("description_placeholders")).to_equal(expected_placeholders)
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-@pytest.mark.parametrize(
-    (
-        "new_email",
-        "expected_abort_reason",
-        "expected_placeholders",
-        "expected_access_token",
-        "expected_setup_calls",
+@test.cases(
+    test.case(
+        "reauth_successful",
+        new_email=TEST_USER_EMAIL,
+        expected_abort_reason="reauth_successful",
+        expected_placeholders=None,
+        expected_access_token="updated-access-token",
+        expected_setup_calls=1,
     ),
-    [
-        (TEST_USER_EMAIL, "reauth_successful", None, "updated-access-token", 1),
-        (
-            "other.user@domain.com",
-            "wrong_account",
-            {"email": TEST_USER_EMAIL},
-            "mock-access-token",
-            0,
-        ),
-    ],
-    ids=["reauth_successful", "wrong_account"],
+    test.case(
+        "wrong_account",
+        new_email="other.user@domain.com",
+        expected_abort_reason="wrong_account",
+        expected_placeholders={"email": TEST_USER_EMAIL},
+        expected_access_token="mock-access-token",
+        expected_setup_calls=0,
+    ),
 )
-async def test_reauth(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    config_entry: MockConfigEntry,
-    aioclient_mock: AiohttpClientMocker,
-    mock_api: MagicMock,
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    config_entry: MockConfigEntry = Depends(config_entry_fx),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    api: MagicMock = Depends(mock_api),
+    *,
     new_email: str,
     expected_abort_reason: str,
     expected_placeholders: dict[str, str] | None,
@@ -256,7 +280,7 @@ async def test_reauth(
     config_entry.add_to_hass(hass)
     result = await config_entry.start_reauth_flow(hass)
 
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     state = config_entry_oauth2_flow._encode_jwt(
@@ -266,19 +290,18 @@ async def test_reauth(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/drive.file"
         "&access_type=offline&prompt=consent"
     )
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
-    # Prepare API responses
-    mock_api.get_user = AsyncMock(return_value={"user": {"emailAddress": new_email}})
+    api.get_user = AsyncMock(return_value={"user": {"emailAddress": new_email}})
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
         json={
@@ -295,48 +318,49 @@ async def test_reauth(
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
         await hass.async_block_till_done()
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup.mock_calls) == expected_setup_calls
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(mock_setup.mock_calls)).to_equal(expected_setup_calls)
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == expected_abort_reason
-    assert result.get("description_placeholders") == expected_placeholders
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal(expected_abort_reason)
+    expect(result.get("description_placeholders")).to_equal(expected_placeholders)
 
-    assert config_entry.unique_id == TEST_USER_EMAIL
-    assert "token" in config_entry.data
+    expect(config_entry.unique_id).to_equal(TEST_USER_EMAIL)
+    expect("token" in config_entry.data).to_be(True)
+    expect(config_entry.data["token"].get("access_token")).to_equal(
+        expected_access_token
+    )
+    expect(config_entry.data["token"].get("refresh_token")).to_equal(
+        "mock-refresh-token"
+    )
 
-    # Verify access token is refreshed
-    assert config_entry.data["token"].get("access_token") == expected_access_token
-    assert config_entry.data["token"].get("refresh_token") == "mock-refresh-token"
 
-
-@pytest.mark.usefixtures("current_request_with_host")
-@pytest.mark.parametrize(
-    (
-        "new_email",
-        "expected_abort_reason",
-        "expected_placeholders",
-        "expected_access_token",
-        "expected_setup_calls",
+@test.cases(
+    test.case(
+        "reconfigure_successful",
+        new_email=TEST_USER_EMAIL,
+        expected_abort_reason="reconfigure_successful",
+        expected_placeholders=None,
+        expected_access_token="updated-access-token",
+        expected_setup_calls=1,
     ),
-    [
-        (TEST_USER_EMAIL, "reconfigure_successful", None, "updated-access-token", 1),
-        (
-            "other.user@domain.com",
-            "wrong_account",
-            {"email": TEST_USER_EMAIL},
-            "mock-access-token",
-            0,
-        ),
-    ],
-    ids=["reconfigure_successful", "wrong_account"],
+    test.case(
+        "wrong_account",
+        new_email="other.user@domain.com",
+        expected_abort_reason="wrong_account",
+        expected_placeholders={"email": TEST_USER_EMAIL},
+        expected_access_token="mock-access-token",
+        expected_setup_calls=0,
+    ),
 )
-async def test_reconfigure(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    config_entry: MockConfigEntry,
-    aioclient_mock: AiohttpClientMocker,
-    mock_api: MagicMock,
+async def reconfigure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    config_entry: MockConfigEntry = Depends(config_entry_fx),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    api: MagicMock = Depends(mock_api),
+    *,
     new_email: str,
     expected_abort_reason: str,
     expected_placeholders: dict[str, str] | None,
@@ -354,19 +378,18 @@ async def test_reconfigure(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/drive.file"
         "&access_type=offline&prompt=consent"
     )
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
-    # Prepare API responses
-    mock_api.get_user = AsyncMock(return_value={"user": {"emailAddress": new_email}})
+    api.get_user = AsyncMock(return_value={"user": {"emailAddress": new_email}})
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
         json={
@@ -383,28 +406,31 @@ async def test_reconfigure(
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
         await hass.async_block_till_done()
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup.mock_calls) == expected_setup_calls
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(mock_setup.mock_calls)).to_equal(expected_setup_calls)
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == expected_abort_reason
-    assert result.get("description_placeholders") == expected_placeholders
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal(expected_abort_reason)
+    expect(result.get("description_placeholders")).to_equal(expected_placeholders)
 
-    assert config_entry.unique_id == TEST_USER_EMAIL
-    assert "token" in config_entry.data
+    expect(config_entry.unique_id).to_equal(TEST_USER_EMAIL)
+    expect("token" in config_entry.data).to_be(True)
+    expect(config_entry.data["token"].get("access_token")).to_equal(
+        expected_access_token
+    )
+    expect(config_entry.data["token"].get("refresh_token")).to_equal(
+        "mock-refresh-token"
+    )
 
-    # Verify access token is refreshed
-    assert config_entry.data["token"].get("access_token") == expected_access_token
-    assert config_entry.data["token"].get("refresh_token") == "mock-refresh-token"
 
-
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_already_configured(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    config_entry: MockConfigEntry,
-    aioclient_mock: AiohttpClientMocker,
-    mock_api: MagicMock,
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_gen: ClientSessionGenerator = Depends(hass_client_no_auth),
+    config_entry: MockConfigEntry = Depends(config_entry_fx),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
+    api: MagicMock = Depends(mock_api),
 ) -> None:
     """Test already configured account."""
     config_entry.add_to_hass(hass)
@@ -420,20 +446,19 @@ async def test_already_configured(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/drive.file"
         "&access_type=offline&prompt=consent"
     )
 
-    client = await hass_client_no_auth()
+    client = await client_gen()
     resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
-    # Prepare API responses
-    mock_api.get_user = AsyncMock(
+    api.get_user = AsyncMock(
         return_value={"user": {"emailAddress": TEST_USER_EMAIL}}
     )
     aioclient_mock.post(
@@ -447,5 +472,5 @@ async def test_already_configured(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "already_configured"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("already_configured")

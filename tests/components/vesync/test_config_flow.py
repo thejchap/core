@@ -3,6 +3,7 @@
 from unittest.mock import PropertyMock, patch
 
 from pyvesync.utils.errors import VeSyncLoginError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.vesync import DOMAIN
 from homeassistant.config_entries import SOURCE_DHCP, SOURCE_USER
@@ -12,17 +13,42 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
+from ._fixtures import (
+    config_entry as config_entry_fx,
+    patch_vesync,
+    patch_vesync_auth,
+    patch_vesync_login,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    device_registry as device_registry_fx,
+    hass as hass_fixture,
+    mock_network,
+)
 
 
-async def test_abort_duplicate_unique_id(hass: HomeAssistant, config_entry) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _login: None = Depends(patch_vesync_login),
+    _vesync: None = Depends(patch_vesync),
+    _auth: None = Depends(patch_vesync_auth),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def abort_duplicate_unique_id(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _config_entry: MockConfigEntry = Depends(config_entry_fx),
+) -> None:
     """Test if we abort because component is already setup under that Account ID."""
-    config_entry.add_to_hass(hass)
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with (
         patch("pyvesync.vesync.VeSync.login"),
@@ -36,16 +62,20 @@ async def test_abort_duplicate_unique_id(hass: HomeAssistant, config_entry) -> N
             {CONF_USERNAME: "user@user.com", CONF_PASSWORD: "pass"},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_invalid_login_error(hass: HomeAssistant) -> None:
+@test
+async def invalid_login_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test if we return error for invalid username and password."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "user"}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with patch(
         "pyvesync.vesync.VeSync.login",
@@ -56,16 +86,20 @@ async def test_invalid_login_error(hass: HomeAssistant) -> None:
             {CONF_USERNAME: "user", CONF_PASSWORD: "pass"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_config_flow_user_input(hass: HomeAssistant) -> None:
+@test
+async def config_flow_user_input(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test config flow with user input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "user"}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with patch("pyvesync.vesync.VeSync.login"):
         result = await hass.config_entries.flow.async_configure(
@@ -73,13 +107,17 @@ async def test_config_flow_user_input(hass: HomeAssistant) -> None:
             {CONF_USERNAME: "user", CONF_PASSWORD: "pass"},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_USERNAME] == "user"
-    assert result["data"][CONF_PASSWORD] == "pass"
-    assert result["result"].unique_id == "TESTACCOUNTID"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_USERNAME]).to_equal("user")
+    expect(result["data"][CONF_PASSWORD]).to_equal("pass")
+    expect(result["result"].unique_id).to_equal("TESTACCOUNTID")
 
 
-async def test_reauth_flow(hass: HomeAssistant) -> None:
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a successful reauth flow."""
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -89,8 +127,8 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
 
     result = await mock_entry.start_reauth_flow(hass)
 
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
     with (
         patch("pyvesync.vesync.VeSync") as mock_vesync,
         patch(
@@ -105,17 +143,22 @@ async def test_reauth_flow(hass: HomeAssistant) -> None:
             {CONF_USERNAME: "new-username", CONF_PASSWORD: "new-password"},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_entry.data == {
-        CONF_USERNAME: "new-username",
-        CONF_PASSWORD: "new-password",
-    }
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_entry.data).to_equal(
+        {
+            CONF_USERNAME: "new-username",
+            CONF_PASSWORD: "new-password",
+        }
+    )
 
 
-async def test_reauth_flow_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def reauth_flow_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test an authorization error reauth flow."""
-
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="account_id",
@@ -123,8 +166,8 @@ async def test_reauth_flow_invalid_auth(hass: HomeAssistant) -> None:
     mock_entry.add_to_hass(hass)
 
     result = await mock_entry.start_reauth_flow(hass)
-    assert result["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with patch(
         "pyvesync.vesync.VeSync.login",
@@ -135,7 +178,7 @@ async def test_reauth_flow_invalid_auth(hass: HomeAssistant) -> None:
             {CONF_USERNAME: "new-username", CONF_PASSWORD: "new-password"},
         )
 
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
     with (
         patch("pyvesync.vesync.VeSync") as mock_vesync,
         patch(
@@ -150,15 +193,17 @@ async def test_reauth_flow_invalid_auth(hass: HomeAssistant) -> None:
             {CONF_USERNAME: "new-username", CONF_PASSWORD: "new-password"},
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-async def test_dhcp_discovery(
-    hass: HomeAssistant, device_registry: dr.DeviceRegistry
+@test
+async def dhcp_discovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _device_registry: dr.DeviceRegistry = Depends(device_registry_fx),
 ) -> None:
     """Test DHCP discovery flow."""
-
     service_info = DhcpServiceInfo(
         hostname="Levoit-Purifier",
         ip="1.2.3.4",
@@ -171,23 +216,25 @@ async def test_dhcp_discovery(
         data=service_info,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
-    # Configure the flow to create the config entry
     with patch("pyvesync.vesync.VeSync.login"):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {CONF_USERNAME: "user", CONF_PASSWORD: "pass"},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].unique_id == "TESTACCOUNTID"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal("TESTACCOUNTID")
 
 
-async def test_dhcp_discovery_duplicate(
-    hass: HomeAssistant, config_entry: MockConfigEntry
+@test
+async def dhcp_discovery_duplicate(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _config_entry: MockConfigEntry = Depends(config_entry_fx),
 ) -> None:
     """Test DHCP discovery flow with already setup integration."""
     result = await hass.config_entries.flow.async_init(
@@ -199,5 +246,5 @@ async def test_dhcp_discovery_duplicate(
             macaddress="aabbccddeeff",
         ),
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

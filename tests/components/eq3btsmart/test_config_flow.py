@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.components.eq3btsmart.const import DOMAIN
@@ -11,12 +13,30 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.device_registry import format_mac
 from homeassistant.util import slugify
 
+from ._fixtures import fake_service_info
 from .const import MAC
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    enable_bluetooth,
+    hass as hass_fixture,
+    mock_network,
+)
 
 
-async def test_user_flow(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _bluetooth: None = Depends(enable_bluetooth),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we can handle a regular successflow setup flow."""
 
     result = await hass.config_entries.flow.async_init(
@@ -33,14 +53,18 @@ async def test_user_flow(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == slugify(MAC)
-    assert result["data"] == {}
-    assert result["context"]["unique_id"] == MAC
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(slugify(MAC))
+    expect(result["data"]).to_equal({})
+    expect(result["context"]["unique_id"]).to_equal(MAC)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_user_flow_invalid_mac(hass: HomeAssistant) -> None:
+@test
+async def user_flow_invalid_mac(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid mac address."""
 
     result = await hass.config_entries.flow.async_init(
@@ -57,9 +81,9 @@ async def test_user_flow_invalid_mac(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {CONF_MAC: "invalid_mac_address"}
-        assert len(mock_setup_entry.mock_calls) == 0
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({CONF_MAC: "invalid_mac_address"})
+        expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -67,22 +91,25 @@ async def test_user_flow_invalid_mac(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["title"] == slugify(MAC)
-        assert result["data"] == {}
-        assert result["context"]["unique_id"] == MAC
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["title"]).to_equal(slugify(MAC))
+        expect(result["data"]).to_equal({})
+        expect(result["context"]["unique_id"]).to_equal(MAC)
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_bluetooth_flow(
-    hass: HomeAssistant, fake_service_info: BluetoothServiceInfoBleak
+@test
+async def bluetooth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    service_info: BluetoothServiceInfoBleak = Depends(fake_service_info),
 ) -> None:
     """Test we can handle a bluetooth discovery flow."""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_BLUETOOTH},
-        data=fake_service_info,
+        data=service_info,
     )
 
     with patch(
@@ -95,14 +122,18 @@ async def test_bluetooth_flow(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == slugify(MAC)
-    assert result["data"] == {}
-    assert result["context"]["unique_id"] == MAC
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(slugify(MAC))
+    expect(result["data"]).to_equal({})
+    expect(result["context"]["unique_id"]).to_equal(MAC)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_duplicate_entry(hass: HomeAssistant) -> None:
+@test
+async def duplicate_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test duplicate setup handling."""
 
     entry = MockConfigEntry(
@@ -130,6 +161,6 @@ async def test_duplicate_entry(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert mock_setup_entry.call_count == 0
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(mock_setup_entry.call_count).to_equal(0)

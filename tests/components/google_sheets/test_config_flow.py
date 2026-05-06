@@ -1,62 +1,52 @@
 """Test the Google Sheets config flow."""
 
-from collections.abc import Generator
 from unittest.mock import Mock, patch
 
 from gspread import GSpreadException
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
-from homeassistant.components.application_credentials import (
-    DOMAIN as APPLICATION_CREDENTIALS_DOMAIN,
-    ClientCredential,
-    async_import_client_credential,
-)
 from homeassistant.components.google_sheets.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_entry_oauth2_flow
-from homeassistant.setup import async_setup_component
+
+from ._fixtures import CLIENT_ID, mock_client, setup_credentials
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    aioclient_mock as aioclient_mock_fixture,
+    current_request_with_host,
+    hass as hass_fixture,
+    hass_client_no_auth as hass_client_no_auth_fixture,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
 from tests.typing import ClientSessionGenerator
 
-CLIENT_ID = "1234"
-CLIENT_SECRET = "5678"
 GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 SHEET_ID = "google-sheet-id"
 TITLE = "Google Sheets"
 
 
-@pytest.fixture
-async def setup_credentials(hass: HomeAssistant) -> None:
-    """Fixture to setup credentials."""
-    assert await async_setup_component(hass, APPLICATION_CREDENTIALS_DOMAIN, {})
-    await async_import_client_credential(
-        hass,
-        DOMAIN,
-        ClientCredential(CLIENT_ID, CLIENT_SECRET),
-    )
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _request: None = Depends(current_request_with_host),
+    _client: Mock = Depends(mock_client),
+    _credentials: None = Depends(setup_credentials),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
 
 
-@pytest.fixture(autouse=True)
-async def mock_client() -> Generator[Mock]:
-    """Fixture to setup a fake spreadsheet client library."""
-    with patch(
-        "homeassistant.components.google_sheets.config_flow.Client"
-    ) as mock_client:
-        yield mock_client
-
-
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_full_flow(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    setup_credentials,
-    mock_client,
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client_no_auth: ClientSessionGenerator = Depends(hass_client_no_auth_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fixture),
+    client: Mock = Depends(mock_client),
 ) -> None:
     """Check full flow."""
     result = await hass.config_entries.flow.async_init(
@@ -70,22 +60,22 @@ async def test_full_flow(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/drive.file"
         "&access_type=offline&prompt=consent"
     )
 
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await hass_client_no_auth()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     # Prepare fake client library response when creating the sheet
     mock_create = Mock()
     mock_create.return_value.id = SHEET_ID
-    mock_client.return_value.create = mock_create
+    client.return_value.create = mock_create
 
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
@@ -102,28 +92,30 @@ async def test_full_flow(
     ) as mock_setup:
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup.mock_calls) == 1
-    assert len(mock_client.mock_calls) == 2
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(mock_setup.mock_calls)).to_equal(1)
+    expect(len(client.mock_calls)).to_equal(2)
 
-    assert result.get("type") is FlowResultType.CREATE_ENTRY
-    assert result.get("title") == TITLE
-    assert "result" in result
-    assert result.get("result").unique_id == SHEET_ID
-    assert "token" in result.get("result").data
-    assert result.get("result").data["token"].get("access_token") == "mock-access-token"
-    assert (
-        result.get("result").data["token"].get("refresh_token") == "mock-refresh-token"
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal(TITLE)
+    expect("result" in result).to_be(True)
+    expect(result.get("result").unique_id).to_equal(SHEET_ID)
+    expect("token" in result.get("result").data).to_be(True)
+    expect(result.get("result").data["token"].get("access_token")).to_equal(
+        "mock-access-token"
+    )
+    expect(result.get("result").data["token"].get("refresh_token")).to_equal(
+        "mock-refresh-token"
     )
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_create_sheet_error(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    setup_credentials,
-    mock_client,
+@test
+async def create_sheet_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client_no_auth: ClientSessionGenerator = Depends(hass_client_no_auth_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fixture),
+    client: Mock = Depends(mock_client),
 ) -> None:
     """Test case where creating the spreadsheet fails."""
     result = await hass.config_entries.flow.async_init(
@@ -137,22 +129,22 @@ async def test_create_sheet_error(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/drive.file"
         "&access_type=offline&prompt=consent"
     )
 
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await hass_client_no_auth()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     # Prepare fake exception creating the spreadsheet
     mock_create = Mock()
     mock_create.side_effect = GSpreadException()
-    mock_client.return_value.create = mock_create
+    client.return_value.create = mock_create
 
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
@@ -165,20 +157,19 @@ async def test_create_sheet_error(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "create_spreadsheet_failure"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("create_spreadsheet_failure")
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_reauth(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    setup_credentials,
-    mock_client,
+@test
+async def reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client_no_auth: ClientSessionGenerator = Depends(hass_client_no_auth_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fixture),
+    client: Mock = Depends(mock_client),
 ) -> None:
     """Test the reauthentication case updates the existing config entry."""
-
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=SHEET_ID,
@@ -194,9 +185,9 @@ async def test_reauth(
     await hass.async_block_till_done()
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
     result = flows[0]
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     state = config_entry_oauth2_flow._encode_jwt(
@@ -206,21 +197,21 @@ async def test_reauth(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/drive.file"
         "&access_type=offline&prompt=consent"
     )
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await hass_client_no_auth()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     # Config flow will lookup existing key to make sure it still exists
     mock_open = Mock()
     mock_open.return_value.id = SHEET_ID
-    mock_client.return_value.open_by_key = mock_open
+    client.return_value.open_by_key = mock_open
 
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
@@ -238,29 +229,32 @@ async def test_reauth(
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
         await hass.async_block_till_done()
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup.mock_calls) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(mock_setup.mock_calls)).to_equal(1)
 
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "reauth_successful"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("reauth_successful")
 
-    assert config_entry.unique_id == SHEET_ID
-    assert "token" in config_entry.data
+    expect(config_entry.unique_id).to_equal(SHEET_ID)
+    expect("token" in config_entry.data).to_be(True)
     # Verify access token is refreshed
-    assert config_entry.data["token"].get("access_token") == "updated-access-token"
-    assert config_entry.data["token"].get("refresh_token") == "mock-refresh-token"
+    expect(config_entry.data["token"].get("access_token")).to_equal(
+        "updated-access-token"
+    )
+    expect(config_entry.data["token"].get("refresh_token")).to_equal(
+        "mock-refresh-token"
+    )
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_reauth_abort(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    setup_credentials,
-    mock_client,
+@test
+async def reauth_abort(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client_no_auth: ClientSessionGenerator = Depends(hass_client_no_auth_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fixture),
+    client: Mock = Depends(mock_client),
 ) -> None:
     """Test failure case during reauth."""
-
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=SHEET_ID,
@@ -276,9 +270,9 @@ async def test_reauth_abort(
     await hass.async_block_till_done()
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
     result = flows[0]
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     state = config_entry_oauth2_flow._encode_jwt(
@@ -288,22 +282,22 @@ async def test_reauth_abort(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/drive.file"
         "&access_type=offline&prompt=consent"
     )
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await hass_client_no_auth()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     # Simulate failure looking up existing spreadsheet
     mock_open = Mock()
     mock_open.return_value.id = SHEET_ID
     mock_open.side_effect = GSpreadException()
-    mock_client.return_value.open_by_key = mock_open
+    client.return_value.open_by_key = mock_open
 
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
@@ -316,17 +310,17 @@ async def test_reauth_abort(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "open_spreadsheet_failure"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("open_spreadsheet_failure")
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_already_configured(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
-    setup_credentials,
-    mock_client,
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client_no_auth: ClientSessionGenerator = Depends(hass_client_no_auth_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fixture),
+    client: Mock = Depends(mock_client),
 ) -> None:
     """Test case where config flow discovers unique id was already configured."""
     config_entry = MockConfigEntry(
@@ -351,22 +345,22 @@ async def test_already_configured(
         },
     )
 
-    assert result["url"] == (
+    expect(result["url"]).to_equal(
         f"{GOOGLE_AUTH_URI}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=https://www.googleapis.com/auth/drive.file"
         "&access_type=offline&prompt=consent"
     )
 
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == 200
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await hass_client_no_auth()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(200)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     # Prepare fake client library response when creating the sheet
     mock_create = Mock()
     mock_create.return_value.id = SHEET_ID
-    mock_client.return_value.create = mock_create
+    client.return_value.create = mock_create
 
     aioclient_mock.post(
         GOOGLE_TOKEN_URI,
@@ -379,5 +373,5 @@ async def test_already_configured(
     )
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"])
-    assert result.get("type") is FlowResultType.ABORT
-    assert result.get("reason") == "already_configured"
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("already_configured")

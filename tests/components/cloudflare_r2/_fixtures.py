@@ -1,0 +1,77 @@
+"""Tryke fixtures for Cloudflare R2 tests."""
+
+from collections.abc import AsyncIterator, Generator
+import json
+from unittest.mock import AsyncMock, patch
+
+from tryke import Depends, fixture
+
+from homeassistant.components.backup import AgentBackup
+from homeassistant.components.cloudflare_r2.backup import suggested_filenames
+from homeassistant.components.cloudflare_r2.const import DOMAIN
+
+from .const import USER_INPUT
+
+from tests.common import MockConfigEntry
+
+
+@fixture
+def test_backup() -> AgentBackup:
+    """Test backup fixture."""
+    return AgentBackup(
+        addons=[],
+        backup_id="23e64aec",
+        date="2024-11-22T11:48:48.727189+01:00",
+        database_included=True,
+        extra_metadata={},
+        folders=[],
+        homeassistant_included=True,
+        homeassistant_version="2024.12.0.dev0",
+        name="Core 2024.12.0.dev0",
+        protected=False,
+        size=2**20,
+    )
+
+
+@fixture
+def mock_client(
+    backup: AgentBackup = Depends(test_backup),
+) -> Generator[AsyncMock]:
+    """Mock the R2 client (S3-compatible)."""
+    with patch(
+        "aiobotocore.session.AioSession.create_client",
+        autospec=True,
+        return_value=AsyncMock(),
+    ) as create_client:
+        client = create_client.return_value
+
+        tar_file, metadata_file = suggested_filenames(backup)
+        client.list_objects_v2.return_value = {
+            "Contents": [{"Key": tar_file}, {"Key": metadata_file}]
+        }
+        client.create_multipart_upload.return_value = {"UploadId": "upload_id"}
+        client.upload_part.return_value = {"ETag": "etag"}
+
+        class MockStream:
+            async def iter_chunks(self) -> AsyncIterator[bytes]:
+                yield b"backup data"
+
+            async def read(self) -> bytes:
+                return json.dumps(backup.as_dict()).encode()
+
+        client.get_object.return_value = {"Body": MockStream()}
+        client.head_bucket.return_value = {}
+
+        create_client.return_value.__aenter__.return_value = client
+        yield client
+
+
+@fixture
+def mock_config_entry() -> MockConfigEntry:
+    """Return the default mocked config entry."""
+    return MockConfigEntry(
+        entry_id="test",
+        title="test",
+        domain=DOMAIN,
+        data=USER_INPUT,
+    )

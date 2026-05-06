@@ -1,6 +1,7 @@
 """Define tests for the AirVisual config flow."""
 
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, Mock, patch
 
 from pyairvisual.cloud_api import (
     InvalidKeyError,
@@ -9,7 +10,7 @@ from pyairvisual.cloud_api import (
     UnauthorizedError,
 )
 from pyairvisual.errors import AirVisualError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.airvisual import (
     CONF_CITY,
@@ -23,7 +24,8 @@ from homeassistant.const import CONF_API_KEY, CONF_SHOW_ON_MAP
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import (
+from tests.common import MockConfigEntry
+from tests.components.airvisual._fixtures import (
     COORDS_CONFIG,
     NAME_CONFIG,
     TEST_CITY,
@@ -31,138 +33,242 @@ from .conftest import (
     TEST_LATITUDE,
     TEST_LONGITUDE,
     TEST_STATE,
-)
-
-from tests.common import MockConfigEntry
-
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
-
-
-@pytest.mark.parametrize(
-    ("integration_type", "input_form_step", "patched_method", "config", "entry_title"),
-    [
-        (
-            INTEGRATION_TYPE_GEOGRAPHY_COORDS,
-            "geography_by_coords",
-            "nearest_city",
-            COORDS_CONFIG,
-            f"Cloud API ({TEST_LATITUDE}, {TEST_LONGITUDE})",
-        ),
-        (
-            INTEGRATION_TYPE_GEOGRAPHY_NAME,
-            "geography_by_name",
-            "city",
-            NAME_CONFIG,
-            f"Cloud API ({TEST_CITY}, {TEST_STATE}, {TEST_COUNTRY})",
-        ),
-    ],
-)
-@pytest.mark.parametrize(
-    ("response", "errors"),
-    [
-        (AsyncMock(side_effect=AirVisualError), {"base": "unknown"}),
-        (AsyncMock(side_effect=InvalidKeyError), {CONF_API_KEY: "invalid_api_key"}),
-        (AsyncMock(side_effect=KeyExpiredError), {CONF_API_KEY: "invalid_api_key"}),
-        (AsyncMock(side_effect=NotFoundError), {CONF_CITY: "location_not_found"}),
-        (AsyncMock(side_effect=UnauthorizedError), {CONF_API_KEY: "invalid_api_key"}),
-    ],
-)
-async def test_create_entry(
-    hass: HomeAssistant,
     cloud_api,
     config,
-    entry_title,
-    errors,
-    input_form_step,
-    integration_type,
+    config_entry,
     mock_pyairvisual,
-    patched_method,
-    response,
+    mock_setup_entry,
+    mock_zeroconf,
+    setup_config_entry,
+)
+from tests.hass_fixtures import hass, mock_network
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
+
+
+@test.cases(
+    test.case(
+        "coords_airvisual_error",
+        INTEGRATION_TYPE_GEOGRAPHY_COORDS,
+        "geography_by_coords",
+        "nearest_city",
+        COORDS_CONFIG,
+        f"Cloud API ({TEST_LATITUDE}, {TEST_LONGITUDE})",
+        AirVisualError,
+        {"base": "unknown"},
+    ),
+    test.case(
+        "coords_invalid_key",
+        INTEGRATION_TYPE_GEOGRAPHY_COORDS,
+        "geography_by_coords",
+        "nearest_city",
+        COORDS_CONFIG,
+        f"Cloud API ({TEST_LATITUDE}, {TEST_LONGITUDE})",
+        InvalidKeyError,
+        {CONF_API_KEY: "invalid_api_key"},
+    ),
+    test.case(
+        "coords_key_expired",
+        INTEGRATION_TYPE_GEOGRAPHY_COORDS,
+        "geography_by_coords",
+        "nearest_city",
+        COORDS_CONFIG,
+        f"Cloud API ({TEST_LATITUDE}, {TEST_LONGITUDE})",
+        KeyExpiredError,
+        {CONF_API_KEY: "invalid_api_key"},
+    ),
+    test.case(
+        "coords_not_found",
+        INTEGRATION_TYPE_GEOGRAPHY_COORDS,
+        "geography_by_coords",
+        "nearest_city",
+        COORDS_CONFIG,
+        f"Cloud API ({TEST_LATITUDE}, {TEST_LONGITUDE})",
+        NotFoundError,
+        {CONF_CITY: "location_not_found"},
+    ),
+    test.case(
+        "coords_unauthorized",
+        INTEGRATION_TYPE_GEOGRAPHY_COORDS,
+        "geography_by_coords",
+        "nearest_city",
+        COORDS_CONFIG,
+        f"Cloud API ({TEST_LATITUDE}, {TEST_LONGITUDE})",
+        UnauthorizedError,
+        {CONF_API_KEY: "invalid_api_key"},
+    ),
+    test.case(
+        "name_airvisual_error",
+        INTEGRATION_TYPE_GEOGRAPHY_NAME,
+        "geography_by_name",
+        "city",
+        NAME_CONFIG,
+        f"Cloud API ({TEST_CITY}, {TEST_STATE}, {TEST_COUNTRY})",
+        AirVisualError,
+        {"base": "unknown"},
+    ),
+    test.case(
+        "name_invalid_key",
+        INTEGRATION_TYPE_GEOGRAPHY_NAME,
+        "geography_by_name",
+        "city",
+        NAME_CONFIG,
+        f"Cloud API ({TEST_CITY}, {TEST_STATE}, {TEST_COUNTRY})",
+        InvalidKeyError,
+        {CONF_API_KEY: "invalid_api_key"},
+    ),
+    test.case(
+        "name_key_expired",
+        INTEGRATION_TYPE_GEOGRAPHY_NAME,
+        "geography_by_name",
+        "city",
+        NAME_CONFIG,
+        f"Cloud API ({TEST_CITY}, {TEST_STATE}, {TEST_COUNTRY})",
+        KeyExpiredError,
+        {CONF_API_KEY: "invalid_api_key"},
+    ),
+    test.case(
+        "name_not_found",
+        INTEGRATION_TYPE_GEOGRAPHY_NAME,
+        "geography_by_name",
+        "city",
+        NAME_CONFIG,
+        f"Cloud API ({TEST_CITY}, {TEST_STATE}, {TEST_COUNTRY})",
+        NotFoundError,
+        {CONF_CITY: "location_not_found"},
+    ),
+    test.case(
+        "name_unauthorized",
+        INTEGRATION_TYPE_GEOGRAPHY_NAME,
+        "geography_by_name",
+        "city",
+        NAME_CONFIG,
+        f"Cloud API ({TEST_CITY}, {TEST_STATE}, {TEST_COUNTRY})",
+        UnauthorizedError,
+        {CONF_API_KEY: "invalid_api_key"},
+    ),
+)
+async def create_entry(
+    integration_type: str,
+    input_form_step: str,
+    patched_method: str,
+    config: dict[str, Any],
+    entry_title: str,
+    side_effect: type[Exception],
+    errors: dict[str, str],
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    cloud_api: Mock = Depends(cloud_api),
+    _mock_pyairvisual: None = Depends(mock_pyairvisual),
 ) -> None:
     """Test creating a config entry."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}, data={"type": integration_type}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == input_form_step
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal(input_form_step)
 
-    # Test errors that can arise:
+    response = AsyncMock(side_effect=side_effect)
     with patch.object(cloud_api.air_quality, patched_method, response):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], user_input=config
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == errors
+        expect(result["type"] is FlowResultType.FORM).to_be(True)
+        expect(result["errors"]).to_equal(errors)
 
-    # Test that we can recover and finish the flow after errors occur:
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=config
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == entry_title
-    assert result["data"] == {**config, CONF_INTEGRATION_TYPE: integration_type}
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(entry_title)
+    expect(result["data"]).to_equal({**config, CONF_INTEGRATION_TYPE: integration_type})
 
 
-async def test_duplicate_error(hass: HomeAssistant, config, setup_config_entry) -> None:
+@test
+async def duplicate_error(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config: dict[str, Any] = Depends(config),
+    _setup_config_entry: None = Depends(setup_config_entry),
+) -> None:
     """Test that errors are shown when duplicate entries are added."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
         data={"type": INTEGRATION_TYPE_GEOGRAPHY_COORDS},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "geography_by_coords"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("geography_by_coords")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input=config
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_options_flow(
-    hass: HomeAssistant, config_entry, setup_config_entry
+@test
+async def options_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(config_entry),
+    _setup_config_entry: None = Depends(setup_config_entry),
 ) -> None:
     """Test config flow options."""
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input={CONF_SHOW_ON_MAP: False}
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {CONF_SHOW_ON_MAP: False}
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(config_entry.options).to_equal({CONF_SHOW_ON_MAP: False})
 
 
-async def test_step_reauth(
-    hass: HomeAssistant, config_entry: MockConfigEntry, setup_config_entry
+@test
+async def step_reauth(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: None = Depends(mock_zeroconf),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(config_entry),
+    _setup_config_entry: None = Depends(setup_config_entry),
 ) -> None:
     """Test that the reauth step works."""
     result = await config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     new_api_key = "defgh67890"
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_API_KEY: new_api_key}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("reauth_successful")
 
-    assert len(hass.config_entries.async_entries()) == 1
-    assert hass.config_entries.async_entries()[0].data[CONF_API_KEY] == new_api_key
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+    expect(hass.config_entries.async_entries()[0].data[CONF_API_KEY]).to_equal(
+        new_api_key
+    )
     await hass.async_block_till_done()

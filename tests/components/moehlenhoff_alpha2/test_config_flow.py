@@ -3,6 +3,8 @@
 from functools import partialmethod
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.moehlenhoff_alpha2.const import DOMAIN
 from homeassistant.core import HomeAssistant
@@ -11,16 +13,24 @@ from homeassistant.data_entry_flow import FlowResultType
 from . import MOCK_BASE_HOST, mock_update_data
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_mn: None = Depends(mock_network)) -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def form(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be_falsy()
 
     with (
         patch(
@@ -38,13 +48,14 @@ async def test_form(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Alpha2Test"
-    assert result2["data"] == {"host": MOCK_BASE_HOST}
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Alpha2Test")
+    expect(result2["data"]).to_equal({"host": MOCK_BASE_HOST})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_duplicate_error(hass: HomeAssistant) -> None:
+@test
+async def form_duplicate_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test that errors are shown when duplicates are added."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -53,7 +64,7 @@ async def test_form_duplicate_error(hass: HomeAssistant) -> None:
     )
     config_entry.add_to_hass(hass)
 
-    assert config_entry.data["host"] == MOCK_BASE_HOST
+    expect(config_entry.data["host"]).to_equal(MOCK_BASE_HOST)
 
     with patch(
         "moehlenhoff_alpha2.Alpha2Base.update_data",
@@ -64,11 +75,12 @@ async def test_form_duplicate_error(hass: HomeAssistant) -> None:
             data={"host": MOCK_BASE_HOST},
             context={"source": config_entries.SOURCE_USER},
         )
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "already_configured"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_form_cannot_connect_error(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test connection error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -79,11 +91,12 @@ async def test_form_cannot_connect_error(hass: HomeAssistant) -> None:
             user_input={"host": MOCK_BASE_HOST},
         )
 
-        assert result2["type"] is FlowResultType.FORM
-        assert result2["errors"] == {"base": "cannot_connect"}
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_unexpected_error(hass: HomeAssistant) -> None:
+@test
+async def form_unexpected_error(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Test unexpected error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -94,5 +107,5 @@ async def test_form_unexpected_error(hass: HomeAssistant) -> None:
             user_input={"host": MOCK_BASE_HOST},
         )
 
-        assert result2["type"] is FlowResultType.FORM
-        assert result2["errors"] == {"base": "unknown"}
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["errors"]).to_equal({"base": "unknown"})

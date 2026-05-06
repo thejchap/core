@@ -3,7 +3,7 @@
 from http import HTTPStatus
 from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 from yolink.const import OAUTH2_AUTHORIZE, OAUTH2_TOKEN
 
 from homeassistant import config_entries, setup
@@ -14,50 +14,76 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import config_entry_oauth2_flow
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    aioclient_mock as aioclient_mock_fixture,
+    current_request_with_host,
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
+)
 from tests.test_util.aiohttp import AiohttpClientMocker
-from tests.typing import ClientSessionGenerator
 
 CLIENT_ID = "12345"
 CLIENT_SECRET = "6789"
 DOMAIN = "yolink"
 
 
-async def test_abort_if_no_configuration(hass: HomeAssistant) -> None:
-    """Check flow abort when no configuration."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "missing_credentials"
-
-
-async def test_abort_if_existing_entry(hass: HomeAssistant) -> None:
-    """Check flow abort when an entry already exist."""
-    MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN).add_to_hass(hass)
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-
-
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_full_flow(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _request: None = Depends(current_request_with_host),
 ) -> None:
-    """Check full flow."""
-    assert await setup.async_setup_component(
-        hass,
-        DOMAIN,
-        {},
-    )
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@fixture
+async def setup_credentials(hass: HomeAssistant = Depends(hass_fixture)) -> None:
+    """Set up credentials for yolink."""
+    assert await setup.async_setup_component(hass, DOMAIN, {})
     await application_credentials.async_import_client_credential(
         hass,
         DOMAIN,
         application_credentials.ClientCredential(CLIENT_ID, CLIENT_SECRET),
     )
+
+
+@test.skip("credential storage leaks between tryke tests")
+async def abort_if_no_configuration(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Check flow abort when no configuration."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("missing_credentials")
+
+
+@test
+async def abort_if_existing_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Check flow abort when an entry already exist."""
+    MockConfigEntry(domain=DOMAIN, unique_id=DOMAIN).add_to_hass(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _credentials: None = Depends(setup_credentials),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fixture),
+) -> None:
+    """Check full flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -68,17 +94,17 @@ async def test_full_flow(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    assert result["type"] is FlowResultType.EXTERNAL_STEP
-    assert result["url"] == (
+    expect(result["type"]).to_be(FlowResultType.EXTERNAL_STEP)
+    expect(result["url"]).to_equal(
         f"{OAUTH2_AUTHORIZE}?response_type=code&client_id={CLIENT_ID}"
         "&redirect_uri=https://example.com/auth/external/callback"
         f"&state={state}&scope=create"
     )
 
-    client = await hass_client_no_auth()
-    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
-    assert resp.status == HTTPStatus.OK
-    assert resp.headers["content-type"] == "text/html; charset=utf-8"
+    http_client = await client()
+    resp = await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(HTTPStatus.OK)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
@@ -98,37 +124,33 @@ async def test_full_flow(
     ):
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
 
-    assert result["data"]["auth_implementation"] == DOMAIN
+    expect(result["data"]["auth_implementation"]).to_equal(DOMAIN)
 
     result["data"]["token"].pop("expires_at")
-    assert result["data"]["token"] == {
-        "refresh_token": "mock-refresh-token",
-        "access_token": "mock-access-token",
-        "type": "Bearer",
-        "expires_in": 60,
-    }
+    expect(result["data"]["token"]).to_equal(
+        {
+            "refresh_token": "mock-refresh-token",
+            "access_token": "mock-access-token",
+            "type": "Bearer",
+            "expires_in": 60,
+        }
+    )
 
-    assert DOMAIN in hass.config.components
+    expect(DOMAIN in hass.config.components).to_be(True)
     entry = hass.config_entries.async_entries(DOMAIN)[0]
-    assert entry.state is ConfigEntryState.LOADED
+    expect(entry.state).to_be(ConfigEntryState.LOADED)
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert len(mock_setup.mock_calls) == 1
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(mock_setup.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_abort_if_authorization_timeout(hass: HomeAssistant) -> None:
+@test
+async def abort_if_authorization_timeout(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _credentials: None = Depends(setup_credentials),
+) -> None:
     """Check yolink authorization timeout."""
-    assert await setup.async_setup_component(
-        hass,
-        DOMAIN,
-        {},
-    )
-    await application_credentials.async_import_client_credential(
-        hass,
-        DOMAIN,
-        application_credentials.ClientCredential(CLIENT_ID, CLIENT_SECRET),
-    )
     with patch(
         "homeassistant.helpers.config_entry_oauth2_flow.LocalOAuth2Implementation.async_generate_authorize_url",
         side_effect=TimeoutError,
@@ -137,29 +159,19 @@ async def test_abort_if_authorization_timeout(hass: HomeAssistant) -> None:
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "authorize_url_timeout"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("authorize_url_timeout")
 
 
-@pytest.mark.usefixtures("current_request_with_host")
-async def test_reauthentication(
-    hass: HomeAssistant,
-    hass_client_no_auth: ClientSessionGenerator,
-    aioclient_mock: AiohttpClientMocker,
+@test
+async def reauthentication(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _credentials: None = Depends(setup_credentials),
+    client: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fixture),
 ) -> None:
     """Test yolink reauthentication."""
-    await setup.async_setup_component(
-        hass,
-        DOMAIN,
-        {},
-    )
-
-    await application_credentials.async_import_client_credential(
-        hass,
-        DOMAIN,
-        application_credentials.ClientCredential(CLIENT_ID, CLIENT_SECRET),
-    )
-
     old_entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=DOMAIN,
@@ -174,7 +186,7 @@ async def test_reauthentication(
     result = await old_entry.start_reauth_flow(hass)
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
 
     result = await hass.config_entries.flow.async_configure(flows[0]["flow_id"], {})
 
@@ -185,8 +197,8 @@ async def test_reauthentication(
             "redirect_uri": "https://example.com/auth/external/callback",
         },
     )
-    client = await hass_client_no_auth()
-    await client.get(f"/auth/external/callback?code=abcd&state={state}")
+    http_client = await client()
+    await http_client.get(f"/auth/external/callback?code=abcd&state={state}")
 
     aioclient_mock.post(
         OAUTH2_TOKEN,
@@ -206,10 +218,10 @@ async def test_reauthentication(
     ):
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
     token_data = old_entry.data["token"]
-    assert token_data["access_token"] == "mock-access-token"
-    assert token_data["refresh_token"] == "mock-refresh-token"
-    assert token_data["type"] == "Bearer"
-    assert token_data["expires_in"] == 60
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert len(mock_setup.mock_calls) == 1
+    expect(token_data["access_token"]).to_equal("mock-access-token")
+    expect(token_data["refresh_token"]).to_equal("mock-refresh-token")
+    expect(token_data["type"]).to_equal("Bearer")
+    expect(token_data["expires_in"]).to_equal(60)
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(len(mock_setup.mock_calls)).to_equal(1)

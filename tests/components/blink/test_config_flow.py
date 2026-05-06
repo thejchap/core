@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from blinkpy.auth import BlinkTwoFARequiredError, LoginError, TokenRefreshFailed
 from blinkpy.blinkpy import BlinkSetupError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.blink import DOMAIN
@@ -11,9 +12,19 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form_2fa(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form_2fa(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the 2fa form."""
 
     result = await hass.config_entries.flow.async_init(
@@ -29,8 +40,8 @@ async def test_form_2fa(hass: HomeAssistant) -> None:
             {"username": "blink@example.com", "password": "example"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "2fa"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("2fa")
 
     with (
         patch("homeassistant.components.blink.config_flow.Blink.start"),
@@ -51,13 +62,17 @@ async def test_form_2fa(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result3["type"] is FlowResultType.CREATE_ENTRY
-    assert result3["title"] == "blink"
-    assert result3["result"].unique_id == "blink@example.com"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("blink")
+    expect(result3["result"].unique_id).to_equal("blink@example.com")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_2fa_connect_error(hass: HomeAssistant) -> None:
+@test
+async def form_2fa_connect_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we report a connect error during 2fa setup."""
 
     result = await hass.config_entries.flow.async_init(
@@ -73,8 +88,8 @@ async def test_form_2fa_connect_error(hass: HomeAssistant) -> None:
             {"username": "blink@example.com", "password": "example"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "2fa"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("2fa")
 
     with (
         patch("homeassistant.components.blink.config_flow.Blink.start"),
@@ -91,11 +106,15 @@ async def test_form_2fa_connect_error(hass: HomeAssistant) -> None:
             result2["flow_id"], {"pin": "1234"}
         )
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "cannot_connect"}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_2fa_invalid_key(hass: HomeAssistant) -> None:
+@test
+async def form_2fa_invalid_key(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we report an error if key is invalid."""
 
     result = await hass.config_entries.flow.async_init(
@@ -111,8 +130,8 @@ async def test_form_2fa_invalid_key(hass: HomeAssistant) -> None:
             {"username": "blink@example.com", "password": "example"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "2fa"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("2fa")
 
     with (
         patch(
@@ -131,11 +150,15 @@ async def test_form_2fa_invalid_key(hass: HomeAssistant) -> None:
             result2["flow_id"], {"pin": "1234"}
         )
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "invalid_access_token"}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": "invalid_access_token"})
 
 
-async def test_form_2fa_unknown_error(hass: HomeAssistant) -> None:
+@test
+async def form_2fa_unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we report an unknown error during 2fa setup."""
 
     result = await hass.config_entries.flow.async_init(
@@ -151,8 +174,8 @@ async def test_form_2fa_unknown_error(hass: HomeAssistant) -> None:
             {"username": "blink@example.com", "password": "example"},
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "2fa"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("2fa")
 
     with (
         patch("homeassistant.components.blink.config_flow.Blink.start"),
@@ -169,11 +192,15 @@ async def test_form_2fa_unknown_error(hass: HomeAssistant) -> None:
             result2["flow_id"], {"pin": "1234"}
         )
 
-    assert result3["type"] is FlowResultType.FORM
-    assert result3["errors"] == {"base": "unknown"}
+    expect(result3["type"]).to_be(FlowResultType.FORM)
+    expect(result3["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -187,11 +214,15 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             result["flow_id"], {"username": "blink@example.com", "password": "example"}
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_unknown_error(hass: HomeAssistant) -> None:
+@test
+async def form_unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle unknown error at startup."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -205,11 +236,15 @@ async def test_form_unknown_error(hass: HomeAssistant) -> None:
             result["flow_id"], {"username": "blink@example.com", "password": "example"}
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_reauth_shows_user_step(hass: HomeAssistant) -> None:
+@test
+async def reauth_shows_user_step(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth shows the user form."""
     mock_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -217,5 +252,5 @@ async def test_reauth_shows_user_step(hass: HomeAssistant) -> None:
     )
     mock_entry.add_to_hass(hass)
     result = await mock_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")

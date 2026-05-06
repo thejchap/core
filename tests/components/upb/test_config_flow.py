@@ -3,11 +3,20 @@
 from asyncio import TimeoutError
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.upb.const import DOMAIN
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
 def mocked_upb(sync_complete=True, config_ok=True):
@@ -36,7 +45,6 @@ async def valid_tcp_flow(
     hass: HomeAssistant, sync_complete: bool = True, config_ok: bool = True
 ) -> ConfigFlowResult:
     """Get result dict that are standard for most tests."""
-
     with (
         mocked_upb(sync_complete, config_ok),
         patch("homeassistant.components.upb.async_setup_entry", return_value=True),
@@ -50,9 +58,12 @@ async def valid_tcp_flow(
         )
 
 
-async def test_full_upb_flow_with_serial_port(hass: HomeAssistant) -> None:
+@test
+async def full_upb_flow_with_serial_port(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test a full UPB config flow with serial port."""
-
     with (
         mocked_upb(),
         patch(
@@ -73,49 +84,66 @@ async def test_full_upb_flow_with_serial_port(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert flow["type"] is FlowResultType.FORM
-    assert flow["errors"] == {}
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "UPB"
-    assert result["data"] == {
-        "host": "serial:///dev/ttyS0:115200",
-        "file_path": "upb.upe",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(flow["type"]).to_be(FlowResultType.FORM)
+    expect(flow["errors"]).to_equal({})
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("UPB")
+    expect(result["data"]).to_equal(
+        {
+            "host": "serial:///dev/ttyS0:115200",
+            "file_path": "upb.upe",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_user_with_tcp_upb(hass: HomeAssistant) -> None:
+@test
+async def form_user_with_tcp_upb(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we can setup a serial upb."""
     result = await valid_tcp_flow(hass)
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {"host": "tcp://1.2.3.4", "file_path": "upb.upe"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({"host": "tcp://1.2.3.4", "file_path": "upb.upe"})
     await hass.async_block_till_done()
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
-
     with patch(
         "homeassistant.components.upb.config_flow.asyncio.timeout",
         side_effect=TimeoutError,
     ):
         result = await valid_tcp_flow(hass, sync_complete=False)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_missing_upb_file(hass: HomeAssistant) -> None:
+@test
+async def form_missing_upb_file(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await valid_tcp_flow(hass, config_ok=False)
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_upb_file"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_upb_file"})
 
 
-async def test_form_user_with_already_configured(hass: HomeAssistant) -> None:
+@test
+async def form_user_with_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we can setup a TCP upb."""
     _ = await valid_tcp_flow(hass)
     result2 = await valid_tcp_flow(hass)
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")
     await hass.async_block_till_done()

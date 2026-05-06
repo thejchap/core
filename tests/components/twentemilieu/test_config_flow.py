@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock
 
-import pytest
 from twentemilieu import TwenteMilieuAddressError, TwenteMilieuConnectionError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.twentemilieu import config_flow
@@ -18,20 +18,33 @@ from homeassistant.const import CONF_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_setup_entry, mock_twentemilieu
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup_entry: None = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-@pytest.mark.usefixtures("mock_twentemilieu")
-async def test_full_user_flow(hass: HomeAssistant) -> None:
+@test
+async def full_user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _twentemilieu: MagicMock = Depends(mock_twentemilieu),
+) -> None:
     """Test registering an integration and finishing flow works."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -42,36 +55,36 @@ async def test_full_user_flow(hass: HomeAssistant) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "12345"
-    assert config_entry.data == {
-        CONF_HOUSE_LETTER: "A",
-        CONF_HOUSE_NUMBER: "1",
-        CONF_ID: 12345,
-        CONF_POST_CODE: "1234AB",
-    }
-    assert not config_entry.options
+    expect(config_entry.unique_id).to_equal("12345")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOUSE_LETTER: "A",
+            CONF_HOUSE_NUMBER: "1",
+            CONF_ID: 12345,
+            CONF_POST_CODE: "1234AB",
+        }
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
 
-async def test_invalid_address(
-    hass: HomeAssistant,
-    mock_twentemilieu: MagicMock,
+@test
+async def invalid_address(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    twentemilieu: MagicMock = Depends(mock_twentemilieu),
 ) -> None:
-    """Test full user flow when the user enters an incorrect address.
-
-    This tests also tests if the user recovers from it by entering a valid
-    address in the second attempt.
-    """
+    """Test full user flow when the user enters an incorrect address."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    mock_twentemilieu.unique_id.side_effect = TwenteMilieuAddressError
+    twentemilieu.unique_id.side_effect = TwenteMilieuAddressError
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
@@ -80,11 +93,11 @@ async def test_invalid_address(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "invalid_address"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "invalid_address"})
 
-    mock_twentemilieu.unique_id.side_effect = None
+    twentemilieu.unique_id.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
@@ -93,25 +106,29 @@ async def test_invalid_address(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "12345"
-    assert config_entry.data == {
-        CONF_HOUSE_LETTER: None,
-        CONF_HOUSE_NUMBER: "1",
-        CONF_ID: 12345,
-        CONF_POST_CODE: "1234AB",
-    }
-    assert not config_entry.options
+    expect(config_entry.unique_id).to_equal("12345")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOUSE_LETTER: None,
+            CONF_HOUSE_NUMBER: "1",
+            CONF_ID: 12345,
+            CONF_POST_CODE: "1234AB",
+        }
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
 
-async def test_connection_error(
-    hass: HomeAssistant,
-    mock_twentemilieu: MagicMock,
+@test
+async def connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    twentemilieu: MagicMock = Depends(mock_twentemilieu),
 ) -> None:
     """Test we show user form on Twente Milieu connection error."""
-    mock_twentemilieu.unique_id.side_effect = TwenteMilieuConnectionError
+    twentemilieu.unique_id.side_effect = TwenteMilieuConnectionError
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -123,12 +140,11 @@ async def test_connection_error(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    # Recover from error
-    mock_twentemilieu.unique_id.side_effect = None
+    twentemilieu.unique_id.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -139,26 +155,30 @@ async def test_connection_error(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "12345"
-    assert config_entry.data == {
-        CONF_HOUSE_LETTER: "A",
-        CONF_HOUSE_NUMBER: "1",
-        CONF_ID: 12345,
-        CONF_POST_CODE: "1234AB",
-    }
-    assert not config_entry.options
+    expect(config_entry.unique_id).to_equal("12345")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOUSE_LETTER: "A",
+            CONF_HOUSE_NUMBER: "1",
+            CONF_ID: 12345,
+            CONF_POST_CODE: "1234AB",
+        }
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
 
-@pytest.mark.usefixtures("mock_twentemilieu")
-async def test_address_already_set_up(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def address_already_set_up(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _twentemilieu: MagicMock = Depends(mock_twentemilieu),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test we abort if address has already been set up."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         config_flow.DOMAIN,
         context={"source": config_entries.SOURCE_USER},
@@ -169,5 +189,5 @@ async def test_address_already_set_up(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

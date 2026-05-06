@@ -7,7 +7,7 @@ from aiowebdav2.exceptions import (
     MethodNotSupportedError,
     UnauthorizedError,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.webdav.const import CONF_BACKUP_PATH, DOMAIN
@@ -16,17 +16,32 @@ from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_config_entry, mock_setup_entry, webdav_client
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_form(hass: HomeAssistant, webdav_client: AsyncMock) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(webdav_client),
+) -> None:
     """Test we get the form and create a entry on success."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -40,22 +55,28 @@ async def test_form(hass: HomeAssistant, webdav_client: AsyncMock) -> None:
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "user@webdav.demo"
-    assert result["data"] == {
-        CONF_URL: "https://webdav.demo",
-        CONF_USERNAME: "user",
-        CONF_PASSWORD: "supersecretpassword",
-        CONF_BACKUP_PATH: "/backups",
-        CONF_VERIFY_SSL: False,
-    }
-    assert len(webdav_client.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("user@webdav.demo")
+    expect(result["data"]).to_equal(
+        {
+            CONF_URL: "https://webdav.demo",
+            CONF_USERNAME: "user",
+            CONF_PASSWORD: "supersecretpassword",
+            CONF_BACKUP_PATH: "/backups",
+            CONF_VERIFY_SSL: False,
+        }
+    )
+    expect(len(client.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_form_fail(hass: HomeAssistant, webdav_client: AsyncMock) -> None:
+@test
+async def form_fail(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(webdav_client),
+) -> None:
     """Test to handle exceptions."""
-    webdav_client.check.return_value = False
+    client.check.return_value = False
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
@@ -66,12 +87,12 @@ async def test_form_fail(hass: HomeAssistant, webdav_client: AsyncMock) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    # reset and test for success
-    webdav_client.check.return_value = True
+    # Reset and test for success.
+    client.check.return_value = True
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -81,28 +102,43 @@ async def test_form_fail(hass: HomeAssistant, webdav_client: AsyncMock) -> None:
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "user@webdav.demo"
-    assert "errors" not in result
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("user@webdav.demo")
+    expect("errors" not in result).to_be(True)
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected_error"),
-    [
-        (UnauthorizedError("https://webdav.demo"), "invalid_auth"),
-        (AccessDeniedError("https://webdav.demo"), "access_denied"),
-        (MethodNotSupportedError("check", "https://webdav.demo"), "invalid_method"),
-        (Exception("Unexpected error"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "unauthorized",
+        exception=UnauthorizedError("https://webdav.demo"),
+        expected_error="invalid_auth",
+    ),
+    test.case(
+        "access_denied",
+        exception=AccessDeniedError("https://webdav.demo"),
+        expected_error="access_denied",
+    ),
+    test.case(
+        "invalid_method",
+        exception=MethodNotSupportedError("check", "https://webdav.demo"),
+        expected_error="invalid_method",
+    ),
+    test.case(
+        "unknown",
+        exception=Exception("Unexpected error"),
+        expected_error="unknown",
+    ),
 )
-async def test_form_unauthorized(
-    hass: HomeAssistant,
-    webdav_client: AsyncMock,
+async def form_unauthorized(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(webdav_client),
+    *,
     exception: Exception,
     expected_error: str,
 ) -> None:
     """Test to handle unauthorized."""
-    webdav_client.check.side_effect = exception
+    client.check.side_effect = exception
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
@@ -113,12 +149,12 @@ async def test_form_unauthorized(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": expected_error})
 
-    # reset and test for success
-    webdav_client.check.side_effect = None
+    # Reset and test for success.
+    client.check.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -128,17 +164,21 @@ async def test_form_unauthorized(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "user@webdav.demo"
-    assert "errors" not in result
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("user@webdav.demo")
+    expect("errors" not in result).to_be(True)
 
 
-async def test_duplicate_entry(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry, webdav_client: AsyncMock
+@test
+async def duplicate_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _client: AsyncMock = Depends(webdav_client),
 ) -> None:
     """Test we get the form and create a entry on success."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
     result = await hass.config_entries.flow.async_init(
@@ -151,5 +191,5 @@ async def test_duplicate_entry(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

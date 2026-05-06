@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock
 
-import pytest
 import serial
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.teleinfo.const import CONF_SERIAL_PORT, DOMAIN
 from homeassistant.config_entries import SOURCE_USB, SOURCE_USER
@@ -11,16 +11,32 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.usb import UsbServiceInfo
 
-from .conftest import USB_DISCOVERY_INFO
+from ._fixtures import (
+    USB_DISCOVERY_INFO,
+    mock_config_entry,
+    mock_serial_port,
+    mock_setup_entry,
+    mock_teleinfo,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-pytestmark = pytest.mark.usefixtures("mock_setup_entry")
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: None = Depends(mock_setup_entry),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
 
 
-@pytest.mark.usefixtures("mock_teleinfo")
-async def test_user_flow_success(
-    hass: HomeAssistant, mock_serial_port: MagicMock
+@test
+async def user_flow_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _teleinfo: MagicMock = Depends(mock_teleinfo),
+    serial_port: MagicMock = Depends(mock_serial_port),
 ) -> None:
     """Test the full happy path: serial port opens, frame is read and decoded."""
     result = await hass.config_entries.flow.async_init(
@@ -28,8 +44,8 @@ async def test_user_flow_success(
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -38,28 +54,41 @@ async def test_user_flow_success(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Teleinfo (/dev/ttyUSB0)"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Teleinfo (/dev/ttyUSB0)")
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "021861348497"
-    assert config_entry.data == {
-        CONF_SERIAL_PORT: "/dev/ttyUSB0",
-    }
+    expect(config_entry.unique_id).to_equal("021861348497")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_SERIAL_PORT: "/dev/ttyUSB0",
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (serial.SerialException("Port not found"), "cannot_connect"),
-        (TimeoutError("No data"), "timeout_connect"),
-        (RuntimeError("unexpected"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "cannot_connect",
+        side_effect=serial.SerialException("Port not found"),
+        expected_error="cannot_connect",
+    ),
+    test.case(
+        "timeout_connect",
+        side_effect=TimeoutError("No data"),
+        expected_error="timeout_connect",
+    ),
+    test.case(
+        "unknown",
+        side_effect=RuntimeError("unexpected"),
+        expected_error="unknown",
+    ),
 )
-@pytest.mark.usefixtures("mock_teleinfo")
-async def test_user_flow_error_recovery(
-    hass: HomeAssistant,
-    mock_serial_port: MagicMock,
+async def user_flow_error_recovery(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _teleinfo: MagicMock = Depends(mock_teleinfo),
+    serial_port: MagicMock = Depends(mock_serial_port),
+    *,
     side_effect: Exception,
     expected_error: str,
 ) -> None:
@@ -68,33 +97,35 @@ async def test_user_flow_error_recovery(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    mock_serial_port.side_effect = side_effect
+    serial_port.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_SERIAL_PORT: "/dev/ttyUSB0"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": expected_error})
 
     # Recover: the port now works.
-    mock_serial_port.side_effect = None
+    serial_port.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_SERIAL_PORT: "/dev/ttyUSB0"}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Teleinfo (/dev/ttyUSB0)"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Teleinfo (/dev/ttyUSB0)")
 
 
-@pytest.mark.usefixtures("mock_teleinfo")
-async def test_user_flow_duplicate(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_serial_port: MagicMock,
+@test
+async def user_flow_duplicate(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _teleinfo: MagicMock = Depends(mock_teleinfo),
+    _serial_port: MagicMock = Depends(mock_serial_port),
 ) -> None:
     """Test we abort when the same serial port is already configured."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -104,40 +135,47 @@ async def test_user_flow_duplicate(
         result["flow_id"], {CONF_SERIAL_PORT: "/dev/ttyUSB0"}
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_user_flow_decode_error(
-    hass: HomeAssistant, mock_teleinfo: MagicMock, mock_serial_port: MagicMock
+@test
+async def user_flow_decode_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    teleinfo: MagicMock = Depends(mock_teleinfo),
+    _serial_port: MagicMock = Depends(mock_serial_port),
 ) -> None:
     """Test we handle decode errors from pyteleinfo."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    mock_teleinfo.decode.side_effect = mock_teleinfo.TeleinfoError("bad frame")
+    teleinfo.decode.side_effect = teleinfo.TeleinfoError("bad frame")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_SERIAL_PORT: "/dev/ttyUSB0"}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "unknown"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "unknown"})
 
-    mock_teleinfo.decode.side_effect = None
+    teleinfo.decode.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_SERIAL_PORT: "/dev/ttyUSB0"}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@pytest.mark.usefixtures("mock_teleinfo")
-async def test_usb_discovery_success(
-    hass: HomeAssistant, mock_serial_port: MagicMock
+@test
+async def usb_discovery_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _teleinfo: MagicMock = Depends(mock_teleinfo),
+    _serial_port: MagicMock = Depends(mock_serial_port),
 ) -> None:
     """Test USB discovery happy path: detect → validate → confirm → create entry."""
     result = await hass.config_entries.flow.async_init(
@@ -146,23 +184,26 @@ async def test_usb_discovery_success(
         data=USB_DISCOVERY_INFO,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "usb_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("usb_confirm")
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Teleinfo (/dev/ttyUSB0)"
-    assert result["data"] == {CONF_SERIAL_PORT: "/dev/ttyUSB0"}
-    assert result["result"].unique_id == "021861348497"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Teleinfo (/dev/ttyUSB0)")
+    expect(result["data"]).to_equal({CONF_SERIAL_PORT: "/dev/ttyUSB0"})
+    expect(result["result"].unique_id).to_equal("021861348497")
 
 
-@pytest.mark.usefixtures("mock_teleinfo")
-async def test_usb_discovery_not_teleinfo(
-    hass: HomeAssistant, mock_serial_port: MagicMock
+@test
+async def usb_discovery_not_teleinfo(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _teleinfo: MagicMock = Depends(mock_teleinfo),
+    serial_port: MagicMock = Depends(mock_serial_port),
 ) -> None:
     """Test USB discovery aborts when frame read times out (not a Teleinfo device)."""
-    mock_serial_port.side_effect = TimeoutError("No data received")
+    serial_port.side_effect = TimeoutError("No data received")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -170,16 +211,18 @@ async def test_usb_discovery_not_teleinfo(
         data=USB_DISCOVERY_INFO,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_teleinfo_device"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("not_teleinfo_device")
 
 
-@pytest.mark.usefixtures("mock_teleinfo")
-async def test_usb_discovery_already_configured_updates_path(
-    hass: HomeAssistant, mock_serial_port: MagicMock
+@test
+async def usb_discovery_already_configured_updates_path(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _teleinfo: MagicMock = Depends(mock_teleinfo),
+    _serial_port: MagicMock = Depends(mock_serial_port),
 ) -> None:
     """Test USB discovery updates device path when dongle is re-plugged."""
-
     # Existing entry with same ADCO but old path
     existing_entry = MockConfigEntry(
         title="Teleinfo (/dev/ttyUSB-old)",
@@ -202,22 +245,23 @@ async def test_usb_discovery_already_configured_updates_path(
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
     # Path should be updated to the new device path
-    assert existing_entry.data[CONF_SERIAL_PORT] == "/dev/ttyUSB-new"
+    expect(existing_entry.data[CONF_SERIAL_PORT]).to_equal("/dev/ttyUSB-new")
 
 
-@pytest.mark.usefixtures("mock_teleinfo")
-async def test_usb_discovery_manual_entry_duplicate(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_serial_port: MagicMock,
+@test
+async def usb_discovery_manual_entry_duplicate(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _teleinfo: MagicMock = Depends(mock_teleinfo),
+    _serial_port: MagicMock = Depends(mock_serial_port),
 ) -> None:
     """Test USB discovery aborts when the meter was already added manually."""
-
-    # mock_config_entry has ADCO unique_id — same as what USB discovery will find
-    mock_config_entry.add_to_hass(hass)
+    # config_entry has ADCO unique_id — same as what USB discovery will find
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -225,18 +269,19 @@ async def test_usb_discovery_manual_entry_duplicate(
         data=USB_DISCOVERY_INFO,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_usb_discovery_decode_error_aborts(
-    hass: HomeAssistant,
-    mock_teleinfo: MagicMock,
-    mock_serial_port: MagicMock,
+@test
+async def usb_discovery_decode_error_aborts(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    teleinfo: MagicMock = Depends(mock_teleinfo),
+    _serial_port: MagicMock = Depends(mock_serial_port),
 ) -> None:
     """Test USB discovery aborts when frame is read but decode fails."""
-
-    mock_teleinfo.decode.side_effect = mock_teleinfo.TeleinfoError("bad frame")
+    teleinfo.decode.side_effect = teleinfo.TeleinfoError("bad frame")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -244,5 +289,5 @@ async def test_usb_discovery_decode_error_aborts(
         data=USB_DISCOVERY_INFO,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "not_teleinfo_device"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("not_teleinfo_device")

@@ -7,7 +7,7 @@ from pyanglianwater.exceptions import (
     SelfAssertedError,
     SmartMeterUnavailableError,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.anglian_water.const import CONF_ACCOUNT_NUMBER, DOMAIN
@@ -16,57 +16,73 @@ from homeassistant.const import CONF_ACCESS_TOKEN, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.common import MockConfigEntry, async_load_json_object_fixture
+from tests.components.anglian_water._fixtures import (
+    mock_anglian_water_authenticator,
+    mock_anglian_water_client,
+    mock_config_entry,
+    mock_setup_entry,
+)
+from tests.hass_fixtures import hass, mock_network
+
 from .const import ACCESS_TOKEN, ACCOUNT_NUMBER, PASSWORD, USERNAME
 
-from tests.common import MockConfigEntry, async_load_json_object_fixture
+
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
 
 
-async def test_multiple_account_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_anglian_water_authenticator: AsyncMock,
-    mock_anglian_water_client: AsyncMock,
+@test
+async def multiple_account_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_anglian_water_authenticator: AsyncMock = Depends(
+        mock_anglian_water_authenticator
+    ),
+    _mock_anglian_water_client: AsyncMock = Depends(mock_anglian_water_client),
 ) -> None:
     """Test the config flow when there are multiple accounts."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result is not None
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result is not None).to_be(True)
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_USERNAME: USERNAME,
-            CONF_PASSWORD: PASSWORD,
-        },
+        user_input={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "select_account"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("select_account")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_ACCOUNT_NUMBER: ACCOUNT_NUMBER,
-        },
+        user_input={CONF_ACCOUNT_NUMBER: ACCOUNT_NUMBER},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == ACCOUNT_NUMBER
-    assert result["data"][CONF_USERNAME] == USERNAME
-    assert result["data"][CONF_PASSWORD] == PASSWORD
-    assert result["data"][CONF_ACCESS_TOKEN] == ACCESS_TOKEN
-    assert result["data"][CONF_ACCOUNT_NUMBER] == ACCOUNT_NUMBER
-    assert result["result"].unique_id == ACCOUNT_NUMBER
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(ACCOUNT_NUMBER)
+    expect(result["data"][CONF_USERNAME]).to_equal(USERNAME)
+    expect(result["data"][CONF_PASSWORD]).to_equal(PASSWORD)
+    expect(result["data"][CONF_ACCESS_TOKEN]).to_equal(ACCESS_TOKEN)
+    expect(result["data"][CONF_ACCOUNT_NUMBER]).to_equal(ACCOUNT_NUMBER)
+    expect(result["result"].unique_id).to_equal(ACCOUNT_NUMBER)
 
 
-async def test_single_account_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_anglian_water_authenticator: AsyncMock,
-    mock_anglian_water_client: AsyncMock,
+@test
+async def single_account_flow(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _mock_anglian_water_authenticator: AsyncMock = Depends(
+        mock_anglian_water_authenticator
+    ),
+    mock_anglian_water_client: AsyncMock = Depends(mock_anglian_water_client),
 ) -> None:
     """Test the config flow when there is just a single account."""
     mock_anglian_water_client.api.get_associated_accounts.return_value = (
@@ -78,33 +94,34 @@ async def test_single_account_flow(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result is not None
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result is not None).to_be(True)
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_USERNAME: USERNAME,
-            CONF_PASSWORD: PASSWORD,
-        },
+        user_input={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == ACCOUNT_NUMBER
-    assert result["data"][CONF_USERNAME] == USERNAME
-    assert result["data"][CONF_PASSWORD] == PASSWORD
-    assert result["data"][CONF_ACCESS_TOKEN] == ACCESS_TOKEN
-    assert result["data"][CONF_ACCOUNT_NUMBER] == ACCOUNT_NUMBER
-    assert result["result"].unique_id == ACCOUNT_NUMBER
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(ACCOUNT_NUMBER)
+    expect(result["data"][CONF_USERNAME]).to_equal(USERNAME)
+    expect(result["data"][CONF_PASSWORD]).to_equal(PASSWORD)
+    expect(result["data"][CONF_ACCESS_TOKEN]).to_equal(ACCESS_TOKEN)
+    expect(result["data"][CONF_ACCOUNT_NUMBER]).to_equal(ACCOUNT_NUMBER)
+    expect(result["result"].unique_id).to_equal(ACCOUNT_NUMBER)
 
 
-async def test_already_configured(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    mock_anglian_water_authenticator: AsyncMock,
-    mock_anglian_water_client: AsyncMock,
+@test
+async def already_configured(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_anglian_water_authenticator: AsyncMock = Depends(
+        mock_anglian_water_authenticator
+    ),
+    _mock_anglian_water_client: AsyncMock = Depends(mock_anglian_water_client),
 ) -> None:
     """Test that the flow aborts when the entry is already added."""
     mock_config_entry.add_to_hass(hass)
@@ -112,157 +129,142 @@ async def test_already_configured(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result is not None
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result is not None).to_be(True)
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_USERNAME: USERNAME,
-            CONF_PASSWORD: PASSWORD,
-        },
+        user_input={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "select_account"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("select_account")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_ACCOUNT_NUMBER: ACCOUNT_NUMBER,
-        },
+        user_input={CONF_ACCOUNT_NUMBER: ACCOUNT_NUMBER},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"] is FlowResultType.ABORT).to_be(True)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("exception_type", "expected_error"),
-    [(SelfAssertedError, "invalid_auth"), (ValueError, "unknown")],
+@test.cases(
+    test.case("invalid_auth", SelfAssertedError, "invalid_auth"),
+    test.case("unknown", ValueError, "unknown"),
 )
-async def test_auth_recover_exception(
-    hass: HomeAssistant,
-    mock_anglian_water_authenticator: AsyncMock,
-    mock_anglian_water_client: AsyncMock,
-    exception_type,
-    expected_error,
+async def auth_recover_exception(
+    exception_type: type[Exception],
+    expected_error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    mock_anglian_water_authenticator: AsyncMock = Depends(
+        mock_anglian_water_authenticator
+    ),
+    _mock_anglian_water_client: AsyncMock = Depends(mock_anglian_water_client),
 ) -> None:
     """Test that the flow can recover from an auth exception."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result is not None
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result is not None).to_be(True)
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     mock_anglian_water_authenticator.send_login_request.side_effect = exception_type
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_USERNAME: USERNAME,
-            CONF_PASSWORD: PASSWORD,
-        },
+        user_input={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": expected_error}
-
-    # Now test we can recover
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": expected_error})
 
     mock_anglian_water_authenticator.send_login_request.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_USERNAME: USERNAME,
-            CONF_PASSWORD: PASSWORD,
-        },
+        user_input={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "select_account"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("select_account")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_ACCOUNT_NUMBER: ACCOUNT_NUMBER,
-        },
+        user_input={CONF_ACCOUNT_NUMBER: ACCOUNT_NUMBER},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == ACCOUNT_NUMBER
-    assert result["data"][CONF_USERNAME] == USERNAME
-    assert result["data"][CONF_PASSWORD] == PASSWORD
-    assert result["data"][CONF_ACCESS_TOKEN] == ACCESS_TOKEN
-    assert result["data"][CONF_ACCOUNT_NUMBER] == ACCOUNT_NUMBER
-    assert result["result"].unique_id == ACCOUNT_NUMBER
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(ACCOUNT_NUMBER)
+    expect(result["data"][CONF_USERNAME]).to_equal(USERNAME)
+    expect(result["data"][CONF_PASSWORD]).to_equal(PASSWORD)
+    expect(result["data"][CONF_ACCESS_TOKEN]).to_equal(ACCESS_TOKEN)
+    expect(result["data"][CONF_ACCOUNT_NUMBER]).to_equal(ACCOUNT_NUMBER)
+    expect(result["result"].unique_id).to_equal(ACCOUNT_NUMBER)
 
 
-@pytest.mark.parametrize(
-    ("exception_type", "expected_error"),
-    [
-        (SmartMeterUnavailableError, "smart_meter_unavailable"),
-        (InvalidAccountIdError, "smart_meter_unavailable"),
-    ],
+@test.cases(
+    test.case(
+        "smart_meter_unavailable",
+        SmartMeterUnavailableError,
+        "smart_meter_unavailable",
+    ),
+    test.case(
+        "invalid_account_id", InvalidAccountIdError, "smart_meter_unavailable"
+    ),
 )
-async def test_account_recover_exception(
-    hass: HomeAssistant,
-    mock_anglian_water_authenticator: AsyncMock,
-    mock_anglian_water_client: AsyncMock,
-    exception_type,
-    expected_error,
+async def account_recover_exception(
+    exception_type: type[Exception],
+    expected_error: str,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_anglian_water_authenticator: AsyncMock = Depends(
+        mock_anglian_water_authenticator
+    ),
+    mock_anglian_water_client: AsyncMock = Depends(mock_anglian_water_client),
 ) -> None:
     """Test that the flow can recover from an account related exception."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result is not None
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result is not None).to_be(True)
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_USERNAME: USERNAME,
-            CONF_PASSWORD: PASSWORD,
-        },
+        user_input={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
     )
 
     mock_anglian_water_client.validate_smart_meter.side_effect = exception_type
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "select_account"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("select_account")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_ACCOUNT_NUMBER: ACCOUNT_NUMBER,
-        },
+        user_input={CONF_ACCOUNT_NUMBER: ACCOUNT_NUMBER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "select_account"
-    assert result["errors"] == {"base": expected_error}
-
-    # Now test we can recover
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("select_account")
+    expect(result["errors"]).to_equal({"base": expected_error})
 
     mock_anglian_water_client.validate_smart_meter.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        user_input={
-            CONF_ACCOUNT_NUMBER: ACCOUNT_NUMBER,
-        },
+        user_input={CONF_ACCOUNT_NUMBER: ACCOUNT_NUMBER},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == ACCOUNT_NUMBER
-    assert result["data"][CONF_USERNAME] == USERNAME
-    assert result["data"][CONF_PASSWORD] == PASSWORD
-    assert result["data"][CONF_ACCESS_TOKEN] == ACCESS_TOKEN
-    assert result["data"][CONF_ACCOUNT_NUMBER] == ACCOUNT_NUMBER
-    assert result["result"].unique_id == ACCOUNT_NUMBER
+    expect(result["type"] is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result["title"]).to_equal(ACCOUNT_NUMBER)
+    expect(result["data"][CONF_USERNAME]).to_equal(USERNAME)
+    expect(result["data"][CONF_PASSWORD]).to_equal(PASSWORD)
+    expect(result["data"][CONF_ACCESS_TOKEN]).to_equal(ACCESS_TOKEN)
+    expect(result["data"][CONF_ACCOUNT_NUMBER]).to_equal(ACCOUNT_NUMBER)
+    expect(result["result"].unique_id).to_equal(ACCOUNT_NUMBER)

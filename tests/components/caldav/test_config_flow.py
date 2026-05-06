@@ -1,11 +1,12 @@
 """Test the CalDAV config flow."""
 
-from collections.abc import Generator
-from unittest.mock import AsyncMock, Mock, patch
+from __future__ import annotations
 
-from caldav.lib.error import AuthorizationError, DAVError
-import pytest
+from unittest.mock import AsyncMock, MagicMock, Mock
+
 import requests
+from caldav.lib.error import AuthorizationError, DAVError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.caldav.const import DOMAIN
@@ -13,30 +14,41 @@ from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import TEST_PASSWORD, TEST_URL, TEST_USERNAME
-
 from tests.common import MockConfigEntry
+from tests.components.caldav._fixtures import (
+    TEST_PASSWORD,
+    TEST_URL,
+    TEST_USERNAME,
+    config_entry,
+    dav_client,
+    mock_patch_platforms,
+    mock_setup_entry,
+    mock_zeroconf,
+)
+from tests.hass_fixtures import hass, mock_network
 
 
-@pytest.fixture
-def mock_setup_entry() -> Generator[AsyncMock]:
-    """Override async_setup_entry."""
-    with patch(
-        f"homeassistant.components.{DOMAIN}.async_setup_entry", return_value=True
-    ) as mock_setup_entry:
-        yield mock_setup_entry
+@fixture
+def _trigger_executor() -> int:
+    """Opt the module into Tryke's HookExecutor path."""
+    return 0
 
 
-async def test_form(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
+@test
+async def form(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_patch_platforms: None = Depends(mock_patch_platforms),
+    _dav_client: Mock = Depends(dav_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test successful config flow setup."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert not result.get("errors")
+    expect(result.get("type") is FlowResultType.FORM).to_be(True)
+    expect(bool(result.get("errors"))).to_be(False)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -49,32 +61,42 @@ async def test_form(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2.get("title") == TEST_USERNAME
-    assert result2.get("data") == {
-        CONF_URL: TEST_URL,
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: TEST_PASSWORD,
-        CONF_VERIFY_SSL: False,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2.get("type") is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result2.get("title")).to_equal(TEST_USERNAME)
+    expect(result2.get("data")).to_equal(
+        {
+            CONF_URL: TEST_URL,
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: TEST_PASSWORD,
+            CONF_VERIFY_SSL: False,
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [
-        (Exception(), "unknown"),
-        (requests.ConnectionError(), "cannot_connect"),
-        (DAVError(), "cannot_connect"),
-        (AuthorizationError(reason="Unauthorized"), "invalid_auth"),
-        (AuthorizationError(reason="Other"), "cannot_connect"),
-    ],
+@test.cases(
+    test.case("unknown", Exception(), "unknown"),
+    test.case("cannot_connect_connection", requests.ConnectionError(), "cannot_connect"),
+    test.case("cannot_connect_dav", DAVError(), "cannot_connect"),
+    test.case(
+        "invalid_auth",
+        AuthorizationError(reason="Unauthorized"),
+        "invalid_auth",
+    ),
+    test.case(
+        "cannot_connect_auth_other",
+        AuthorizationError(reason="Other"),
+        "cannot_connect",
+    ),
 )
-async def test_caldav_client_error(
-    hass: HomeAssistant,
+async def caldav_client_error(
     side_effect: Exception,
     expected_error: str,
-    dav_client: Mock,
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_patch_platforms: None = Depends(mock_patch_platforms),
+    dav_client: Mock = Depends(dav_client),
 ) -> None:
     """Test CalDav client errors during configuration flow."""
     result = await hass.config_entries.flow.async_init(
@@ -93,126 +115,134 @@ async def test_caldav_client_error(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("errors") == {"base": expected_error}
+    expect(result2.get("type") is FlowResultType.FORM).to_be(True)
+    expect(result2.get("errors")).to_equal({"base": expected_error})
 
 
-async def test_reauth_success(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    config_entry: MockConfigEntry,
+@test
+async def reauth_success(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_patch_platforms: None = Depends(mock_patch_platforms),
+    _dav_client: Mock = Depends(dav_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test reauthentication configuration flow."""
-
     config_entry.add_to_hass(hass)
 
     result = await config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_PASSWORD: "password-2",
-        },
+        {CONF_PASSWORD: "password-2"},
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.ABORT
-    assert result2.get("reason") == "reauth_successful"
+    expect(result2.get("type") is FlowResultType.ABORT).to_be(True)
+    expect(result2.get("reason")).to_equal("reauth_successful")
 
-    # Verify updated configuration entry
-    assert dict(config_entry.data) == {
-        CONF_URL: "https://example.com/url-1",
-        CONF_USERNAME: "username-1",
-        CONF_PASSWORD: "password-2",
-        CONF_VERIFY_SSL: True,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(dict(config_entry.data)).to_equal(
+        {
+            CONF_URL: "https://example.com/url-1",
+            CONF_USERNAME: "username-1",
+            CONF_PASSWORD: "password-2",
+            CONF_VERIFY_SSL: True,
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_reauth_failure(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    config_entry: MockConfigEntry,
-    dav_client: Mock,
+@test
+async def reauth_failure(
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_patch_platforms: None = Depends(mock_patch_platforms),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(config_entry),
+    dav_client: Mock = Depends(dav_client),
 ) -> None:
     """Test a failure during reauthentication configuration flow."""
-
     config_entry.add_to_hass(hass)
 
     result = await config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"] is FlowResultType.FORM).to_be(True)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     dav_client.return_value.principal.side_effect = DAVError
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_PASSWORD: "password-2",
-        },
+        {CONF_PASSWORD: "password-2"},
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.FORM
-    assert result2.get("errors") == {"base": "cannot_connect"}
+    expect(result2.get("type") is FlowResultType.FORM).to_be(True)
+    expect(result2.get("errors")).to_equal({"base": "cannot_connect"})
 
-    # Complete the form and it succeeds this time
     dav_client.return_value.principal.side_effect = None
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_PASSWORD: "password-3",
-        },
+        {CONF_PASSWORD: "password-3"},
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.ABORT
-    assert result2.get("reason") == "reauth_successful"
+    expect(result2.get("type") is FlowResultType.ABORT).to_be(True)
+    expect(result2.get("reason")).to_equal("reauth_successful")
 
-    # Verify updated configuration entry
-    assert dict(config_entry.data) == {
-        CONF_URL: "https://example.com/url-1",
-        CONF_USERNAME: "username-1",
-        CONF_PASSWORD: "password-3",
-        CONF_VERIFY_SSL: True,
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(dict(config_entry.data)).to_equal(
+        {
+            CONF_URL: "https://example.com/url-1",
+            CONF_USERNAME: "username-1",
+            CONF_PASSWORD: "password-3",
+            CONF_VERIFY_SSL: True,
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("user_input"),
-    [
+@test.cases(
+    test.case(
+        "different_path",
         {
             CONF_URL: f"{TEST_URL}/different-path",
             CONF_USERNAME: TEST_USERNAME,
             CONF_PASSWORD: TEST_PASSWORD,
         },
+    ),
+    test.case(
+        "different_user",
         {
             CONF_URL: TEST_URL,
             CONF_USERNAME: f"{TEST_USERNAME}-different-user",
             CONF_PASSWORD: TEST_PASSWORD,
         },
-    ],
+    ),
 )
-async def test_multiple_config_entries(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    config_entry: MockConfigEntry,
+async def multiple_config_entries(
     user_input: dict[str, str],
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_patch_platforms: None = Depends(mock_patch_platforms),
+    _dav_client: Mock = Depends(dav_client),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test multiple configuration entries with unique settings."""
-
     config_entry.add_to_hass(hass)
     entries = hass.config_entries.async_entries(DOMAIN)
-    assert len(entries) == 1
+    expect(len(entries)).to_equal(1)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert not result.get("errors")
+    expect(result.get("type") is FlowResultType.FORM).to_be(True)
+    expect(bool(result.get("errors"))).to_be(False)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -220,47 +250,50 @@ async def test_multiple_config_entries(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.CREATE_ENTRY
-    assert result2.get("title") == user_input[CONF_USERNAME]
-    assert result2.get("data") == {
-        **user_input,
-        CONF_VERIFY_SSL: True,
-    }
-    assert len(mock_setup_entry.mock_calls) == 2
+    expect(result2.get("type") is FlowResultType.CREATE_ENTRY).to_be(True)
+    expect(result2.get("title")).to_equal(user_input[CONF_USERNAME])
+    expect(result2.get("data")).to_equal({**user_input, CONF_VERIFY_SSL: True})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(2)
     entries = hass.config_entries.async_entries(DOMAIN)
-    assert len(entries) == 2
+    expect(len(entries)).to_equal(2)
 
 
-@pytest.mark.parametrize(
-    ("user_input"),
-    [
+@test.cases(
+    test.case(
+        "same_password",
         {
             CONF_URL: TEST_URL,
             CONF_USERNAME: TEST_USERNAME,
             CONF_PASSWORD: TEST_PASSWORD,
         },
+    ),
+    test.case(
+        "different_password",
         {
             CONF_URL: TEST_URL,
             CONF_USERNAME: TEST_USERNAME,
             CONF_PASSWORD: f"{TEST_PASSWORD}-different",
         },
-    ],
+    ),
 )
-async def test_duplicate_config_entries(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    config_entry: MockConfigEntry,
+async def duplicate_config_entries(
     user_input: dict[str, str],
+    hass: HomeAssistant = Depends(hass),
+    _mock_network: None = Depends(mock_network),
+    _mock_zeroconf: MagicMock = Depends(mock_zeroconf),
+    _mock_patch_platforms: None = Depends(mock_patch_platforms),
+    _dav_client: Mock = Depends(dav_client),
+    _mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test multiple configuration entries with the same settings."""
-
     config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert not result.get("errors")
+    expect(result.get("type") is FlowResultType.FORM).to_be(True)
+    expect(bool(result.get("errors"))).to_be(False)
 
     result2 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -268,5 +301,5 @@ async def test_duplicate_config_entries(
     )
     await hass.async_block_till_done()
 
-    assert result2.get("type") is FlowResultType.ABORT
-    assert result2.get("reason") == "already_configured"
+    expect(result2.get("type") is FlowResultType.ABORT).to_be(True)
+    expect(result2.get("reason")).to_equal("already_configured")

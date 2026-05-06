@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components.leaone.const import DOMAIN
 from homeassistant.config_entries import SOURCE_IGNORE
@@ -11,19 +13,40 @@ from homeassistant.data_entry_flow import FlowResultType
 from . import SCALE_SERVICE_INFO
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    enable_bluetooth,
+    hass as hass_fixture,
+    mock_network,
+)
 
 
-async def test_async_step_user_no_devices_found(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _bluetooth: None = Depends(enable_bluetooth),
+) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def async_step_user_no_devices_found(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test setup from service info cache with no devices found."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_USER},
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
 
 
-async def test_async_step_user_with_found_devices(hass: HomeAssistant) -> None:
+@test
+async def async_step_user_with_found_devices(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test setup from service info cache with devices found."""
     with patch(
         "homeassistant.components.leaone.config_flow.async_discovered_service_info",
@@ -33,20 +56,24 @@ async def test_async_step_user_with_found_devices(hass: HomeAssistant) -> None:
             DOMAIN,
             context={"source": config_entries.SOURCE_USER},
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
     with patch("homeassistant.components.leaone.async_setup_entry", return_value=True):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={"address": "5F:5A:5C:52:D3:94"},
         )
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "TZC4 D394"
-    assert result2["data"] == {}
-    assert result2["result"].unique_id == "5F:5A:5C:52:D3:94"
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("TZC4 D394")
+    expect(result2["data"]).to_equal({})
+    expect(result2["result"].unique_id).to_equal("5F:5A:5C:52:D3:94")
 
 
-async def test_async_step_user_device_added_between_steps(hass: HomeAssistant) -> None:
+@test
+async def async_step_user_device_added_between_steps(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the device gets added via another flow between steps."""
     with patch(
         "homeassistant.components.leaone.config_flow.async_discovered_service_info",
@@ -56,8 +83,8 @@ async def test_async_step_user_device_added_between_steps(hass: HomeAssistant) -
             DOMAIN,
             context={"source": config_entries.SOURCE_USER},
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -70,12 +97,14 @@ async def test_async_step_user_device_added_between_steps(hass: HomeAssistant) -
             result["flow_id"],
             user_input={"address": "5F:5A:5C:52:D3:94"},
         )
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")
 
 
-async def test_async_step_user_with_found_devices_already_setup(
-    hass: HomeAssistant,
+@test
+async def async_step_user_with_found_devices_already_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test setup from service info cache with devices found."""
     entry = MockConfigEntry(
@@ -92,11 +121,15 @@ async def test_async_step_user_with_found_devices_already_setup(
             DOMAIN,
             context={"source": config_entries.SOURCE_USER},
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
 
 
-async def test_user_setup_replaces_ignored_device(hass: HomeAssistant) -> None:
+@test
+async def user_setup_replaces_ignored_device(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test the user initiated form can replace an ignored device."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -114,18 +147,20 @@ async def test_user_setup_replaces_ignored_device(hass: HomeAssistant) -> None:
             DOMAIN,
             context={"source": config_entries.SOURCE_USER},
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    # Verify the ignored device is in the dropdown
-    assert "5F:5A:5C:52:D3:94" in result["data_schema"].schema["address"].container
+    # Verify the ignored device is in the dropdown.
+    expect(
+        "5F:5A:5C:52:D3:94" in result["data_schema"].schema["address"].container
+    ).to_be(True)
 
     with patch("homeassistant.components.leaone.async_setup_entry", return_value=True):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={"address": "5F:5A:5C:52:D3:94"},
         )
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "TZC4 D394"
-    assert result2["data"] == {}
-    assert result2["result"].unique_id == "5F:5A:5C:52:D3:94"
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("TZC4 D394")
+    expect(result2["data"]).to_equal({})
+    expect(result2["result"].unique_id).to_equal("5F:5A:5C:52:D3:94")

@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 import aiohttp
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.wmspro.const import DOMAIN
 from homeassistant.config_entries import SOURCE_DHCP, SOURCE_USER, ConfigEntryState
@@ -12,19 +13,38 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from . import setup_config_entry
+from ._fixtures import (
+    mock_config_entry,
+    mock_dest_refresh,
+    mock_hub_configuration_prod_awning_dimmer,
+    mock_hub_configuration_test,
+    mock_hub_ping,
+    mock_hub_refresh,
+    mock_setup_entry,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_config_flow(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_hub_refresh: AsyncMock
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def config_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup: AsyncMock = Depends(mock_setup_entry),
+    _refresh: AsyncMock = Depends(mock_hub_refresh),
 ) -> None:
     """Test we can handle user-input to create a config entry."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "wmspro.webcontrol.WebControlPro.ping",
@@ -37,16 +57,18 @@ async def test_config_flow(
             },
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "1.2.3.4"
-    assert result["data"] == {
-        CONF_HOST: "1.2.3.4",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("1.2.3.4")
+    expect(result["data"]).to_equal({CONF_HOST: "1.2.3.4"})
+    expect(len(setup.mock_calls)).to_equal(1)
 
 
-async def test_config_flow_from_dhcp(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_hub_refresh: AsyncMock
+@test
+async def config_flow_from_dhcp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup: AsyncMock = Depends(mock_setup_entry),
+    _refresh: AsyncMock = Depends(mock_hub_refresh),
 ) -> None:
     """Test we can handle DHCP discovery to create a config entry."""
     info = DhcpServiceInfo(
@@ -55,8 +77,8 @@ async def test_config_flow_from_dhcp(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_DHCP}, data=info
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "wmspro.webcontrol.WebControlPro.ping",
@@ -69,25 +91,25 @@ async def test_config_flow_from_dhcp(
             },
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "1.2.3.4"
-    assert result["data"] == {
-        CONF_HOST: "1.2.3.4",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("1.2.3.4")
+    expect(result["data"]).to_equal({CONF_HOST: "1.2.3.4"})
+    expect(len(setup.mock_calls)).to_equal(1)
 
 
-async def test_config_flow_from_dhcp_add_mac(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_hub_refresh: AsyncMock,
+@test
+async def config_flow_from_dhcp_add_mac(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup: AsyncMock = Depends(mock_setup_entry),
+    _refresh: AsyncMock = Depends(mock_hub_refresh),
 ) -> None:
     """Test we can use DHCP discovery to add MAC address to a config entry."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "wmspro.webcontrol.WebControlPro.ping",
@@ -100,13 +122,11 @@ async def test_config_flow_from_dhcp_add_mac(
             },
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "1.2.3.4"
-    assert result["data"] == {
-        CONF_HOST: "1.2.3.4",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert hass.config_entries.async_entries(DOMAIN)[0].unique_id is None
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("1.2.3.4")
+    expect(result["data"]).to_equal({CONF_HOST: "1.2.3.4"})
+    expect(len(setup.mock_calls)).to_equal(1)
+    expect(hass.config_entries.async_entries(DOMAIN)[0].unique_id).to_be(None)
 
     info = DhcpServiceInfo(
         ip="1.2.3.4", hostname="webcontrol", macaddress="001122334455"
@@ -114,15 +134,19 @@ async def test_config_flow_from_dhcp_add_mac(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_DHCP}, data=info
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert hass.config_entries.async_entries(DOMAIN)[0].unique_id == "00:11:22:33:44:55"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(hass.config_entries.async_entries(DOMAIN)[0].unique_id).to_equal(
+        "00:11:22:33:44:55"
+    )
 
 
-async def test_config_flow_from_dhcp_ip_update(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_hub_refresh: AsyncMock,
+@test
+async def config_flow_from_dhcp_ip_update(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup: AsyncMock = Depends(mock_setup_entry),
+    _refresh: AsyncMock = Depends(mock_hub_refresh),
 ) -> None:
     """Test we can use DHCP discovery to update IP in a config entry."""
     info = DhcpServiceInfo(
@@ -131,8 +155,8 @@ async def test_config_flow_from_dhcp_ip_update(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_DHCP}, data=info
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "wmspro.webcontrol.WebControlPro.ping",
@@ -145,13 +169,13 @@ async def test_config_flow_from_dhcp_ip_update(
             },
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "1.2.3.4"
-    assert result["data"] == {
-        CONF_HOST: "1.2.3.4",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert hass.config_entries.async_entries(DOMAIN)[0].unique_id == "00:11:22:33:44:55"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("1.2.3.4")
+    expect(result["data"]).to_equal({CONF_HOST: "1.2.3.4"})
+    expect(len(setup.mock_calls)).to_equal(1)
+    expect(hass.config_entries.async_entries(DOMAIN)[0].unique_id).to_equal(
+        "00:11:22:33:44:55"
+    )
 
     info = DhcpServiceInfo(
         ip="5.6.7.8", hostname="webcontrol", macaddress="001122334455"
@@ -159,16 +183,22 @@ async def test_config_flow_from_dhcp_ip_update(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_DHCP}, data=info
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert hass.config_entries.async_entries(DOMAIN)[0].unique_id == "00:11:22:33:44:55"
-    assert hass.config_entries.async_entries(DOMAIN)[0].data[CONF_HOST] == "5.6.7.8"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(hass.config_entries.async_entries(DOMAIN)[0].unique_id).to_equal(
+        "00:11:22:33:44:55"
+    )
+    expect(hass.config_entries.async_entries(DOMAIN)[0].data[CONF_HOST]).to_equal(
+        "5.6.7.8"
+    )
 
 
-async def test_config_flow_from_dhcp_no_update(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_hub_refresh: AsyncMock,
+@test
+async def config_flow_from_dhcp_no_update(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup: AsyncMock = Depends(mock_setup_entry),
+    _refresh: AsyncMock = Depends(mock_hub_refresh),
 ) -> None:
     """Test we do not use DHCP discovery to overwrite hostname with IP in config entry."""
     info = DhcpServiceInfo(
@@ -177,8 +207,8 @@ async def test_config_flow_from_dhcp_no_update(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_DHCP}, data=info
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "wmspro.webcontrol.WebControlPro.ping",
@@ -191,13 +221,13 @@ async def test_config_flow_from_dhcp_no_update(
             },
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "webcontrol"
-    assert result["data"] == {
-        CONF_HOST: "webcontrol",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert hass.config_entries.async_entries(DOMAIN)[0].unique_id == "00:11:22:33:44:55"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("webcontrol")
+    expect(result["data"]).to_equal({CONF_HOST: "webcontrol"})
+    expect(len(setup.mock_calls)).to_equal(1)
+    expect(hass.config_entries.async_entries(DOMAIN)[0].unique_id).to_equal(
+        "00:11:22:33:44:55"
+    )
 
     info = DhcpServiceInfo(
         ip="5.6.7.8", hostname="webcontrol", macaddress="001122334455"
@@ -205,14 +235,22 @@ async def test_config_flow_from_dhcp_no_update(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_DHCP}, data=info
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert hass.config_entries.async_entries(DOMAIN)[0].unique_id == "00:11:22:33:44:55"
-    assert hass.config_entries.async_entries(DOMAIN)[0].data[CONF_HOST] == "webcontrol"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(hass.config_entries.async_entries(DOMAIN)[0].unique_id).to_equal(
+        "00:11:22:33:44:55"
+    )
+    expect(hass.config_entries.async_entries(DOMAIN)[0].data[CONF_HOST]).to_equal(
+        "webcontrol"
+    )
 
 
-async def test_config_flow_ping_failed(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_hub_refresh: AsyncMock
+@test
+async def config_flow_ping_failed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup: AsyncMock = Depends(mock_setup_entry),
+    _refresh: AsyncMock = Depends(mock_hub_refresh),
 ) -> None:
     """Test we handle ping failed error."""
     result = await hass.config_entries.flow.async_init(
@@ -225,13 +263,11 @@ async def test_config_flow_ping_failed(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.2.3.4",
-            },
+            {CONF_HOST: "1.2.3.4"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     with patch(
         "wmspro.webcontrol.WebControlPro.ping",
@@ -239,21 +275,21 @@ async def test_config_flow_ping_failed(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.2.3.4",
-            },
+            {CONF_HOST: "1.2.3.4"},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "1.2.3.4"
-    assert result["data"] == {
-        CONF_HOST: "1.2.3.4",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("1.2.3.4")
+    expect(result["data"]).to_equal({CONF_HOST: "1.2.3.4"})
+    expect(len(setup.mock_calls)).to_equal(1)
 
 
-async def test_config_flow_cannot_connect(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_hub_refresh: AsyncMock
+@test
+async def config_flow_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup: AsyncMock = Depends(mock_setup_entry),
+    _refresh: AsyncMock = Depends(mock_hub_refresh),
 ) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
@@ -266,13 +302,11 @@ async def test_config_flow_cannot_connect(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.2.3.4",
-            },
+            {CONF_HOST: "1.2.3.4"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     with patch(
         "wmspro.webcontrol.WebControlPro.ping",
@@ -280,21 +314,21 @@ async def test_config_flow_cannot_connect(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.2.3.4",
-            },
+            {CONF_HOST: "1.2.3.4"},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "1.2.3.4"
-    assert result["data"] == {
-        CONF_HOST: "1.2.3.4",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("1.2.3.4")
+    expect(result["data"]).to_equal({CONF_HOST: "1.2.3.4"})
+    expect(len(setup.mock_calls)).to_equal(1)
 
 
-async def test_config_flow_unknown_error(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_hub_refresh: AsyncMock
+@test
+async def config_flow_unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup: AsyncMock = Depends(mock_setup_entry),
+    _refresh: AsyncMock = Depends(mock_hub_refresh),
 ) -> None:
     """Test we handle an unknown error."""
     result = await hass.config_entries.flow.async_init(
@@ -307,13 +341,11 @@ async def test_config_flow_unknown_error(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.2.3.4",
-            },
+            {CONF_HOST: "1.2.3.4"},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "unknown"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "unknown"})
 
     with patch(
         "wmspro.webcontrol.WebControlPro.ping",
@@ -321,29 +353,27 @@ async def test_config_flow_unknown_error(
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                CONF_HOST: "1.2.3.4",
-            },
+            {CONF_HOST: "1.2.3.4"},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "1.2.3.4"
-    assert result["data"] == {
-        CONF_HOST: "1.2.3.4",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("1.2.3.4")
+    expect(result["data"]).to_equal({CONF_HOST: "1.2.3.4"})
+    expect(len(setup.mock_calls)).to_equal(1)
 
 
-async def test_config_flow_duplicate_entries(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_hub_ping: AsyncMock,
-    mock_dest_refresh: AsyncMock,
-    mock_hub_configuration_test: AsyncMock,
+@test
+async def config_flow_duplicate_entries(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _ping: AsyncMock = Depends(mock_hub_ping),
+    _dest_refresh: AsyncMock = Depends(mock_dest_refresh),
+    _config_test: AsyncMock = Depends(mock_hub_configuration_test),
 ) -> None:
     """Test we prevent creation of duplicate config entries."""
-    await setup_config_entry(hass, mock_config_entry)
-    assert mock_config_entry.state is ConfigEntryState.LOADED
+    await setup_config_entry(hass, config_entry)
+    expect(config_entry.state).to_be(ConfigEntryState.LOADED)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -351,31 +381,29 @@ async def test_config_flow_duplicate_entries(
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_HOST: "5.6.7.8",
-        },
+        {CONF_HOST: "5.6.7.8"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
 
-async def test_config_flow_multiple_entries(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_hub_ping: AsyncMock,
-    mock_dest_refresh: AsyncMock,
-    mock_hub_configuration_test: AsyncMock,
-    mock_hub_configuration_prod_awning_dimmer: AsyncMock,
+@test
+async def config_flow_multiple_entries(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _ping: AsyncMock = Depends(mock_hub_ping),
+    _dest_refresh: AsyncMock = Depends(mock_dest_refresh),
+    config_test: AsyncMock = Depends(mock_hub_configuration_test),
+    config_dimmer: AsyncMock = Depends(mock_hub_configuration_prod_awning_dimmer),
 ) -> None:
     """Test we allow creation of different config entries."""
-    await setup_config_entry(hass, mock_config_entry)
-    assert mock_config_entry.state is ConfigEntryState.LOADED
+    await setup_config_entry(hass, config_entry)
+    expect(config_entry.state).to_be(ConfigEntryState.LOADED)
 
-    mock_hub_configuration_prod_awning_dimmer.return_value = (
-        mock_hub_configuration_test.return_value
-    )
+    config_dimmer.return_value = config_test.return_value
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -383,14 +411,10 @@ async def test_config_flow_multiple_entries(
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {
-            CONF_HOST: "5.6.7.8",
-        },
+        {CONF_HOST: "5.6.7.8"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "5.6.7.8"
-    assert result["data"] == {
-        CONF_HOST: "5.6.7.8",
-    }
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 2
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("5.6.7.8")
+    expect(result["data"]).to_equal({CONF_HOST: "5.6.7.8"})
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(2)

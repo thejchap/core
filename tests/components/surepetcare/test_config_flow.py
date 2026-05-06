@@ -3,6 +3,7 @@
 from unittest.mock import NonCallableMagicMock, patch
 
 from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.surepetcare.const import DOMAIN
@@ -10,7 +11,10 @@ from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import surepetcare as surepetcare_fx
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 INPUT_DATA = {
     "username": "test-username",
@@ -18,14 +22,24 @@ INPUT_DATA = {
 }
 
 
-async def test_form(hass: HomeAssistant, surepetcare: NonCallableMagicMock) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _surepetcare: NonCallableMagicMock = Depends(surepetcare_fx),
+) -> None:
     """Test we get the form."""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
 
     with patch(
         "homeassistant.components.surepetcare.async_setup_entry",
@@ -40,17 +54,23 @@ async def test_form(hass: HomeAssistant, surepetcare: NonCallableMagicMock) -> N
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == "Sure Petcare"
-    assert result2["data"] == {
-        "username": "test-username",
-        "password": "test-password",
-        "token": "token",
-    }
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Sure Petcare")
+    expect(result2["data"]).to_equal(
+        {
+            "username": "test-username",
+            "password": "test-password",
+            "token": "token",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -68,11 +88,15 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -90,11 +114,15 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_unknown_error(hass: HomeAssistant) -> None:
+@test
+async def form_unknown_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -112,12 +140,15 @@ async def test_form_unknown_error(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_flow_entry_already_exists(
-    hass: HomeAssistant, surepetcare: NonCallableMagicMock
+@test
+async def flow_entry_already_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _surepetcare: NonCallableMagicMock = Depends(surepetcare_fx),
 ) -> None:
     """Test user input for config_entry that already exists."""
     first_entry = MockConfigEntry(
@@ -143,12 +174,15 @@ async def test_flow_entry_already_exists(
             },
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reauthentication(
-    hass: HomeAssistant, surepetcare: NonCallableMagicMock
+@test
+async def reauthentication(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    surepetcare: NonCallableMagicMock = Depends(surepetcare_fx),
 ) -> None:
     """Test surepetcare reauthentication."""
     old_entry = MockConfigEntry(
@@ -164,9 +198,9 @@ async def test_reauthentication(
 
     result = await old_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     surepetcare.get_token.return_value = "token2"
 
@@ -176,17 +210,23 @@ async def test_reauthentication(
     )
     await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
 
-    assert old_entry.data == {
-        CONF_USERNAME: "test-username",
-        CONF_PASSWORD: "test-password2",
-        CONF_TOKEN: "token2",
-    }
+    expect(old_entry.data).to_equal(
+        {
+            CONF_USERNAME: "test-username",
+            CONF_PASSWORD: "test-password2",
+            CONF_TOKEN: "token2",
+        }
+    )
 
 
-async def test_reauthentication_failure(hass: HomeAssistant) -> None:
+@test
+async def reauthentication_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test surepetcare reauthentication failure."""
     old_entry = MockConfigEntry(
         domain="surepetcare",
@@ -197,9 +237,9 @@ async def test_reauthentication_failure(hass: HomeAssistant) -> None:
 
     result = await old_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.surepetcare.config_flow.surepy.client.SureAPIClient.get_token",
@@ -211,12 +251,16 @@ async def test_reauthentication_failure(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result2["errors"]["base"] == "invalid_auth"
+    expect(result2["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]["base"]).to_equal("invalid_auth")
 
 
-async def test_reauthentication_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def reauthentication_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test surepetcare reauthentication failure."""
     old_entry = MockConfigEntry(
         domain="surepetcare",
@@ -227,9 +271,9 @@ async def test_reauthentication_cannot_connect(hass: HomeAssistant) -> None:
 
     result = await old_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.surepetcare.config_flow.surepy.client.SureAPIClient.get_token",
@@ -241,12 +285,16 @@ async def test_reauthentication_cannot_connect(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result2["errors"]["base"] == "cannot_connect"
+    expect(result2["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]["base"]).to_equal("cannot_connect")
 
 
-async def test_reauthentication_unknown_failure(hass: HomeAssistant) -> None:
+@test
+async def reauthentication_unknown_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test surepetcare reauthentication failure."""
     old_entry = MockConfigEntry(
         domain="surepetcare",
@@ -257,9 +305,9 @@ async def test_reauthentication_unknown_failure(hass: HomeAssistant) -> None:
 
     result = await old_entry.start_reauth_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     with patch(
         "homeassistant.components.surepetcare.config_flow.surepy.client.SureAPIClient.get_token",
@@ -271,6 +319,6 @@ async def test_reauthentication_unknown_failure(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["step_id"] == "reauth_confirm"
-    assert result["type"] is FlowResultType.FORM
-    assert result2["errors"]["base"] == "unknown"
+    expect(result2["step_id"]).to_equal("reauth_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]["base"]).to_equal("unknown")

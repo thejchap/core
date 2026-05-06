@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from aurorapy.client import AuroraError, AuroraTimeoutError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries, setup
 from homeassistant.components.aurora_abb_powerone.const import (
@@ -15,22 +16,32 @@ from homeassistant.const import ATTR_SERIAL_NUMBER, CONF_ADDRESS, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 TEST_DATA = {"device": "/dev/ttyUSB7", "address": 3, "name": "MyAuroraPV"}
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
     await setup.async_setup_component(hass, "persistent_notification", {})
 
-    fakecomports = []
-    fakecomports.append(
+    fakecomports = [
         SerialDevice(
             device="/dev/ttyUSB7",
             serial_number=None,
             manufacturer=None,
             description=None,
         )
-    )
+    ]
     with patch(
         "homeassistant.components.aurora_abb_powerone.config_flow.usb.async_scan_serial_ports",
         return_value=fakecomports,
@@ -38,8 +49,8 @@ async def test_form(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -72,25 +83,30 @@ async def test_form(hass: HomeAssistant) -> None:
             {CONF_PORT: "/dev/ttyUSB7", CONF_ADDRESS: 7},
         )
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
-    assert result2["data"] == {
-        CONF_PORT: "/dev/ttyUSB7",
-        CONF_ADDRESS: 7,
-        ATTR_FIRMWARE: "1.234",
-        ATTR_MODEL: "9.8.7.6 (A.B.C)",
-        ATTR_SERIAL_NUMBER: "9876543",
-        "title": "PhotoVoltaic Inverters",
-    }
+    expect(result2["data"]).to_equal(
+        {
+            CONF_PORT: "/dev/ttyUSB7",
+            CONF_ADDRESS: 7,
+            ATTR_FIRMWARE: "1.234",
+            ATTR_MODEL: "9.8.7.6 (A.B.C)",
+            ATTR_SERIAL_NUMBER: "9876543",
+            "title": "PhotoVoltaic Inverters",
+        }
+    )
     await hass.async_block_till_done()
-    assert len(mock_setup.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(mock_setup.mock_calls)).to_equal(1)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_no_comports(hass: HomeAssistant) -> None:
+@test
+async def form_no_comports(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we display correct info when there are no com ports.."""
-
-    fakecomports = []
+    fakecomports: list[SerialDevice] = []
     with patch(
         "homeassistant.components.aurora_abb_powerone.config_flow.usb.async_scan_serial_ports",
         return_value=fakecomports,
@@ -98,22 +114,24 @@ async def test_form_no_comports(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_serial_ports"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_serial_ports")
 
 
-async def test_form_invalid_com_ports(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_com_ports(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we display correct info when the comport is invalid.."""
-
-    fakecomports = []
-    fakecomports.append(
+    fakecomports = [
         SerialDevice(
             device="/dev/ttyUSB7",
             serial_number=None,
             manufacturer=None,
             description=None,
         )
-    )
+    ]
     with patch(
         "homeassistant.components.aurora_abb_powerone.config_flow.usb.async_scan_serial_ports",
         return_value=fakecomports,
@@ -121,8 +139,8 @@ async def test_form_invalid_com_ports(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "aurorapy.client.AuroraSerialClient.connect",
@@ -133,7 +151,7 @@ async def test_form_invalid_com_ports(hass: HomeAssistant) -> None:
             result["flow_id"],
             {CONF_PORT: "/dev/ttyUSB7", CONF_ADDRESS: 7},
         )
-    assert result2["errors"] == {"base": "invalid_serial_port"}
+    expect(result2["errors"]).to_equal({"base": "invalid_serial_port"})
 
     with patch(
         "aurorapy.client.AuroraSerialClient.connect",
@@ -144,7 +162,7 @@ async def test_form_invalid_com_ports(hass: HomeAssistant) -> None:
             result["flow_id"],
             {CONF_PORT: "/dev/ttyUSB7", CONF_ADDRESS: 7},
         )
-    assert result2["errors"] == {"base": "cannot_open_serial_port"}
+    expect(result2["errors"]).to_equal({"base": "cannot_open_serial_port"})
 
     with patch(
         "aurorapy.client.AuroraSerialClient.connect",
@@ -155,7 +173,7 @@ async def test_form_invalid_com_ports(hass: HomeAssistant) -> None:
             result["flow_id"],
             {CONF_PORT: "/dev/ttyUSB7", CONF_ADDRESS: 7},
         )
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
     with (
         patch(
@@ -175,5 +193,5 @@ async def test_form_invalid_com_ports(hass: HomeAssistant) -> None:
             result["flow_id"],
             {CONF_PORT: "/dev/ttyUSB7", CONF_ADDRESS: 7},
         )
-    assert result2["errors"] == {"base": "cannot_connect"}
-    assert len(mock_clientclose.mock_calls) == 1
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
+    expect(len(mock_clientclose.mock_calls)).to_equal(1)

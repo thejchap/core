@@ -7,6 +7,7 @@ from energyflip import (
     EnergyFlipException,
     EnergyFlipUnauthenticatedException,
 )
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.huisbaasje.const import DOMAIN
@@ -14,16 +15,25 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Apply autouse-equivalent fixtures via this trigger."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         patch(
@@ -43,94 +53,82 @@ async def test_form(hass: HomeAssistant) -> None:
     ):
         form_result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
+            {"username": "test-username", "password": "test-password"},
         )
         await hass.async_block_till_done()
 
-    assert form_result["type"] is FlowResultType.CREATE_ENTRY
-    assert form_result["title"] == "test-username"
-    assert form_result["data"] == {
-        "id": "test-id",
-        "username": "test-username",
-        "password": "test-password",
-    }
-    assert len(mock_authenticate.mock_calls) == 1
-    assert len(mock_customer_overview.mock_calls) == 1
-    assert len(mock_get_user_id.mock_calls) == 1
-    assert len(mock_setup_entry.mock_calls) == 1
-
-
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
-    """Test we handle invalid auth."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    expect(form_result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(form_result["title"]).to_equal("test-username")
+    expect(form_result["data"]).to_equal(
+        {
+            "id": "test-id",
+            "username": "test-username",
+            "password": "test-password",
+        }
     )
-
-    with patch(
-        "energyflip.EnergyFlip.authenticate",
-        side_effect=EnergyFlipException,
-    ):
-        form_result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
-        )
-
-    assert form_result["type"] is FlowResultType.FORM
-    assert form_result["errors"] == {"base": "invalid_auth"}
+    expect(len(mock_authenticate.mock_calls)).to_equal(1)
+    expect(len(mock_customer_overview.mock_calls)).to_equal(1)
+    expect(len(mock_get_user_id.mock_calls)).to_equal(1)
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_form_authenticate_cannot_connect(hass: HomeAssistant) -> None:
-    """Test we handle cannot connect error in authenticate."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-
-    with patch(
-        "energyflip.EnergyFlip.authenticate",
+@test.cases(
+    test.case(
+        "invalid_auth", side_effect=EnergyFlipException, base_error="invalid_auth"
+    ),
+    test.case(
+        "cannot_connect",
         side_effect=EnergyFlipConnectionException,
-    ):
-        form_result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
-        )
-
-    assert form_result["type"] is FlowResultType.FORM
-    assert form_result["errors"] == {"base": "cannot_connect"}
-
-
-async def test_form_authenticate_unknown_error(hass: HomeAssistant) -> None:
-    """Test we handle an unknown error in authenticate."""
+        base_error="cannot_connect",
+    ),
+    test.case("unknown", side_effect=Exception, base_error="unknown"),
+)
+async def form_authenticate_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    side_effect: type[Exception],
+    base_error: str,
+) -> None:
+    """Test we handle errors in authenticate."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
     with patch(
         "energyflip.EnergyFlip.authenticate",
-        side_effect=Exception,
+        side_effect=side_effect,
     ):
         form_result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
+            {"username": "test-username", "password": "test-password"},
         )
 
-    assert form_result["type"] is FlowResultType.FORM
-    assert form_result["errors"] == {"base": "unknown"}
+    expect(form_result["type"]).to_be(FlowResultType.FORM)
+    expect(form_result["errors"]).to_equal({"base": base_error})
 
 
-async def test_form_customer_overview_cannot_connect(hass: HomeAssistant) -> None:
-    """Test we handle cannot connect error in customer_overview."""
+@test.cases(
+    test.case(
+        "cannot_connect",
+        side_effect=EnergyFlipConnectionException,
+        base_error="cannot_connect",
+    ),
+    test.case(
+        "invalid_auth",
+        side_effect=EnergyFlipUnauthenticatedException,
+        base_error="invalid_auth",
+    ),
+    test.case("unknown", side_effect=Exception, base_error="unknown"),
+)
+async def form_customer_overview_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
+    side_effect: type[Exception],
+    base_error: str,
+) -> None:
+    """Test we handle errors in customer_overview."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -139,72 +137,23 @@ async def test_form_customer_overview_cannot_connect(hass: HomeAssistant) -> Non
         patch("energyflip.EnergyFlip.authenticate", return_value=None),
         patch(
             "energyflip.EnergyFlip.customer_overview",
-            side_effect=EnergyFlipConnectionException,
+            side_effect=side_effect,
         ),
     ):
         form_result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
+            {"username": "test-username", "password": "test-password"},
         )
 
-    assert form_result["type"] is FlowResultType.FORM
-    assert form_result["errors"] == {"base": "cannot_connect"}
+    expect(form_result["type"]).to_be(FlowResultType.FORM)
+    expect(form_result["errors"]).to_equal({"base": base_error})
 
 
-async def test_form_customer_overview_authentication_error(hass: HomeAssistant) -> None:
-    """Test we handle an unknown error in customer_overview."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-
-    with (
-        patch("energyflip.EnergyFlip.authenticate", return_value=None),
-        patch(
-            "energyflip.EnergyFlip.customer_overview",
-            side_effect=EnergyFlipUnauthenticatedException,
-        ),
-    ):
-        form_result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
-        )
-
-    assert form_result["type"] is FlowResultType.FORM
-    assert form_result["errors"] == {"base": "invalid_auth"}
-
-
-async def test_form_customer_overview_unknown_error(hass: HomeAssistant) -> None:
-    """Test we handle an unknown error in customer_overview."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-
-    with (
-        patch("energyflip.EnergyFlip.authenticate", return_value=None),
-        patch(
-            "energyflip.EnergyFlip.customer_overview",
-            side_effect=Exception,
-        ),
-    ):
-        form_result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
-        )
-
-    assert form_result["type"] is FlowResultType.FORM
-    assert form_result["errors"] == {"base": "unknown"}
-
-
-async def test_form_entry_exists(hass: HomeAssistant) -> None:
+@test
+async def form_entry_exists(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle an already existing entry."""
     MockConfigEntry(
         unique_id="test-id",
@@ -235,11 +184,8 @@ async def test_form_entry_exists(hass: HomeAssistant) -> None:
     ):
         form_result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {
-                "username": "test-username",
-                "password": "test-password",
-            },
+            {"username": "test-username", "password": "test-password"},
         )
 
-    assert form_result["type"] is FlowResultType.ABORT
-    assert form_result["reason"] == "already_configured"
+    expect(form_result["type"]).to_be(FlowResultType.ABORT)
+    expect(form_result["reason"]).to_equal("already_configured")

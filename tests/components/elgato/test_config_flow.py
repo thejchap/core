@@ -4,7 +4,7 @@ from ipaddress import ip_address
 from unittest.mock import AsyncMock, MagicMock
 
 from elgato import ElgatoConnectionError, ElgatoError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.elgato.const import DOMAIN
 from homeassistant.config_entries import SOURCE_DHCP, SOURCE_USER, SOURCE_ZEROCONF
@@ -15,12 +15,30 @@ from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from tests.common import MockConfigEntry
+from tests.components.elgato._fixtures import (
+    mock_config_entry,
+    mock_elgato,
+    mock_onboarding,
+    mock_setup_entry,
+    mock_zeroconf,
+)
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+mock_zeroconf = mock_zeroconf  # noqa: F811
+mock_network = mock_network  # noqa: F811
 
 
-async def test_full_user_flow_implementation(
-    hass: HomeAssistant,
-    mock_elgato: MagicMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor() -> None:
+    """Trigger the hook executor path."""
+    return None
+
+
+@test
+async def full_user_flow_implementation(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_elgato: MagicMock = Depends(mock_elgato),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the full manual user flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
@@ -28,31 +46,31 @@ async def test_full_user_flow_implementation(
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={CONF_HOST: "127.0.0.1"}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "CN11A1A00001"
-    assert config_entry.data == {
-        CONF_HOST: "127.0.0.1",
-        CONF_MAC: None,
-    }
-    assert not config_entry.options
+    expect(config_entry.unique_id).to_equal("CN11A1A00001")
+    expect(config_entry.data).to_equal(
+        {CONF_HOST: "127.0.0.1", CONF_MAC: None},
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert len(mock_elgato.info.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+    expect(len(mock_elgato.info.mock_calls)).to_equal(1)
 
 
-async def test_full_zeroconf_flow_implementation(
-    hass: HomeAssistant,
-    mock_elgato: MagicMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def full_zeroconf_flow_implementation(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_elgato: MagicMock = Depends(mock_elgato),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the zeroconf flow from start to finish."""
     result = await hass.config_entries.flow.async_init(
@@ -69,37 +87,39 @@ async def test_full_zeroconf_flow_implementation(
         ),
     )
 
-    assert result["description_placeholders"] == {"serial_number": "CN11A1A00001"}
-    assert result["step_id"] == "zeroconf_confirm"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["description_placeholders"]).to_equal(
+        {"serial_number": "CN11A1A00001"}
+    )
+    expect(result["step_id"]).to_equal("zeroconf_confirm")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     progress = hass.config_entries.flow.async_progress()
-    assert len(progress) == 1
-    assert progress[0].get("flow_id") == result["flow_id"]
-    assert "context" in progress[0]
-    assert progress[0]["context"].get("confirm_only") is True
+    expect(len(progress)).to_equal(1)
+    expect(progress[0].get("flow_id")).to_equal(result["flow_id"])
+    expect("context" in progress[0]).to_be(True)
+    expect(progress[0]["context"].get("confirm_only")).to_be(True)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], user_input={}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "CN11A1A00001"
-    assert config_entry.data == {
-        CONF_HOST: "127.0.0.1",
-        CONF_MAC: "AA:BB:CC:DD:EE:FF",
-    }
-    assert not config_entry.options
+    expect(config_entry.unique_id).to_equal("CN11A1A00001")
+    expect(config_entry.data).to_equal(
+        {CONF_HOST: "127.0.0.1", CONF_MAC: "AA:BB:CC:DD:EE:FF"},
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert len(mock_elgato.info.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+    expect(len(mock_elgato.info.mock_calls)).to_equal(1)
 
 
-async def test_connection_error(
-    hass: HomeAssistant,
-    mock_elgato: MagicMock,
+@test
+async def connection_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_elgato: MagicMock = Depends(mock_elgato),
 ) -> None:
     """Test we show user form on Elgato Key Light connection error."""
     mock_elgato.info.side_effect = ElgatoConnectionError
@@ -109,11 +129,10 @@ async def test_connection_error(
         data={CONF_HOST: "127.0.0.1"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
+    expect(result["step_id"]).to_equal("user")
 
-    # Recover from error
     mock_elgato.info.side_effect = None
 
     result = await hass.config_entries.flow.async_init(
@@ -122,20 +141,20 @@ async def test_connection_error(
         data={CONF_HOST: "127.0.0.2"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "CN11A1A00001"
-    assert config_entry.data == {
-        CONF_HOST: "127.0.0.2",
-        CONF_MAC: None,
-    }
-    assert not config_entry.options
+    expect(config_entry.unique_id).to_equal("CN11A1A00001")
+    expect(config_entry.data).to_equal(
+        {CONF_HOST: "127.0.0.2", CONF_MAC: None},
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
 
-async def test_zeroconf_connection_error(
-    hass: HomeAssistant,
-    mock_elgato: MagicMock,
+@test
+async def zeroconf_connection_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_elgato: MagicMock = Depends(mock_elgato),
 ) -> None:
     """Test we abort zeroconf flow on Elgato Key Light connection error."""
     mock_elgato.info.side_effect = ElgatoConnectionError
@@ -153,15 +172,17 @@ async def test_zeroconf_connection_error(
         ),
     )
 
-    assert result["reason"] == "cannot_connect"
-    assert result["type"] is FlowResultType.ABORT
+    expect(result["reason"]).to_equal("cannot_connect")
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
-@pytest.mark.usefixtures("mock_elgato")
-async def test_user_device_exists_abort(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def user_device_exists_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_elgato: MagicMock = Depends(mock_elgato),
 ) -> None:
-    """Test we abort zeroconf flow if Elgato Key Light device already configured."""
+    """Test we abort user flow if Elgato Key Light device already configured."""
     mock_config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -169,13 +190,15 @@ async def test_user_device_exists_abort(
         data={CONF_HOST: "127.0.0.1"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures("mock_elgato")
-async def test_zeroconf_device_exists_abort(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def zeroconf_device_exists_abort(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_elgato: MagicMock = Depends(mock_elgato),
 ) -> None:
     """Test we abort zeroconf flow if Elgato Key Light device already configured."""
     mock_config_entry.add_to_hass(hass)
@@ -193,13 +216,12 @@ async def test_zeroconf_device_exists_abort(
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
     entries = hass.config_entries.async_entries(DOMAIN)
-    assert entries[0].data[CONF_HOST] == "127.0.0.1"
+    expect(entries[0].data[CONF_HOST]).to_equal("127.0.0.1")
 
-    # Check the host updates on discovery
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={CONF_SOURCE: SOURCE_ZEROCONF},
@@ -214,18 +236,19 @@ async def test_zeroconf_device_exists_abort(
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
     entries = hass.config_entries.async_entries(DOMAIN)
-    assert entries[0].data[CONF_HOST] == "127.0.0.2"
+    expect(entries[0].data[CONF_HOST]).to_equal("127.0.0.2")
 
 
-async def test_zeroconf_during_onboarding(
-    hass: HomeAssistant,
-    mock_elgato: MagicMock,
-    mock_setup_entry: AsyncMock,
-    mock_onboarding: MagicMock,
+@test
+async def zeroconf_during_onboarding(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_elgato: MagicMock = Depends(mock_elgato),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_onboarding: MagicMock = Depends(mock_onboarding),
 ) -> None:
     """Test the zeroconf creates an entry during onboarding."""
     result = await hass.config_entries.flow.async_init(
@@ -242,25 +265,25 @@ async def test_zeroconf_during_onboarding(
         ),
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
     config_entry = result["result"]
-    assert config_entry.unique_id == "CN11A1A00001"
-    assert config_entry.data == {
-        CONF_HOST: "127.0.0.1",
-        CONF_MAC: "AA:BB:CC:DD:EE:FF",
-    }
-    assert not config_entry.options
+    expect(config_entry.unique_id).to_equal("CN11A1A00001")
+    expect(config_entry.data).to_equal(
+        {CONF_HOST: "127.0.0.1", CONF_MAC: "AA:BB:CC:DD:EE:FF"},
+    )
+    expect(bool(config_entry.options)).to_be(False)
 
-    assert len(mock_setup_entry.mock_calls) == 1
-    assert len(mock_elgato.info.mock_calls) == 1
-    assert len(mock_onboarding.mock_calls) == 1
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+    expect(len(mock_elgato.info.mock_calls)).to_equal(1)
+    expect(len(mock_onboarding.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_elgato")
-async def test_dhcp_discovery_updates_host(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def dhcp_discovery_updates_host(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_elgato: MagicMock = Depends(mock_elgato),
 ) -> None:
     """Test DHCP discovery of a known device updates its stored host."""
     mock_config_entry.add_to_hass(hass)
@@ -278,15 +301,16 @@ async def test_dhcp_discovery_updates_host(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.42"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(mock_config_entry.data[CONF_HOST]).to_equal("127.0.0.42")
 
 
-@pytest.mark.usefixtures("mock_elgato")
-async def test_dhcp_discovery_same_host(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def dhcp_discovery_same_host(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_elgato: MagicMock = Depends(mock_elgato),
 ) -> None:
     """Test DHCP discovery does nothing when the host is already up to date."""
     mock_config_entry.add_to_hass(hass)
@@ -303,15 +327,16 @@ async def test_dhcp_discovery_same_host(
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.1"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(mock_config_entry.data[CONF_HOST]).to_equal("127.0.0.1")
 
 
-@pytest.mark.usefixtures("mock_elgato")
-async def test_dhcp_discovery_no_match(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def dhcp_discovery_no_match(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_elgato: MagicMock = Depends(mock_elgato),
 ) -> None:
     """Test DHCP discovery aborts when no matching entry is configured."""
     mock_config_entry.add_to_hass(hass)
@@ -328,37 +353,39 @@ async def test_dhcp_discovery_no_match(
         ),
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.1"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
+    expect(mock_config_entry.data[CONF_HOST]).to_equal("127.0.0.1")
 
 
-@pytest.mark.usefixtures("mock_elgato")
-async def test_reconfigure_flow(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure_flow(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_elgato: MagicMock = Depends(mock_elgato),
 ) -> None:
     """Test reconfiguring an existing Elgato device."""
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reconfigure_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "127.0.0.42"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.42"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(mock_config_entry.data[CONF_HOST]).to_equal("127.0.0.42")
 
 
-async def test_reconfigure_flow_cannot_connect(
-    hass: HomeAssistant,
-    mock_elgato: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure_flow_cannot_connect(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_elgato: MagicMock = Depends(mock_elgato),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reconfigure flow recovers from a connection error."""
     mock_config_entry.add_to_hass(hass)
@@ -371,9 +398,9 @@ async def test_reconfigure_flow_cannot_connect(
         user_input={CONF_HOST: "127.0.0.42"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
     mock_elgato.info.side_effect = None
     result = await hass.config_entries.flow.async_configure(
@@ -381,14 +408,15 @@ async def test_reconfigure_flow_cannot_connect(
         user_input={CONF_HOST: "127.0.0.42"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
 
 
-async def test_reconfigure_flow_different_device(
-    hass: HomeAssistant,
-    mock_elgato: MagicMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure_flow_different_device(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_elgato: MagicMock = Depends(mock_elgato),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test reconfigure aborts when the device at the new host has a different serial."""
     mock_config_entry.add_to_hass(hass)
@@ -401,6 +429,6 @@ async def test_reconfigure_flow_different_device(
         user_input={CONF_HOST: "127.0.0.42"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "different_device"
-    assert mock_config_entry.data[CONF_HOST] == "127.0.0.1"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("different_device")
+    expect(mock_config_entry.data[CONF_HOST]).to_equal("127.0.0.1")

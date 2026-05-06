@@ -1,8 +1,10 @@
-"""Test the Scrape config flow."""
+"""Test the Local file config flow."""
+
+from __future__ import annotations
 
 from unittest.mock import AsyncMock, Mock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.local_file.const import DEFAULT_NAME, DOMAIN
@@ -10,17 +12,29 @@ from homeassistant.const import CONF_FILE_PATH, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import loaded_entry, mock_setup_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_form_sensor(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form_sensor(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form for sensor."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with (
         patch("os.path.isfile", Mock(return_value=True)),
@@ -39,23 +53,29 @@ async def test_form_sensor(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> 
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["version"] == 1
-    assert result["options"] == {
-        CONF_NAME: DEFAULT_NAME,
-        CONF_FILE_PATH: "mock.file",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["version"]).to_equal(1)
+    expect(result["options"]).to_equal(
+        {
+            CONF_NAME: DEFAULT_NAME,
+            CONF_FILE_PATH: "mock.file",
+        }
+    )
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-async def test_options_flow(hass: HomeAssistant, loaded_entry: MockConfigEntry) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(loaded_entry),
+) -> None:
     """Test options flow."""
+    result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    result = await hass.config_entries.options.async_init(loaded_entry.entry_id)
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     with (
         patch("os.path.isfile", Mock(return_value=True)),
@@ -71,28 +91,32 @@ async def test_options_flow(hass: HomeAssistant, loaded_entry: MockConfigEntry) 
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_NAME: DEFAULT_NAME, CONF_FILE_PATH: "mock.new.file"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {CONF_NAME: DEFAULT_NAME, CONF_FILE_PATH: "mock.new.file"}
+    )
 
     await hass.async_block_till_done()
 
     # Check the entity was updated, no new entity was created
-    assert len(hass.states.async_all()) == 1
+    expect(len(hass.states.async_all())).to_equal(1)
 
     state = hass.states.get("camera.local_file")
-    assert state is not None
+    expect(state is not None).to_be(True)
 
 
-async def test_validation_options(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock
+@test
+async def validation_options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test validation."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with (
         patch("os.path.isfile", Mock(return_value=True)),
@@ -111,9 +135,9 @@ async def test_validation_options(
         )
         await hass.async_block_till_done()
 
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "not_readable_path"}
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "not_readable_path"})
 
     with (
         patch("os.path.isfile", Mock(return_value=True)),
@@ -132,27 +156,31 @@ async def test_validation_options(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["version"] == 1
-    assert result["options"] == {
-        CONF_NAME: DEFAULT_NAME,
-        CONF_FILE_PATH: "mock.new.file",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["version"]).to_equal(1)
+    expect(result["options"]).to_equal(
+        {
+            CONF_NAME: DEFAULT_NAME,
+            CONF_FILE_PATH: "mock.new.file",
+        }
+    )
 
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.usefixtures("mock_setup_entry")
-async def test_entry_already_exist(
-    hass: HomeAssistant, loaded_entry: MockConfigEntry
+@test
+async def entry_already_exist(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    entry: MockConfigEntry = Depends(loaded_entry),
 ) -> None:
     """Test abort when entry already exist."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["step_id"] == "user"
-    assert result["type"] is FlowResultType.FORM
+    expect(result["step_id"]).to_equal("user")
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with (
         patch("os.path.isfile", Mock(return_value=True)),
@@ -171,5 +199,5 @@ async def test_entry_already_exist(
         )
         await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")

@@ -8,7 +8,7 @@ from aiovodafone.exceptions import (
     CannotConnect,
     ModelNotSupported,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.device_tracker import CONF_CONSIDER_HOME
 from homeassistant.components.vodafone_station.const import (
@@ -22,22 +22,35 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import (
+    mock_config_entry,
+    mock_setup_entry,
+    mock_vodafone_station_router,
+)
 from .const import TEST_HOST, TEST_PASSWORD, TEST_TYPE, TEST_URL, TEST_USERNAME
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_user(
-    hass: HomeAssistant,
-    mock_vodafone_station_router: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _router: AsyncMock = Depends(mock_vodafone_station_router),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test starting a flow by user."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -47,62 +60,51 @@ async def test_user(
             CONF_PASSWORD: TEST_PASSWORD,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: TEST_PASSWORD,
-        CONF_DEVICE_DETAILS: {
-            DEVICE_TYPE: TEST_TYPE,
-            DEVICE_URL: TEST_URL,
-        },
-    }
-    assert not result["result"].unique_id
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: TEST_PASSWORD,
+            CONF_DEVICE_DETAILS: {
+                DEVICE_TYPE: TEST_TYPE,
+                DEVICE_URL: TEST_URL,
+            },
+        }
+    )
+    expect(bool(result["result"].unique_id)).to_be(False)
 
-    assert mock_setup_entry.called
+    expect(setup_entry.called).to_be(True)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (CannotConnect, "cannot_connect"),
-        (CannotAuthenticate, "invalid_auth"),
-        (AlreadyLogged, "already_logged"),
-        (ModelNotSupported, "model_not_supported"),
-        (ConnectionResetError, "unknown"),
-    ],
+@test.cases(
+    test.case("cannot_connect", side_effect=CannotConnect, error="cannot_connect"),
+    test.case("invalid_auth", side_effect=CannotAuthenticate, error="invalid_auth"),
+    test.case("already_logged", side_effect=AlreadyLogged, error="already_logged"),
+    test.case(
+        "model_not_supported",
+        side_effect=ModelNotSupported,
+        error="model_not_supported",
+    ),
+    test.case("unknown", side_effect=ConnectionResetError, error="unknown"),
 )
-async def test_exception_connection(
-    hass: HomeAssistant,
-    mock_vodafone_station_router: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    side_effect: Exception,
+async def exception_connection(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    router: AsyncMock = Depends(mock_vodafone_station_router),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    *,
+    side_effect: type[Exception],
     error: str,
 ) -> None:
     """Test starting a flow by user with a connection error."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result.get("type") is FlowResultType.FORM
-    assert result.get("step_id") == "user"
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
-    mock_vodafone_station_router.login.side_effect = side_effect
-
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input={
-            CONF_HOST: TEST_HOST,
-            CONF_USERNAME: TEST_USERNAME,
-            CONF_PASSWORD: TEST_PASSWORD,
-        },
-    )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": error}
-
-    mock_vodafone_station_router.login.side_effect = None
+    router.login.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -113,31 +115,50 @@ async def test_exception_connection(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_HOST
-    assert result["data"] == {
-        CONF_HOST: TEST_HOST,
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_PASSWORD: TEST_PASSWORD,
-        CONF_DEVICE_DETAILS: {
-            DEVICE_TYPE: TEST_TYPE,
-            DEVICE_URL: TEST_URL,
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": error})
+
+    router.login.side_effect = None
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_HOST: TEST_HOST,
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: TEST_PASSWORD,
         },
-    }
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_HOST)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_PASSWORD: TEST_PASSWORD,
+            CONF_DEVICE_DETAILS: {
+                DEVICE_TYPE: TEST_TYPE,
+                DEVICE_URL: TEST_URL,
+            },
+        }
+    )
 
 
-async def test_duplicate_entry(
-    hass: HomeAssistant,
-    mock_vodafone_station_router: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def duplicate_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _router: AsyncMock = Depends(mock_vodafone_station_router),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test starting a flow by user with a duplicate entry."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -147,21 +168,23 @@ async def test_duplicate_entry(
             CONF_PASSWORD: TEST_PASSWORD,
         },
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_reauth_successful(
-    hass: HomeAssistant,
-    mock_vodafone_station_router: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reauth_successful(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _router: AsyncMock = Depends(mock_vodafone_station_router),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test starting a reauthentication flow."""
-    mock_config_entry.add_to_hass(hass)
-    result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -170,34 +193,33 @@ async def test_reauth_successful(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (CannotConnect, "cannot_connect"),
-        (CannotAuthenticate, "invalid_auth"),
-        (AlreadyLogged, "already_logged"),
-        (ConnectionResetError, "unknown"),
-    ],
+@test.cases(
+    test.case("cannot_connect", side_effect=CannotConnect, error="cannot_connect"),
+    test.case("invalid_auth", side_effect=CannotAuthenticate, error="invalid_auth"),
+    test.case("already_logged", side_effect=AlreadyLogged, error="already_logged"),
+    test.case("unknown", side_effect=ConnectionResetError, error="unknown"),
 )
-async def test_reauth_not_successful(
-    hass: HomeAssistant,
-    mock_vodafone_station_router: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    side_effect: Exception,
+async def reauth_not_successful(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    router: AsyncMock = Depends(mock_vodafone_station_router),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    *,
+    side_effect: type[Exception],
     error: str,
 ) -> None:
     """Test starting a reauthentication flow but no connection found."""
-    mock_config_entry.add_to_hass(hass)
-    result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reauth_flow(hass)
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_vodafone_station_router.login.side_effect = side_effect
+    router.login.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
@@ -205,11 +227,11 @@ async def test_reauth_not_successful(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({"base": error})
 
-    mock_vodafone_station_router.login.side_effect = None
+    router.login.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -218,20 +240,22 @@ async def test_reauth_not_successful(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data[CONF_PASSWORD] == TEST_PASSWORD
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(config_entry.data[CONF_PASSWORD]).to_equal(TEST_PASSWORD)
 
 
-async def test_options_flow(
-    hass: HomeAssistant,
-    mock_vodafone_station_router: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _router: AsyncMock = Depends(mock_vodafone_station_router),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test options flow."""
-    mock_config_entry.add_to_hass(hass)
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={
@@ -239,27 +263,27 @@ async def test_options_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_CONSIDER_HOME: 37,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal({CONF_CONSIDER_HOME: 37})
 
 
-async def test_reconfigure_successful(
-    hass: HomeAssistant,
-    mock_vodafone_station_router: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def reconfigure_successful(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _router: AsyncMock = Depends(mock_vodafone_station_router),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that the host can be reconfigured."""
-    mock_config_entry.add_to_hass(hass)
-    result = await mock_config_entry.start_reconfigure_flow(hass)
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
-    # original entry
-    assert mock_config_entry.data[CONF_HOST] == TEST_HOST
+    # Original entry.
+    expect(config_entry.data[CONF_HOST]).to_equal(TEST_HOST)
 
     new_host = "192.168.100.60"
 
@@ -272,38 +296,37 @@ async def test_reconfigure_successful(
         },
     )
 
-    assert reconfigure_result["type"] is FlowResultType.ABORT
-    assert reconfigure_result["reason"] == "reconfigure_successful"
+    expect(reconfigure_result["type"]).to_be(FlowResultType.ABORT)
+    expect(reconfigure_result["reason"]).to_equal("reconfigure_successful")
 
-    # changed entry
-    assert mock_config_entry.data[CONF_HOST] == new_host
+    # Changed entry.
+    expect(config_entry.data[CONF_HOST]).to_equal(new_host)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (CannotConnect, "cannot_connect"),
-        (CannotAuthenticate, "invalid_auth"),
-        (AlreadyLogged, "already_logged"),
-        (ConnectionResetError, "unknown"),
-    ],
+@test.cases(
+    test.case("cannot_connect", side_effect=CannotConnect, error="cannot_connect"),
+    test.case("invalid_auth", side_effect=CannotAuthenticate, error="invalid_auth"),
+    test.case("already_logged", side_effect=AlreadyLogged, error="already_logged"),
+    test.case("unknown", side_effect=ConnectionResetError, error="unknown"),
 )
-async def test_reconfigure_fails(
-    hass: HomeAssistant,
-    mock_vodafone_station_router: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    side_effect: Exception,
+async def reconfigure_fails(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    router: AsyncMock = Depends(mock_vodafone_station_router),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    *,
+    side_effect: type[Exception],
     error: str,
 ) -> None:
     """Test that the host can be reconfigured."""
-    mock_config_entry.add_to_hass(hass)
-    result = await mock_config_entry.start_reconfigure_flow(hass)
+    config_entry.add_to_hass(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reconfigure"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
 
-    mock_vodafone_station_router.login.side_effect = side_effect
+    router.login.side_effect = side_effect
 
     reconfigure_result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -314,11 +337,11 @@ async def test_reconfigure_fails(
         },
     )
 
-    assert reconfigure_result["type"] is FlowResultType.FORM
-    assert reconfigure_result["step_id"] == "reconfigure"
-    assert reconfigure_result["errors"] == {"base": error}
+    expect(reconfigure_result["type"]).to_be(FlowResultType.FORM)
+    expect(reconfigure_result["step_id"]).to_equal("reconfigure")
+    expect(reconfigure_result["errors"]).to_equal({"base": error})
 
-    mock_vodafone_station_router.login.side_effect = None
+    router.login.side_effect = None
 
     reconfigure_result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -329,14 +352,16 @@ async def test_reconfigure_fails(
         },
     )
 
-    assert reconfigure_result["type"] is FlowResultType.ABORT
-    assert reconfigure_result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.data == {
-        CONF_HOST: "192.168.100.61",
-        CONF_PASSWORD: TEST_PASSWORD,
-        CONF_USERNAME: TEST_USERNAME,
-        CONF_DEVICE_DETAILS: {
-            DEVICE_TYPE: TEST_TYPE,
-            DEVICE_URL: TEST_URL,
-        },
-    }
+    expect(reconfigure_result["type"]).to_be(FlowResultType.ABORT)
+    expect(reconfigure_result["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data).to_equal(
+        {
+            CONF_HOST: "192.168.100.61",
+            CONF_PASSWORD: TEST_PASSWORD,
+            CONF_USERNAME: TEST_USERNAME,
+            CONF_DEVICE_DETAILS: {
+                DEVICE_TYPE: TEST_TYPE,
+                DEVICE_URL: TEST_URL,
+            },
+        }
+    )

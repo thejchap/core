@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from bluetooth_data_tools import human_readable_name
 from pycasperglow import CasperGlowError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.components.casper_glow.const import DOMAIN
@@ -15,6 +15,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.device_registry import format_mac
 
 from . import CASPER_GLOW_DISCOVERY_INFO, NOT_CASPER_GLOW_DISCOVERY_INFO
+from ._fixtures import mock_casper_glow, mock_config_entry
 
 from tests.common import MockConfigEntry
 from tests.components.bluetooth import (
@@ -22,10 +23,26 @@ from tests.components.bluetooth import (
     generate_ble_device,
     inject_bluetooth_service_info,
 )
+from tests.hass_fixtures import (
+    enable_bluetooth,
+    hass as hass_fixture,
+    mock_network,
+)
 
 
-async def test_bluetooth_step_success(
-    hass: HomeAssistant, mock_casper_glow: MagicMock
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _bluetooth: None = Depends(enable_bluetooth),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def bluetooth_step_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _glow: MagicMock = Depends(mock_casper_glow),
 ) -> None:
     """Test bluetooth discovery step success."""
     result = await hass.config_entries.flow.async_init(
@@ -33,12 +50,9 @@ async def test_bluetooth_step_success(
         context={"source": SOURCE_BLUETOOTH},
         data=CASPER_GLOW_DISCOVERY_INFO,
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "bluetooth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("bluetooth_confirm")
 
-    # Inject before configure so async_setup_entry can find the device via
-    # async_ble_device_from_address. The unique_id is already claimed by our
-    # flow so the BT manager's auto-started flow will abort as a duplicate.
     inject_bluetooth_service_info(hass, CASPER_GLOW_DISCOVERY_INFO)
 
     result = await hass.config_entries.flow.async_configure(
@@ -46,22 +60,28 @@ async def test_bluetooth_step_success(
         {},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == human_readable_name(
-        None, CASPER_GLOW_DISCOVERY_INFO.name, CASPER_GLOW_DISCOVERY_INFO.address
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(
+        human_readable_name(
+            None, CASPER_GLOW_DISCOVERY_INFO.name, CASPER_GLOW_DISCOVERY_INFO.address
+        )
     )
-    assert result["data"] == {
-        CONF_ADDRESS: CASPER_GLOW_DISCOVERY_INFO.address,
-    }
-    assert result["result"].unique_id == format_mac(CASPER_GLOW_DISCOVERY_INFO.address)
+    expect(result["data"]).to_equal(
+        {CONF_ADDRESS: CASPER_GLOW_DISCOVERY_INFO.address}
+    )
+    expect(result["result"].unique_id).to_equal(
+        format_mac(CASPER_GLOW_DISCOVERY_INFO.address)
+    )
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "reason"),
-    [(CasperGlowError, "cannot_connect"), (RuntimeError, "unknown")],
+@test.cases(
+    test.case("cannot_connect", side_effect=CasperGlowError, reason="cannot_connect"),
+    test.case("unknown", side_effect=RuntimeError, reason="unknown"),
 )
-async def test_bluetooth_confirm_error(
-    hass: HomeAssistant,
+async def bluetooth_confirm_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
     side_effect: type[Exception],
     reason: str,
 ) -> None:
@@ -76,12 +96,15 @@ async def test_bluetooth_confirm_error(
             data=CASPER_GLOW_DISCOVERY_INFO,
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == reason
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(reason)
 
 
-async def test_user_step_success(
-    hass: HomeAssistant, mock_casper_glow: MagicMock
+@test
+async def user_step_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _glow: MagicMock = Depends(mock_casper_glow),
 ) -> None:
     """Test user step success path."""
     with patch(
@@ -91,12 +114,10 @@ async def test_user_step_success(
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
-    # Inject before configure so async_setup_entry can find the device via
-    # async_ble_device_from_address.
     inject_bluetooth_service_info(hass, CASPER_GLOW_DISCOVERY_INFO)
 
     result = await hass.config_entries.flow.async_configure(
@@ -106,17 +127,25 @@ async def test_user_step_success(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == human_readable_name(
-        None, CASPER_GLOW_DISCOVERY_INFO.name, CASPER_GLOW_DISCOVERY_INFO.address
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(
+        human_readable_name(
+            None, CASPER_GLOW_DISCOVERY_INFO.name, CASPER_GLOW_DISCOVERY_INFO.address
+        )
     )
-    assert result["data"] == {
-        CONF_ADDRESS: CASPER_GLOW_DISCOVERY_INFO.address,
-    }
-    assert result["result"].unique_id == format_mac(CASPER_GLOW_DISCOVERY_INFO.address)
+    expect(result["data"]).to_equal(
+        {CONF_ADDRESS: CASPER_GLOW_DISCOVERY_INFO.address}
+    )
+    expect(result["result"].unique_id).to_equal(
+        format_mac(CASPER_GLOW_DISCOVERY_INFO.address)
+    )
 
 
-async def test_user_step_no_devices(hass: HomeAssistant) -> None:
+@test
+async def user_step_no_devices(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test user step with no devices found."""
     with patch(
         "homeassistant.components.casper_glow.config_flow.async_discovered_service_info",
@@ -125,16 +154,22 @@ async def test_user_step_no_devices(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "expected_error"),
-    [(CasperGlowError, "cannot_connect"), (RuntimeError, "unknown")],
+@test.cases(
+    test.case(
+        "cannot_connect",
+        side_effect=CasperGlowError,
+        expected_error="cannot_connect",
+    ),
+    test.case("unknown", side_effect=RuntimeError, expected_error="unknown"),
 )
-async def test_user_step_error(
-    hass: HomeAssistant,
+async def user_step_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    *,
     side_effect: type[Exception],
     expected_error: str,
 ) -> None:
@@ -146,9 +181,9 @@ async def test_user_step_error(
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with patch(
         "homeassistant.components.casper_glow.config_flow.CasperGlow.handshake",
@@ -159,27 +194,34 @@ async def test_user_step_error(
             {CONF_ADDRESS: CASPER_GLOW_DISCOVERY_INFO.address},
         )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": expected_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": expected_error})
 
 
-async def test_already_configured(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test already configured device."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_BLUETOOTH},
         data=CASPER_GLOW_DISCOVERY_INFO,
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_user_step_skips_unrecognized_device(hass: HomeAssistant) -> None:
+@test
+async def user_step_skips_unrecognized_device(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that devices without a matching local name prefix are skipped."""
     unrecognized_discovery = BluetoothServiceInfoBleak(
         name="",
@@ -202,5 +244,5 @@ async def test_user_step_skips_unrecognized_device(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_devices_found"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_devices_found")
