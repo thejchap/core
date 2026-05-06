@@ -1,9 +1,11 @@
 """Test the Saunum config flow."""
 
-from unittest.mock import AsyncMock
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock
 
 from pysaunum import SaunumConnectionError, SaunumException
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.saunum.const import (
     DOMAIN,
@@ -16,49 +18,77 @@ from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import (
+    mock_config_entry,
+    mock_saunum_client,
+    mock_saunum_client_class,
+    mock_setup_entry,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 TEST_USER_INPUT = {CONF_HOST: "192.168.1.100"}
 TEST_RECONFIGURE_INPUT = {CONF_HOST: "192.168.1.200"}
 
 
-@pytest.mark.usefixtures("mock_saunum_client")
-async def test_full_flow(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    saunum_client: MagicMock = Depends(mock_saunum_client),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test full flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         TEST_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Saunum"
-    assert result["data"] == TEST_USER_INPUT
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Saunum")
+    expect(result["data"]).to_equal(TEST_USER_INPUT)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_base"),
-    [
-        (SaunumConnectionError("Connection failed"), "cannot_connect"),
-        (SaunumException("Read error"), "cannot_connect"),
-        (Exception("Unexpected error"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "connection_error",
+        side_effect=SaunumConnectionError("Connection failed"),
+        error_base="cannot_connect",
+    ),
+    test.case(
+        "saunum_exception",
+        side_effect=SaunumException("Read error"),
+        error_base="cannot_connect",
+    ),
+    test.case(
+        "unknown",
+        side_effect=Exception("Unexpected error"),
+        error_base="unknown",
+    ),
 )
-async def test_form_errors(
-    hass: HomeAssistant,
-    mock_saunum_client_class,
+async def form_errors(
     side_effect: Exception,
     error_base: str,
-    mock_setup_entry: AsyncMock,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client_class: MagicMock = Depends(mock_saunum_client_class),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test error handling and recovery."""
-    mock_saunum_client_class.create.side_effect = side_effect
+    client_class.create.side_effect = side_effect
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -68,28 +98,30 @@ async def test_form_errors(
         TEST_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_base}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_base})
 
-    # Test recovery - try again without the error
-    mock_saunum_client_class.create.side_effect = None
+    client_class.create.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         TEST_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Saunum"
-    assert result["data"] == TEST_USER_INPUT
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Saunum")
+    expect(result["data"]).to_equal(TEST_USER_INPUT)
 
 
-@pytest.mark.usefixtures("mock_saunum_client")
-async def test_form_duplicate(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def form_duplicate(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    saunum_client: MagicMock = Depends(mock_saunum_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test duplicate entry handling."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -100,90 +132,106 @@ async def test_form_duplicate(
         TEST_USER_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures("mock_saunum_client")
-@pytest.mark.parametrize("user_input", [TEST_RECONFIGURE_INPUT, TEST_USER_INPUT])
-async def test_reconfigure_flow(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
+@test.cases(
+    test.case("reconfigure_input", user_input=TEST_RECONFIGURE_INPUT),
+    test.case("user_input", user_input=TEST_USER_INPUT),
+)
+async def reconfigure_flow(
     user_input: dict[str, str],
-    mock_setup_entry: AsyncMock,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    saunum_client: MagicMock = Depends(mock_saunum_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reconfigure flow."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.data == user_input
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data).to_equal(user_input)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_base"),
-    [
-        (SaunumConnectionError("Connection failed"), "cannot_connect"),
-        (SaunumException("Read error"), "cannot_connect"),
-        (Exception("Unexpected error"), "unknown"),
-    ],
+@test.cases(
+    test.case(
+        "connection_error",
+        side_effect=SaunumConnectionError("Connection failed"),
+        error_base="cannot_connect",
+    ),
+    test.case(
+        "saunum_exception",
+        side_effect=SaunumException("Read error"),
+        error_base="cannot_connect",
+    ),
+    test.case(
+        "unknown",
+        side_effect=Exception("Unexpected error"),
+        error_base="unknown",
+    ),
 )
-async def test_reconfigure_errors(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_saunum_client_class,
+async def reconfigure_errors(
     side_effect: Exception,
     error_base: str,
-    mock_setup_entry: AsyncMock,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    client_class: MagicMock = Depends(mock_saunum_client_class),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reconfigure flow error handling."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    mock_saunum_client_class.create.side_effect = side_effect
+    client_class.create.side_effect = side_effect
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         TEST_RECONFIGURE_INPUT,
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": error_base}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error_base})
 
-    # Test recovery - try again without the error
-    mock_saunum_client_class.create.side_effect = None
+    client_class.create.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         TEST_RECONFIGURE_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reconfigure_successful"
-    assert mock_config_entry.data == TEST_RECONFIGURE_INPUT
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reconfigure_successful")
+    expect(config_entry.data).to_equal(TEST_RECONFIGURE_INPUT)
 
 
-@pytest.mark.usefixtures("mock_saunum_client")
-async def test_reconfigure_to_existing_host(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_setup_entry: AsyncMock
+@test
+async def reconfigure_to_existing_host(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    saunum_client: MagicMock = Depends(mock_saunum_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test reconfigure flow aborts when changing to a host used by another entry."""
-    mock_config_entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
-    # Create a second entry with a different host
     second_entry = MockConfigEntry(
         domain=DOMAIN,
         data=TEST_RECONFIGURE_INPUT,
@@ -191,38 +239,37 @@ async def test_reconfigure_to_existing_host(
     )
     second_entry.add_to_hass(hass)
 
-    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await config_entry.start_reconfigure_flow(hass)
 
-    # Try to reconfigure first entry to use the same host as second entry
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        TEST_RECONFIGURE_INPUT,  # Same host as second_entry
+        TEST_RECONFIGURE_INPUT,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
-    # Verify the original entry was not changed
-    assert mock_config_entry.data == TEST_USER_INPUT
+    expect(config_entry.data).to_equal(TEST_USER_INPUT)
 
 
-@pytest.mark.usefixtures("mock_saunum_client")
-async def test_options_flow(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    saunum_client: MagicMock = Depends(mock_saunum_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test options flow for configuring preset names."""
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
-    # Configure custom preset names
     custom_options = {
         OPT_PRESET_NAME_TYPE_1: "Finnish Sauna",
         OPT_PRESET_NAME_TYPE_2: "Turkish Bath",
@@ -234,16 +281,17 @@ async def test_options_flow(
         user_input=custom_options,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == custom_options
-    assert mock_config_entry.options == custom_options
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(custom_options)
+    expect(config_entry.options).to_equal(custom_options)
 
 
-@pytest.mark.usefixtures("mock_saunum_client")
-async def test_options_flow_with_existing_options(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    mock_setup_entry: AsyncMock,
+@test
+async def options_flow_with_existing_options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    saunum_client: MagicMock = Depends(mock_saunum_client),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test options flow with existing custom preset names."""
     existing_options = {
@@ -252,23 +300,21 @@ async def test_options_flow_with_existing_options(
         OPT_PRESET_NAME_TYPE_3: "My Custom Type 3",
     }
 
-    # Set up entry with existing options
-    mock_config_entry = MockConfigEntry(
+    config_entry = MockConfigEntry(
         domain=DOMAIN,
         data=TEST_USER_INPUT,
         options=existing_options,
         title="Saunum",
     )
-    mock_config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
-    # Update one option
     updated_options = {
         OPT_PRESET_NAME_TYPE_1: "Updated Type 1",
         OPT_PRESET_NAME_TYPE_2: "My Custom Type 2",
@@ -280,6 +326,6 @@ async def test_options_flow_with_existing_options(
         user_input=updated_options,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == updated_options
-    assert mock_config_entry.options == updated_options
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(updated_options)
+    expect(config_entry.options).to_equal(updated_options)
