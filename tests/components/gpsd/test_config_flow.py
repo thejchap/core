@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 from gps3.agps3threaded import GPSD_PORT as DEFAULT_PORT
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.gpsd.const import DOMAIN
@@ -10,15 +11,29 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_setup_entry
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 HOST = "gpsd.local"
 
 
-async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     with patch("socket.socket") as mock_socket:
         mock_connect = mock_socket.return_value.connect
@@ -32,16 +47,22 @@ async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == f"GPS {HOST}"
-    assert result2["data"] == {
-        CONF_HOST: HOST,
-        CONF_PORT: DEFAULT_PORT,
-    }
-    mock_setup_entry.assert_called_once()
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(f"GPS {HOST}")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_HOST: HOST,
+            CONF_PORT: DEFAULT_PORT,
+        }
+    )
+    setup_entry.assert_called_once()
 
 
-async def test_connection_error(hass: HomeAssistant) -> None:
+@test
+async def connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test connection to host error."""
     with patch("socket.socket", side_effect=OSError):
         result = await hass.config_entries.flow.async_init(
@@ -50,5 +71,5 @@ async def test_connection_error(hass: HomeAssistant) -> None:
             data={CONF_HOST: "nonexistent.local", CONF_PORT: 1234},
         )
 
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "cannot_connect"
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("cannot_connect")
