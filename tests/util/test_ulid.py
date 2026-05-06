@@ -2,15 +2,19 @@
 
 import uuid
 
+from tryke import expect, test
+
 from homeassistant.util import ulid as ulid_util
 
 
-async def test_ulid_util_uuid_hex() -> None:
+@test
+async def ulid_util_uuid_hex() -> None:
     """Verify we can generate a ulid in hex."""
-    assert len(ulid_util.ulid_hex()) == 32
-    assert uuid.UUID(ulid_util.ulid_hex())
+    expect(len(ulid_util.ulid_hex())).to_equal(32)
+    expect(lambda: uuid.UUID(ulid_util.ulid_hex())).not_.to_raise()
 
 
-async def test_ulid_util_uuid() -> None:
+@test
+async def ulid_util_uuid() -> None:
     """Verify we can generate a ulid."""
-    assert len(ulid_util.ulid()) == 26
+    expect(len(ulid_util.ulid())).to_equal(26)

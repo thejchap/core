@@ -2,14 +2,17 @@
 
 from unittest.mock import patch
 
-from homeassistant.util.system_info import is_official_image
+from tryke import expect, test
+
+from homeassistant.util.system_info import is_official_image as _is_official_image
 
 
-async def test_is_official_image() -> None:
+@test
+async def is_official_image() -> None:
     """Test is_official_image."""
-    is_official_image.cache_clear()
+    _is_official_image.cache_clear()
     with patch("homeassistant.util.system_info.os.path.isfile", return_value=True):
-        assert is_official_image() is True
-    is_official_image.cache_clear()
+        expect(_is_official_image()).to_be(True)
+    _is_official_image.cache_clear()
     with patch("homeassistant.util.system_info.os.path.isfile", return_value=False):
-        assert is_official_image() is False
+        expect(_is_official_image()).to_be(False)

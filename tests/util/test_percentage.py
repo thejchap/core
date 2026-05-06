@@ -2,13 +2,13 @@
 
 import math
 
-import pytest
+from tryke import expect, test
 
 from homeassistant.util.percentage import (
-    ordered_list_item_to_percentage,
-    percentage_to_ordered_list_item,
-    percentage_to_ranged_value,
-    ranged_value_to_percentage,
+    ordered_list_item_to_percentage as _ordered_list_item_to_percentage,
+    percentage_to_ordered_list_item as _percentage_to_ordered_list_item,
+    percentage_to_ranged_value as _percentage_to_ranged_value,
+    ranged_value_to_percentage as _ranged_value_to_percentage,
 )
 
 SPEED_LOW = "low"
@@ -28,153 +28,180 @@ SMALL_ORDERED_LIST = [SPEED_1, SPEED_2, SPEED_3, SPEED_4]
 LARGE_ORDERED_LIST = [SPEED_1, SPEED_2, SPEED_3, SPEED_4, SPEED_5, SPEED_6, SPEED_7]
 
 
-async def test_ordered_list_item_to_percentage() -> None:
+@test
+async def ordered_list_item_to_percentage() -> None:
     """Test percentage of an item in an ordered list."""
 
-    assert ordered_list_item_to_percentage(LEGACY_ORDERED_LIST, SPEED_LOW) == 33
-    assert ordered_list_item_to_percentage(LEGACY_ORDERED_LIST, SPEED_MEDIUM) == 66
-    assert ordered_list_item_to_percentage(LEGACY_ORDERED_LIST, SPEED_HIGH) == 100
+    expect(_ordered_list_item_to_percentage(LEGACY_ORDERED_LIST, SPEED_LOW)).to_equal(
+        33
+    )
+    expect(
+        _ordered_list_item_to_percentage(LEGACY_ORDERED_LIST, SPEED_MEDIUM)
+    ).to_equal(66)
+    expect(_ordered_list_item_to_percentage(LEGACY_ORDERED_LIST, SPEED_HIGH)).to_equal(
+        100
+    )
 
-    assert ordered_list_item_to_percentage(SMALL_ORDERED_LIST, SPEED_1) == 25
-    assert ordered_list_item_to_percentage(SMALL_ORDERED_LIST, SPEED_2) == 50
-    assert ordered_list_item_to_percentage(SMALL_ORDERED_LIST, SPEED_3) == 75
-    assert ordered_list_item_to_percentage(SMALL_ORDERED_LIST, SPEED_4) == 100
+    expect(_ordered_list_item_to_percentage(SMALL_ORDERED_LIST, SPEED_1)).to_equal(25)
+    expect(_ordered_list_item_to_percentage(SMALL_ORDERED_LIST, SPEED_2)).to_equal(50)
+    expect(_ordered_list_item_to_percentage(SMALL_ORDERED_LIST, SPEED_3)).to_equal(75)
+    expect(_ordered_list_item_to_percentage(SMALL_ORDERED_LIST, SPEED_4)).to_equal(100)
 
-    assert ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_1) == 14
-    assert ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_2) == 28
-    assert ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_3) == 42
-    assert ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_4) == 57
-    assert ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_5) == 71
-    assert ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_6) == 85
-    assert ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_7) == 100
+    expect(_ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_1)).to_equal(14)
+    expect(_ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_2)).to_equal(28)
+    expect(_ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_3)).to_equal(42)
+    expect(_ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_4)).to_equal(57)
+    expect(_ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_5)).to_equal(71)
+    expect(_ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_6)).to_equal(85)
+    expect(_ordered_list_item_to_percentage(LARGE_ORDERED_LIST, SPEED_7)).to_equal(100)
 
-    with pytest.raises(ValueError):
-        assert ordered_list_item_to_percentage([], SPEED_1)
+    expect(lambda: _ordered_list_item_to_percentage([], SPEED_1)).to_raise(ValueError)
 
 
-async def test_percentage_to_ordered_list_item() -> None:
+@test
+async def percentage_to_ordered_list_item() -> None:
     """Test item that most closely matches the percentage in an ordered list."""
 
-    assert percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 1) == SPEED_1
-    assert percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 25) == SPEED_1
-    assert percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 26) == SPEED_2
-    assert percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 50) == SPEED_2
-    assert percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 51) == SPEED_3
-    assert percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 75) == SPEED_3
-    assert percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 76) == SPEED_4
-    assert percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 100) == SPEED_4
+    expect(_percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 1)).to_equal(SPEED_1)
+    expect(_percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 25)).to_equal(SPEED_1)
+    expect(_percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 26)).to_equal(SPEED_2)
+    expect(_percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 50)).to_equal(SPEED_2)
+    expect(_percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 51)).to_equal(SPEED_3)
+    expect(_percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 75)).to_equal(SPEED_3)
+    expect(_percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 76)).to_equal(SPEED_4)
+    expect(_percentage_to_ordered_list_item(SMALL_ORDERED_LIST, 100)).to_equal(SPEED_4)
 
-    assert percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 17) == SPEED_LOW
-    assert percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 33) == SPEED_LOW
-    assert percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 50) == SPEED_MEDIUM
-    assert percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 66) == SPEED_MEDIUM
-    assert percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 84) == SPEED_HIGH
-    assert percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 100) == SPEED_HIGH
+    expect(_percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 17)).to_equal(
+        SPEED_LOW
+    )
+    expect(_percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 33)).to_equal(
+        SPEED_LOW
+    )
+    expect(_percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 50)).to_equal(
+        SPEED_MEDIUM
+    )
+    expect(_percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 66)).to_equal(
+        SPEED_MEDIUM
+    )
+    expect(_percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 84)).to_equal(
+        SPEED_HIGH
+    )
+    expect(_percentage_to_ordered_list_item(LEGACY_ORDERED_LIST, 100)).to_equal(
+        SPEED_HIGH
+    )
 
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 1) == SPEED_1
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 14) == SPEED_1
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 25) == SPEED_2
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 26) == SPEED_2
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 28) == SPEED_2
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 29) == SPEED_3
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 41) == SPEED_3
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 42) == SPEED_3
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 43) == SPEED_4
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 56) == SPEED_4
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 50) == SPEED_4
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 51) == SPEED_4
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 75) == SPEED_6
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 76) == SPEED_6
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 100) == SPEED_7
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 1)).to_equal(SPEED_1)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 14)).to_equal(SPEED_1)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 25)).to_equal(SPEED_2)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 26)).to_equal(SPEED_2)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 28)).to_equal(SPEED_2)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 29)).to_equal(SPEED_3)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 41)).to_equal(SPEED_3)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 42)).to_equal(SPEED_3)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 43)).to_equal(SPEED_4)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 56)).to_equal(SPEED_4)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 50)).to_equal(SPEED_4)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 51)).to_equal(SPEED_4)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 75)).to_equal(SPEED_6)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 76)).to_equal(SPEED_6)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 100)).to_equal(SPEED_7)
 
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 1) == SPEED_1
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 25) == SPEED_2
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 26) == SPEED_2
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 50) == SPEED_4
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 51) == SPEED_4
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 75) == SPEED_6
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 76) == SPEED_6
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 100) == SPEED_7
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 1)).to_equal(SPEED_1)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 25)).to_equal(SPEED_2)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 26)).to_equal(SPEED_2)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 50)).to_equal(SPEED_4)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 51)).to_equal(SPEED_4)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 75)).to_equal(SPEED_6)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 76)).to_equal(SPEED_6)
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 100)).to_equal(SPEED_7)
 
-    assert percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 100.1) == SPEED_7
+    expect(_percentage_to_ordered_list_item(LARGE_ORDERED_LIST, 100.1)).to_equal(
+        SPEED_7
+    )
 
-    with pytest.raises(ValueError):
-        assert percentage_to_ordered_list_item([], 100)
+    expect(lambda: _percentage_to_ordered_list_item([], 100)).to_raise(ValueError)
 
 
-async def test_ranged_value_to_percentage_large() -> None:
+@test
+async def ranged_value_to_percentage_large() -> None:
     """Test a large range of low and high values convert a single value to a percentage."""
     value_range = (1, 255)
 
-    assert ranged_value_to_percentage(value_range, 255) == 100
-    assert ranged_value_to_percentage(value_range, 127) == 49
-    assert ranged_value_to_percentage(value_range, 10) == 3
-    assert ranged_value_to_percentage(value_range, 1) == 0
+    expect(_ranged_value_to_percentage(value_range, 255)).to_equal(100)
+    expect(_ranged_value_to_percentage(value_range, 127)).to_equal(49)
+    expect(_ranged_value_to_percentage(value_range, 10)).to_equal(3)
+    expect(_ranged_value_to_percentage(value_range, 1)).to_equal(0)
 
 
-async def test_percentage_to_ranged_value_large() -> None:
+@test
+async def percentage_to_ranged_value_large() -> None:
     """Test a large range of low and high values convert a percentage to a single value."""
     value_range = (1, 255)
 
-    assert percentage_to_ranged_value(value_range, 100) == 255
-    assert percentage_to_ranged_value(value_range, 50) == 127.5
-    assert percentage_to_ranged_value(value_range, 4) == 10.2
+    expect(_percentage_to_ranged_value(value_range, 100)).to_equal(255)
+    expect(_percentage_to_ranged_value(value_range, 50)).to_equal(127.5)
+    expect(_percentage_to_ranged_value(value_range, 4)).to_equal(10.2)
 
-    assert math.ceil(percentage_to_ranged_value(value_range, 100)) == 255
-    assert math.ceil(percentage_to_ranged_value(value_range, 50)) == 128
-    assert math.ceil(percentage_to_ranged_value(value_range, 4)) == 11
+    expect(math.ceil(_percentage_to_ranged_value(value_range, 100))).to_equal(255)
+    expect(math.ceil(_percentage_to_ranged_value(value_range, 50))).to_equal(128)
+    expect(math.ceil(_percentage_to_ranged_value(value_range, 4))).to_equal(11)
 
 
-async def test_ranged_value_to_percentage_small() -> None:
+@test
+async def ranged_value_to_percentage_small() -> None:
     """Test a small range of low and high values convert a single value to a percentage."""
     value_range = (1, 6)
 
-    assert ranged_value_to_percentage(value_range, 1) == 16
-    assert ranged_value_to_percentage(value_range, 2) == 33
-    assert ranged_value_to_percentage(value_range, 3) == 50
-    assert ranged_value_to_percentage(value_range, 4) == 66
-    assert ranged_value_to_percentage(value_range, 5) == 83
-    assert ranged_value_to_percentage(value_range, 6) == 100
+    expect(_ranged_value_to_percentage(value_range, 1)).to_equal(16)
+    expect(_ranged_value_to_percentage(value_range, 2)).to_equal(33)
+    expect(_ranged_value_to_percentage(value_range, 3)).to_equal(50)
+    expect(_ranged_value_to_percentage(value_range, 4)).to_equal(66)
+    expect(_ranged_value_to_percentage(value_range, 5)).to_equal(83)
+    expect(_ranged_value_to_percentage(value_range, 6)).to_equal(100)
 
 
-async def test_percentage_to_ranged_value_small() -> None:
+@test
+async def percentage_to_ranged_value_small() -> None:
     """Test a small range of low and high values convert a percentage to a single value."""
     value_range = (1, 6)
 
-    assert math.ceil(percentage_to_ranged_value(value_range, 16)) == 1
-    assert math.ceil(percentage_to_ranged_value(value_range, 33)) == 2
-    assert math.ceil(percentage_to_ranged_value(value_range, 50)) == 3
-    assert math.ceil(percentage_to_ranged_value(value_range, 66)) == 4
-    assert math.ceil(percentage_to_ranged_value(value_range, 83)) == 5
-    assert math.ceil(percentage_to_ranged_value(value_range, 100)) == 6
+    expect(math.ceil(_percentage_to_ranged_value(value_range, 16))).to_equal(1)
+    expect(math.ceil(_percentage_to_ranged_value(value_range, 33))).to_equal(2)
+    expect(math.ceil(_percentage_to_ranged_value(value_range, 50))).to_equal(3)
+    expect(math.ceil(_percentage_to_ranged_value(value_range, 66))).to_equal(4)
+    expect(math.ceil(_percentage_to_ranged_value(value_range, 83))).to_equal(5)
+    expect(math.ceil(_percentage_to_ranged_value(value_range, 100))).to_equal(6)
 
 
-async def test_ranged_value_to_percentage_starting_at_one() -> None:
+@test
+async def ranged_value_to_percentage_starting_at_one() -> None:
     """Test a range that starts with 1."""
     value_range = (1, 4)
 
-    assert ranged_value_to_percentage(value_range, 1) == 25
-    assert ranged_value_to_percentage(value_range, 2) == 50
-    assert ranged_value_to_percentage(value_range, 3) == 75
-    assert ranged_value_to_percentage(value_range, 4) == 100
+    expect(_ranged_value_to_percentage(value_range, 1)).to_equal(25)
+    expect(_ranged_value_to_percentage(value_range, 2)).to_equal(50)
+    expect(_ranged_value_to_percentage(value_range, 3)).to_equal(75)
+    expect(_ranged_value_to_percentage(value_range, 4)).to_equal(100)
 
 
-async def test_ranged_value_to_percentage_starting_high() -> None:
+@test
+async def ranged_value_to_percentage_starting_high() -> None:
     """Test a range that does not start with 1."""
     value_range = (101, 255)
 
-    assert ranged_value_to_percentage(value_range, 101) == 0
-    assert ranged_value_to_percentage(value_range, 139) == 25
-    assert ranged_value_to_percentage(value_range, 178) == 50
-    assert ranged_value_to_percentage(value_range, 217) == 75
-    assert ranged_value_to_percentage(value_range, 255) == 100
+    expect(_ranged_value_to_percentage(value_range, 101)).to_equal(0)
+    expect(_ranged_value_to_percentage(value_range, 139)).to_equal(25)
+    expect(_ranged_value_to_percentage(value_range, 178)).to_equal(50)
+    expect(_ranged_value_to_percentage(value_range, 217)).to_equal(75)
+    expect(_ranged_value_to_percentage(value_range, 255)).to_equal(100)
 
 
-async def test_ranged_value_to_percentage_starting_zero() -> None:
+@test
+async def ranged_value_to_percentage_starting_zero() -> None:
     """Test a range that starts with 0."""
     value_range = (0, 3)
 
-    assert ranged_value_to_percentage(value_range, 0) == 25
-    assert ranged_value_to_percentage(value_range, 1) == 50
-    assert ranged_value_to_percentage(value_range, 2) == 75
-    assert ranged_value_to_percentage(value_range, 3) == 100
+    expect(_ranged_value_to_percentage(value_range, 0)).to_equal(25)
+    expect(_ranged_value_to_percentage(value_range, 1)).to_equal(50)
+    expect(_ranged_value_to_percentage(value_range, 2)).to_equal(75)
+    expect(_ranged_value_to_percentage(value_range, 3)).to_equal(100)

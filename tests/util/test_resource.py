@@ -4,36 +4,57 @@ import os
 import resource
 from unittest.mock import call, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.util.resource import (
     DEFAULT_SOFT_FILE_LIMIT,
     set_open_file_descriptor_limit,
 )
 
+from tests.hass_fixtures import LogCapture, caplog
 
-@pytest.mark.parametrize(
-    ("original_soft", "expected_calls", "should_log_already_sufficient"),
-    [
-        (
-            1024,
-            [call(resource.RLIMIT_NOFILE, (DEFAULT_SOFT_FILE_LIMIT, 524288))],
-            False,
-        ),
-        (
-            DEFAULT_SOFT_FILE_LIMIT - 1,
-            [call(resource.RLIMIT_NOFILE, (DEFAULT_SOFT_FILE_LIMIT, 524288))],
-            False,
-        ),
-        (DEFAULT_SOFT_FILE_LIMIT, [], True),
-        (DEFAULT_SOFT_FILE_LIMIT + 1, [], True),
-    ],
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture so imported fixtures resolve via Depends()."""
+    return 0
+
+
+@test.cases(
+    test.case(
+        "small-soft",
+        original_soft=1024,
+        expected_calls=[
+            call(resource.RLIMIT_NOFILE, (DEFAULT_SOFT_FILE_LIMIT, 524288))
+        ],
+        should_log_already_sufficient=False,
+    ),
+    test.case(
+        "just-below-default",
+        original_soft=DEFAULT_SOFT_FILE_LIMIT - 1,
+        expected_calls=[
+            call(resource.RLIMIT_NOFILE, (DEFAULT_SOFT_FILE_LIMIT, 524288))
+        ],
+        should_log_already_sufficient=False,
+    ),
+    test.case(
+        "at-default",
+        original_soft=DEFAULT_SOFT_FILE_LIMIT,
+        expected_calls=[],
+        should_log_already_sufficient=True,
+    ),
+    test.case(
+        "above-default",
+        original_soft=DEFAULT_SOFT_FILE_LIMIT + 1,
+        expected_calls=[],
+        should_log_already_sufficient=True,
+    ),
 )
-def test_set_open_file_descriptor_limit_default(
-    caplog: pytest.LogCaptureFixture,
+def set_open_file_descriptor_limit_default(
     original_soft: int,
     expected_calls: list,
     should_log_already_sufficient: bool,
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test setting file limit with default value."""
     original_hard = 524288
@@ -46,31 +67,42 @@ def test_set_open_file_descriptor_limit_default(
     ):
         set_open_file_descriptor_limit()
 
-    assert mock_setrlimit.call_args_list == expected_calls
-    assert (
-        f"Current soft limit ({original_soft}) is already" in caplog.text
-    ) is should_log_already_sufficient
+    expect(mock_setrlimit.call_args_list).to_equal(expected_calls)
+    expect(
+        (f"Current soft limit ({original_soft}) is already" in caplog.text)
+        is should_log_already_sufficient
+    ).to_be(True)
 
 
-@pytest.mark.parametrize(
-    (
-        "original_soft",
-        "custom_limit",
-        "expected_calls",
-        "should_log_already_sufficient",
+@test.cases(
+    test.case(
+        "below-custom",
+        original_soft=1499,
+        custom_limit=1500,
+        expected_calls=[call(resource.RLIMIT_NOFILE, (1500, 524288))],
+        should_log_already_sufficient=False,
     ),
-    [
-        (1499, 1500, [call(resource.RLIMIT_NOFILE, (1500, 524288))], False),
-        (1500, 1500, [], True),
-        (1501, 1500, [], True),
-    ],
+    test.case(
+        "at-custom",
+        original_soft=1500,
+        custom_limit=1500,
+        expected_calls=[],
+        should_log_already_sufficient=True,
+    ),
+    test.case(
+        "above-custom",
+        original_soft=1501,
+        custom_limit=1500,
+        expected_calls=[],
+        should_log_already_sufficient=True,
+    ),
 )
-def test_set_open_file_descriptor_limit_environment_variable(
-    caplog: pytest.LogCaptureFixture,
+def set_open_file_descriptor_limit_environment_variable(
     original_soft: int,
     custom_limit: int,
     expected_calls: list,
     should_log_already_sufficient: bool,
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test setting file limit from environment variable."""
     original_hard = 524288
@@ -84,14 +116,16 @@ def test_set_open_file_descriptor_limit_environment_variable(
     ):
         set_open_file_descriptor_limit()
 
-    assert mock_setrlimit.call_args_list == expected_calls
-    assert (
-        f"Current soft limit ({original_soft}) is already" in caplog.text
-    ) is should_log_already_sufficient
+    expect(mock_setrlimit.call_args_list).to_equal(expected_calls)
+    expect(
+        (f"Current soft limit ({original_soft}) is already" in caplog.text)
+        is should_log_already_sufficient
+    ).to_be(True)
 
 
-def test_set_open_file_descriptor_limit_exceeds_hard_limit(
-    caplog: pytest.LogCaptureFixture,
+@test
+def set_open_file_descriptor_limit_exceeds_hard_limit(
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test setting file limit that exceeds hard limit."""
     original_soft, original_hard = (1024, 524288)
@@ -110,14 +144,15 @@ def test_set_open_file_descriptor_limit_exceeds_hard_limit(
     mock_setrlimit.assert_called_once_with(
         resource.RLIMIT_NOFILE, (original_hard, original_hard)
     )
-    assert (
+    expect(
         f"Requested soft limit ({excessive_limit}) exceeds hard limit ({original_hard})"
         in caplog.text
-    )
+    ).to_be(True)
 
 
-def test_set_open_file_descriptor_limit_os_error(
-    caplog: pytest.LogCaptureFixture,
+@test
+def set_open_file_descriptor_limit_os_error(
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test handling OSError when setting file limit."""
     with (
@@ -132,12 +167,13 @@ def test_set_open_file_descriptor_limit_os_error(
     ):
         set_open_file_descriptor_limit()
 
-    assert "Failed to set file descriptor limit" in caplog.text
-    assert "Permission denied" in caplog.text
+    expect("Failed to set file descriptor limit" in caplog.text).to_be(True)
+    expect("Permission denied" in caplog.text).to_be(True)
 
 
-def test_set_open_file_descriptor_limit_value_error(
-    caplog: pytest.LogCaptureFixture,
+@test
+def set_open_file_descriptor_limit_value_error(
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test handling ValueError when setting file limit."""
     with (
@@ -149,5 +185,5 @@ def test_set_open_file_descriptor_limit_value_error(
     ):
         set_open_file_descriptor_limit()
 
-    assert "Invalid file descriptor limit value" in caplog.text
-    assert "'invalid_value'" in caplog.text
+    expect("Invalid file descriptor limit value" in caplog.text).to_be(True)
+    expect("'invalid_value'" in caplog.text).to_be(True)

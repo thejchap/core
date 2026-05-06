@@ -2,10 +2,13 @@
 
 import uuid
 
+from tryke import expect, test
+
 from homeassistant.util import uuid as uuid_util
 
 
-async def test_uuid_util_random_uuid_hex() -> None:
+@test
+async def uuid_util_random_uuid_hex() -> None:
     """Verify we can generate a random uuid."""
-    assert len(uuid_util.random_uuid_hex()) == 32
-    assert uuid.UUID(uuid_util.random_uuid_hex())
+    expect(len(uuid_util.random_uuid_hex())).to_equal(32)
+    expect(lambda: uuid.UUID(uuid_util.random_uuid_hex())).not_.to_raise()

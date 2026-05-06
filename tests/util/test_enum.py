@@ -3,7 +3,7 @@
 from enum import Enum, IntEnum, IntFlag, StrEnum
 from typing import Any
 
-import pytest
+from tryke import expect, test
 
 from homeassistant.util.enum import try_parse_enum
 
@@ -21,32 +21,46 @@ class _AnIntFlag(IntFlag):
     SECOND = 2
 
 
-@pytest.mark.parametrize(
-    ("enum_type", "value", "expected"),
-    [
-        # StrEnum valid checks
-        (_AStrEnum, _AStrEnum.VALUE, _AStrEnum.VALUE),
-        (_AStrEnum, "value", _AStrEnum.VALUE),
-        # StrEnum invalid checks
-        (_AStrEnum, "invalid", None),
-        (_AStrEnum, 1, None),
-        (_AStrEnum, None, None),
-        # IntEnum valid checks
-        (_AnIntEnum, _AnIntEnum.VALUE, _AnIntEnum.VALUE),
-        (_AnIntEnum, 1, _AnIntEnum.VALUE),
-        # IntEnum invalid checks
-        (_AnIntEnum, "value", None),
-        (_AnIntEnum, 2, None),
-        (_AnIntEnum, None, None),
-        # IntFlag valid checks
-        (_AnIntFlag, _AnIntFlag.VALUE, _AnIntFlag.VALUE),
-        (_AnIntFlag, 1, _AnIntFlag.VALUE),
-        (_AnIntFlag, 2, _AnIntFlag(2)),
-        # IntFlag invalid checks
-        (_AnIntFlag, "value", None),
-        (_AnIntFlag, None, None),
-    ],
+@test.cases(
+    test.case(
+        "strenum-value",
+        enum_type=_AStrEnum,
+        value=_AStrEnum.VALUE,
+        expected=_AStrEnum.VALUE,
+    ),
+    test.case(
+        "strenum-str", enum_type=_AStrEnum, value="value", expected=_AStrEnum.VALUE
+    ),
+    test.case(
+        "strenum-invalid-str", enum_type=_AStrEnum, value="invalid", expected=None
+    ),
+    test.case("strenum-invalid-int", enum_type=_AStrEnum, value=1, expected=None),
+    test.case("strenum-invalid-none", enum_type=_AStrEnum, value=None, expected=None),
+    test.case(
+        "intenum-value",
+        enum_type=_AnIntEnum,
+        value=_AnIntEnum.VALUE,
+        expected=_AnIntEnum.VALUE,
+    ),
+    test.case("intenum-int", enum_type=_AnIntEnum, value=1, expected=_AnIntEnum.VALUE),
+    test.case(
+        "intenum-invalid-str", enum_type=_AnIntEnum, value="value", expected=None
+    ),
+    test.case("intenum-invalid-int", enum_type=_AnIntEnum, value=2, expected=None),
+    test.case("intenum-invalid-none", enum_type=_AnIntEnum, value=None, expected=None),
+    test.case(
+        "intflag-value",
+        enum_type=_AnIntFlag,
+        value=_AnIntFlag.VALUE,
+        expected=_AnIntFlag.VALUE,
+    ),
+    test.case("intflag-int", enum_type=_AnIntFlag, value=1, expected=_AnIntFlag.VALUE),
+    test.case("intflag-second", enum_type=_AnIntFlag, value=2, expected=_AnIntFlag(2)),
+    test.case(
+        "intflag-invalid-str", enum_type=_AnIntFlag, value="value", expected=None
+    ),
+    test.case("intflag-invalid-none", enum_type=_AnIntFlag, value=None, expected=None),
 )
-def test_try_parse(enum_type: type[Enum], value: Any, expected: Enum | None) -> None:
+def try_parse(enum_type: type[Enum], value: Any, expected: Enum | None) -> None:
     """Test parsing of values into an Enum."""
-    assert try_parse_enum(enum_type, value) is expected
+    expect(try_parse_enum(enum_type, value) is expected).to_be(True)
