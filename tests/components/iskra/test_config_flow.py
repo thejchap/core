@@ -1,7 +1,6 @@
 """Tests for the Iskra config flow."""
 
-from collections.abc import Generator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from pyiskra.exceptions import (
     DeviceConnectionError,
@@ -9,7 +8,7 @@ from pyiskra.exceptions import (
     InvalidResponseCode,
     NotAuthorised,
 )
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.iskra import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -24,6 +23,8 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_pyiskra_modbus, mock_pyiskra_rest, mock_setup_entry
+
 from .const import (
     HOST,
     MODBUS_ADDRESS,
@@ -36,113 +37,117 @@ from .const import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.fixture(autouse=True)
-def mock_setup_entry() -> Generator[AsyncMock]:
-    """Override async_setup_entry."""
-    with patch(
-        "homeassistant.components.iskra.async_setup_entry", return_value=True
-    ) as mock_setup_entry:
-        yield mock_setup_entry
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
 
-# Test step_user with Rest API protocol
-async def test_user_rest_no_auth(hass: HomeAssistant, mock_pyiskra_rest) -> None:
+@test
+async def user_rest_no_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _pyiskra_rest: MagicMock = Depends(mock_pyiskra_rest),
+) -> None:
     """Test the user flow with Rest API protocol."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
 
-    # Test if user form is provided
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    # Test no authentication required
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: HOST, CONF_PROTOCOL: "rest_api"},
     )
 
-    # Test successful Rest API configuration
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].unique_id == SERIAL
-    assert result["title"] == SG_MODEL
-    assert result["data"] == {CONF_HOST: HOST, CONF_PROTOCOL: "rest_api"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal(SERIAL)
+    expect(result["title"]).to_equal(SG_MODEL)
+    expect(result["data"]).to_equal({CONF_HOST: HOST, CONF_PROTOCOL: "rest_api"})
 
 
-async def test_user_rest_auth(hass: HomeAssistant, mock_pyiskra_rest) -> None:
+@test
+async def user_rest_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    pyiskra_rest: MagicMock = Depends(mock_pyiskra_rest),
+) -> None:
     """Test the user flow with Rest API protocol and authentication required."""
-    mock_pyiskra_rest.side_effect = NotAuthorised
+    pyiskra_rest.side_effect = NotAuthorised
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
 
-    # Test if user form is provided
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-    # Test if prompted to enter username and password if not authorised
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: HOST, CONF_PROTOCOL: "rest_api"},
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "authentication"
-
-    # Test failed authentication
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        user_input={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_auth"}
-    assert result["step_id"] == "authentication"
-
-    # Test successful authentication
-    mock_pyiskra_rest.side_effect = None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("authentication")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
     )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "invalid_auth"})
+    expect(result["step_id"]).to_equal("authentication")
 
-    # Test successful Rest API configuration
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].unique_id == SERIAL
-    assert result["title"] == SG_MODEL
-    assert result["data"] == {
-        CONF_HOST: HOST,
-        CONF_PROTOCOL: "rest_api",
-        CONF_USERNAME: USERNAME,
-        CONF_PASSWORD: PASSWORD,
-    }
+    pyiskra_rest.side_effect = None
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={CONF_USERNAME: USERNAME, CONF_PASSWORD: PASSWORD},
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal(SERIAL)
+    expect(result["title"]).to_equal(SG_MODEL)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: HOST,
+            CONF_PROTOCOL: "rest_api",
+            CONF_USERNAME: USERNAME,
+            CONF_PASSWORD: PASSWORD,
+        }
+    )
 
 
-async def test_user_modbus(hass: HomeAssistant, mock_pyiskra_modbus) -> None:
+@test
+async def user_modbus(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _pyiskra_modbus: MagicMock = Depends(mock_pyiskra_modbus),
+) -> None:
     """Test the user flow with Modbus TCP protocol."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
 
-    # Test if user form is provided
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: HOST, CONF_PROTOCOL: "modbus_tcp"},
     )
 
-    # Test if propmpted to enter port and address
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "modbus_tcp"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("modbus_tcp")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -152,23 +157,26 @@ async def test_user_modbus(hass: HomeAssistant, mock_pyiskra_modbus) -> None:
         },
     )
 
-    # Test successful Modbus TCP configuration
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].unique_id == SERIAL
-    assert result["title"] == PQ_MODEL
-    assert result["data"] == {
-        CONF_HOST: HOST,
-        CONF_PROTOCOL: "modbus_tcp",
-        CONF_PORT: MODBUS_PORT,
-        CONF_ADDRESS: MODBUS_ADDRESS,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal(SERIAL)
+    expect(result["title"]).to_equal(PQ_MODEL)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: HOST,
+            CONF_PROTOCOL: "modbus_tcp",
+            CONF_PORT: MODBUS_PORT,
+            CONF_ADDRESS: MODBUS_ADDRESS,
+        }
+    )
 
 
-async def test_modbus_abort_if_already_setup(
-    hass: HomeAssistant, mock_pyiskra_modbus
+@test
+async def modbus_abort_if_already_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _pyiskra_modbus: MagicMock = Depends(mock_pyiskra_modbus),
 ) -> None:
     """Test we abort if Iskra is already setup."""
-
     MockConfigEntry(domain=DOMAIN, unique_id=SERIAL).add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -176,8 +184,8 @@ async def test_modbus_abort_if_already_setup(
         data={CONF_HOST: HOST, CONF_PROTOCOL: "modbus_tcp"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "modbus_tcp"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("modbus_tcp")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
@@ -186,15 +194,17 @@ async def test_modbus_abort_if_already_setup(
         },
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_rest_api_abort_if_already_setup(
-    hass: HomeAssistant, mock_pyiskra_rest
+@test
+async def rest_api_abort_if_already_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _pyiskra_rest: MagicMock = Depends(mock_pyiskra_rest),
 ) -> None:
     """Test we abort if Iskra is already setup."""
-
     MockConfigEntry(domain=DOMAIN, unique_id=SERIAL).add_to_hass(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -202,27 +212,25 @@ async def test_rest_api_abort_if_already_setup(
         data={CONF_HOST: HOST, CONF_PROTOCOL: "rest_api"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.parametrize(
-    ("s_effect", "reason"),
-    [
-        (DeviceConnectionError, "cannot_connect"),
-        (DeviceTimeoutError, "cannot_connect"),
-        (InvalidResponseCode, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("connection_error", s_effect=DeviceConnectionError, reason="cannot_connect"),
+    test.case("timeout_error", s_effect=DeviceTimeoutError, reason="cannot_connect"),
+    test.case("invalid_response", s_effect=InvalidResponseCode, reason="cannot_connect"),
+    test.case("unknown_exception", s_effect=Exception, reason="unknown"),
 )
-async def test_modbus_device_error(
-    hass: HomeAssistant,
-    mock_pyiskra_modbus,
-    s_effect,
-    reason,
+async def modbus_device_error(
+    s_effect: type[Exception],
+    reason: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    pyiskra_modbus: MagicMock = Depends(mock_pyiskra_modbus),
 ) -> None:
     """Test device error with Modbus TCP protocol."""
-    mock_pyiskra_modbus.side_effect = s_effect
+    pyiskra_modbus.side_effect = s_effect
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -230,8 +238,8 @@ async def test_modbus_device_error(
         data={CONF_HOST: HOST, CONF_PROTOCOL: "modbus_tcp"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "modbus_tcp"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("modbus_tcp")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={
@@ -240,13 +248,11 @@ async def test_modbus_device_error(
         },
     )
 
-    # Test if error returned
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "modbus_tcp"
-    assert result["errors"] == {"base": reason}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("modbus_tcp")
+    expect(result["errors"]).to_equal({"base": reason})
 
-    # Remove side effect
-    mock_pyiskra_modbus.side_effect = None
+    pyiskra_modbus.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -256,35 +262,34 @@ async def test_modbus_device_error(
         },
     )
 
-    # Test successful Modbus TCP configuration
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].unique_id == SERIAL
-    assert result["title"] == PQ_MODEL
-    assert result["data"] == {
-        CONF_HOST: HOST,
-        CONF_PROTOCOL: "modbus_tcp",
-        CONF_PORT: MODBUS_PORT,
-        CONF_ADDRESS: MODBUS_ADDRESS,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal(SERIAL)
+    expect(result["title"]).to_equal(PQ_MODEL)
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: HOST,
+            CONF_PROTOCOL: "modbus_tcp",
+            CONF_PORT: MODBUS_PORT,
+            CONF_ADDRESS: MODBUS_ADDRESS,
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    ("s_effect", "reason"),
-    [
-        (DeviceConnectionError, "cannot_connect"),
-        (DeviceTimeoutError, "cannot_connect"),
-        (InvalidResponseCode, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("connection_error", s_effect=DeviceConnectionError, reason="cannot_connect"),
+    test.case("timeout_error", s_effect=DeviceTimeoutError, reason="cannot_connect"),
+    test.case("invalid_response", s_effect=InvalidResponseCode, reason="cannot_connect"),
+    test.case("unknown_exception", s_effect=Exception, reason="unknown"),
 )
-async def test_rest_device_error(
-    hass: HomeAssistant,
-    mock_pyiskra_rest,
-    s_effect,
-    reason,
+async def rest_device_error(
+    s_effect: type[Exception],
+    reason: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    pyiskra_rest: MagicMock = Depends(mock_pyiskra_rest),
 ) -> None:
     """Test device error with Modbus TCP protocol."""
-    mock_pyiskra_rest.side_effect = s_effect
+    pyiskra_rest.side_effect = s_effect
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -292,21 +297,18 @@ async def test_rest_device_error(
         data={CONF_HOST: HOST, CONF_PROTOCOL: "rest_api"},
     )
 
-    # Test if error returned
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": reason}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": reason})
 
-    # Remove side effect
-    mock_pyiskra_rest.side_effect = None
+    pyiskra_rest.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: HOST, CONF_PROTOCOL: "rest_api"},
     )
 
-    # Test successful Rest API configuration
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"].unique_id == SERIAL
-    assert result["title"] == SG_MODEL
-    assert result["data"] == {CONF_HOST: HOST, CONF_PROTOCOL: "rest_api"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal(SERIAL)
+    expect(result["title"]).to_equal(SG_MODEL)
+    expect(result["data"]).to_equal({CONF_HOST: HOST, CONF_PROTOCOL: "rest_api"})
