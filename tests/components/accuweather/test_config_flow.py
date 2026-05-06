@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock
 
 from accuweather import ApiError, InvalidApiKeyError, RequestsExceededError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.accuweather.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -11,9 +11,12 @@ from homeassistant.const import CONF_API_KEY, CONF_LATITUDE, CONF_LONGITUDE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from . import init_integration
+from ._fixtures import mock_accuweather_client
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+from . import init_integration
 
 VALID_CONFIG = {
     CONF_API_KEY: "32-character-string-1234567890qw",
@@ -22,23 +25,36 @@ VALID_CONFIG = {
 }
 
 
-async def test_show_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _client: AsyncMock = Depends(mock_accuweather_client),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def show_form(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+) -> None:
     """Test that the form is served with no input."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
-async def test_invalid_api_key(
-    hass: HomeAssistant, mock_accuweather_client: AsyncMock
+@test
+async def invalid_api_key(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+    mock_client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test that errors are shown when API key is invalid."""
-    mock_accuweather_client.async_get_location.side_effect = InvalidApiKeyError(
-        "Invalid API key"
-    )
+    mock_client.async_get_location.side_effect = InvalidApiKeyError("Invalid API key")
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -46,14 +62,17 @@ async def test_invalid_api_key(
         data=VALID_CONFIG,
     )
 
-    assert result["errors"] == {CONF_API_KEY: "invalid_api_key"}
+    expect(result["errors"]).to_equal({CONF_API_KEY: "invalid_api_key"})
 
 
-async def test_api_error(
-    hass: HomeAssistant, mock_accuweather_client: AsyncMock
+@test
+async def api_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+    mock_client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test API error."""
-    mock_accuweather_client.async_get_location.side_effect = ApiError(
+    mock_client.async_get_location.side_effect = ApiError(
         "Invalid response from AccuWeather API"
     )
 
@@ -63,14 +82,17 @@ async def test_api_error(
         data=VALID_CONFIG,
     )
 
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_requests_exceeded_error(
-    hass: HomeAssistant, mock_accuweather_client: AsyncMock
+@test
+async def requests_exceeded_error(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+    mock_client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test requests exceeded error."""
-    mock_accuweather_client.async_get_location.side_effect = RequestsExceededError(
+    mock_client.async_get_location.side_effect = RequestsExceededError(
         "The allowed number of requests has been exceeded"
     )
 
@@ -80,11 +102,14 @@ async def test_requests_exceeded_error(
         data=VALID_CONFIG,
     )
 
-    assert result["errors"] == {CONF_API_KEY: "requests_exceeded"}
+    expect(result["errors"]).to_equal({CONF_API_KEY: "requests_exceeded"})
 
 
-async def test_integration_already_exists(
-    hass: HomeAssistant, mock_accuweather_client: AsyncMock
+@test
+async def integration_already_exists(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+    _client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test we only allow a single config flow."""
     MockConfigEntry(
@@ -99,12 +124,15 @@ async def test_integration_already_exists(
         data=VALID_CONFIG,
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_create_entry(
-    hass: HomeAssistant, mock_accuweather_client: AsyncMock
+@test
+async def create_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+    _client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test that the user step works."""
     result = await hass.config_entries.flow.async_init(
@@ -113,69 +141,78 @@ async def test_create_entry(
         data=VALID_CONFIG,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Test location"
-    assert result["data"][CONF_LATITUDE] == 55.55
-    assert result["data"][CONF_LONGITUDE] == 122.12
-    assert result["data"][CONF_API_KEY] == "32-character-string-1234567890qw"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Test location")
+    expect(result["data"][CONF_LATITUDE]).to_equal(55.55)
+    expect(result["data"][CONF_LONGITUDE]).to_equal(122.12)
+    expect(result["data"][CONF_API_KEY]).to_equal("32-character-string-1234567890qw")
 
 
-async def test_reauth_successful(
-    hass: HomeAssistant, mock_accuweather_client: AsyncMock
+@test
+async def reauth_successful(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+    _client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test starting a reauthentication flow."""
     mock_config_entry = await init_integration(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_API_KEY: "new_api_key"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data[CONF_API_KEY] == "new_api_key"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_config_entry.data[CONF_API_KEY]).to_equal("new_api_key")
 
 
-@pytest.mark.parametrize(
-    ("exc", "base_error"),
-    [
-        (ApiError("API Error"), "cannot_connect"),
-        (InvalidApiKeyError("Invalid API Key"), "invalid_api_key"),
-        (TimeoutError, "cannot_connect"),
-        (RequestsExceededError("Requests Exceeded"), "requests_exceeded"),
-    ],
+@test.cases(
+    test.case("api_error", exc=ApiError("API Error"), base_error="cannot_connect"),
+    test.case(
+        "invalid_api_key",
+        exc=InvalidApiKeyError("Invalid API Key"),
+        base_error="invalid_api_key",
+    ),
+    test.case("timeout", exc=TimeoutError(), base_error="cannot_connect"),
+    test.case(
+        "requests_exceeded",
+        exc=RequestsExceededError("Requests Exceeded"),
+        base_error="requests_exceeded",
+    ),
 )
-async def test_reauth_errors(
-    hass: HomeAssistant,
+async def reauth_errors(
     exc: Exception,
     base_error: str,
-    mock_accuweather_client: AsyncMock,
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+    mock_client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test reauthentication flow with errors."""
     mock_config_entry = await init_integration(hass)
 
     result = await mock_config_entry.start_reauth_flow(hass)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
 
-    mock_accuweather_client.async_get_location.side_effect = exc
+    mock_client.async_get_location.side_effect = exc
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_API_KEY: "new_api_key"},
     )
 
-    assert result["errors"] == {"base": base_error}
+    expect(result["errors"]).to_equal({"base": base_error})
 
-    mock_accuweather_client.async_get_location.side_effect = None
+    mock_client.async_get_location.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_API_KEY: "new_api_key"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "reauth_successful"
-    assert mock_config_entry.data[CONF_API_KEY] == "new_api_key"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("reauth_successful")
+    expect(mock_config_entry.data[CONF_API_KEY]).to_equal("new_api_key")
