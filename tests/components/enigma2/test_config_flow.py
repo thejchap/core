@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 from aiohttp.client_exceptions import ClientError
 from openwebif.error import InvalidAuthError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.enigma2.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
@@ -13,132 +13,141 @@ from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from .conftest import TEST_FULL, TEST_REQUIRED
+from ._fixtures import (
+    TEST_FULL,
+    TEST_REQUIRED,
+    mock_config_entry,
+    openwebif_device_mock,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.fixture
-async def user_flow(hass: HomeAssistant) -> str:
-    """Return a user-initiated flow after filling in host info."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_USER}
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] is None
-    return result["flow_id"]
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture so tryke fully resolves Depends across the module."""
 
 
-@pytest.mark.usefixtures("openwebif_device_mock")
-@pytest.mark.parametrize(
-    ("test_config"),
-    [(TEST_FULL), (TEST_REQUIRED)],
+@test.cases(
+    test.case("full", test_config=TEST_FULL),
+    test.case("required", test_config=TEST_REQUIRED),
 )
-async def test_form_user(hass: HomeAssistant, test_config: dict[str, Any]) -> None:
+async def form_user(
+    test_config: dict[str, Any],
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+    _device: AsyncMock = Depends(openwebif_device_mock),
+) -> None:
     """Test a successful user initiated flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], test_config
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == test_config[CONF_HOST]
-    assert result["data"] == test_config
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(test_config[CONF_HOST])
+    expect(result["data"]).to_equal(test_config)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error_value"),
-    [
-        (InvalidAuthError, "invalid_auth"),
-        (ClientError, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("invalid_auth", side_effect=InvalidAuthError, error_value="invalid_auth"),
+    test.case("cannot_connect", side_effect=ClientError, error_value="cannot_connect"),
+    test.case("unknown", side_effect=Exception, error_value="unknown"),
 )
-async def test_form_user_errors(
-    hass: HomeAssistant,
-    openwebif_device_mock: AsyncMock,
+async def form_user_errors(
     side_effect: Exception,
     error_value: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+    device: AsyncMock = Depends(openwebif_device_mock),
 ) -> None:
     """Test we handle errors."""
-
-    openwebif_device_mock.get_about.side_effect = side_effect
+    device.get_about.side_effect = side_effect
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], TEST_FULL
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == SOURCE_USER
-    assert result["errors"] == {"base": error_value}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(SOURCE_USER)
+    expect(result["errors"]).to_equal({"base": error_value})
 
-    openwebif_device_mock.get_about.side_effect = None
+    device.get_about.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         TEST_FULL,
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == TEST_FULL[CONF_HOST]
-    assert result["data"] == TEST_FULL
-    assert result["result"].unique_id == openwebif_device_mock.mac_address
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_FULL[CONF_HOST])
+    expect(result["data"]).to_equal(TEST_FULL)
+    expect(result["result"].unique_id).to_equal(device.mac_address)
 
 
-@pytest.mark.usefixtures("openwebif_device_mock")
-async def test_duplicate_host(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+@test
+async def duplicate_host(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(mock_config_entry),
+    _device: AsyncMock = Depends(openwebif_device_mock),
 ) -> None:
     """Test that a duplicate host aborts the config flow."""
-    mock_config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     result2 = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "user"
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("user")
     result2 = await hass.config_entries.flow.async_configure(
         result2["flow_id"], TEST_FULL
     )
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")
 
 
-@pytest.mark.usefixtures("openwebif_device_mock")
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _device: AsyncMock = Depends(openwebif_device_mock),
+) -> None:
     """Test the form options."""
-
     entry = MockConfigEntry(domain=DOMAIN, data=TEST_FULL, options={}, entry_id="1")
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert entry.state is ConfigEntryState.LOADED
+    expect(entry.state).to_be(ConfigEntryState.LOADED)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input={"source_bouquet": "Favourites (TV)"}
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {"source_bouquet": "Favourites (TV)"}
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options).to_equal({"source_bouquet": "Favourites (TV)"})
 
     await hass.async_block_till_done()
 
-    assert entry.state is ConfigEntryState.LOADED
+    expect(entry.state).to_be(ConfigEntryState.LOADED)

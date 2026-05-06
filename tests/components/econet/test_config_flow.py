@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from pyeconet.api import EcoNetApiInterface
 from pyeconet.errors import InvalidCredentialsError, PyeconetError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.econet.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -12,16 +13,27 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_bad_credentials(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture so tryke fully resolves Depends across the module."""
+
+
+@test
+async def bad_credentials(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test when provided credentials are rejected."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -38,21 +50,22 @@ async def test_bad_credentials(hass: HomeAssistant) -> None:
             },
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
-        assert result["errors"] == {
-            "base": "invalid_auth",
-        }
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
+        expect(result["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_generic_error_from_library(hass: HomeAssistant) -> None:
+@test
+async def generic_error_from_library(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test when connection fails."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -69,21 +82,22 @@ async def test_generic_error_from_library(hass: HomeAssistant) -> None:
             },
         )
 
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "user"
-        assert result["errors"] == {
-            "base": "cannot_connect",
-        }
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("user")
+        expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_auth_worked(hass: HomeAssistant) -> None:
+@test
+async def auth_worked(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test when provided credentials are accepted."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -100,14 +114,20 @@ async def test_auth_worked(hass: HomeAssistant) -> None:
             },
         )
 
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert result["data"] == {
-            CONF_EMAIL: "admin@localhost.com",
-            CONF_PASSWORD: "password0",
-        }
+        expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+        expect(result["data"]).to_equal(
+            {
+                CONF_EMAIL: "admin@localhost.com",
+                CONF_PASSWORD: "password0",
+            }
+        )
 
 
-async def test_already_configured(hass: HomeAssistant) -> None:
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test when provided credentials are already configured."""
     config = {
         CONF_EMAIL: "admin@localhost.com",
@@ -120,8 +140,8 @@ async def test_already_configured(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     with (
         patch(
@@ -138,5 +158,5 @@ async def test_already_configured(hass: HomeAssistant) -> None:
             },
         )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
