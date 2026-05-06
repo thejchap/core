@@ -1,5 +1,7 @@
 """Test the config flow."""
 
+from __future__ import annotations
+
 from copy import deepcopy
 from datetime import timedelta
 from unittest.mock import AsyncMock, patch
@@ -10,6 +12,7 @@ from aioruckus.const import (
     ERROR_LOGIN_INCORRECT,
 )
 from aioruckus.exceptions import AuthenticationError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.ruckus_unleashed.const import (
@@ -36,15 +39,25 @@ from . import (
 )
 
 from tests.common import async_fire_time_changed
+from tests.hass_fixtures import entity_registry as entity_registry_fx, hass as hass_fixture
 
 
-async def test_form(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor() -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     with (
         RuckusAjaxApiPatchContext(),
@@ -58,14 +71,18 @@ async def test_form(hass: HomeAssistant) -> None:
             CONFIG,
         )
         await hass.async_block_till_done()
-        assert len(mock_setup_entry.mock_calls) == 1
+        expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert result2["title"] == DEFAULT_TITLE
-    assert result2["data"] == CONFIG
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal(DEFAULT_TITLE)
+    expect(result2["data"]).to_equal(CONFIG)
 
 
-async def test_form_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -79,11 +96,15 @@ async def test_form_invalid_auth(hass: HomeAssistant) -> None:
             CONFIG,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_user_reauth(hass: HomeAssistant) -> None:
+@test
+async def form_user_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth."""
     entry = mock_config_entry()
     entry.add_to_hass(hass)
@@ -91,12 +112,12 @@ async def test_form_user_reauth(hass: HomeAssistant) -> None:
     result = await entry.start_reauth_flow(hass)
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
-    assert "flow_id" in flows[0]
+    expect(len(flows)).to_equal(1)
+    expect("flow_id" in flows[0]).to_be(True)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with RuckusAjaxApiPatchContext():
         result2 = await hass.config_entries.flow.async_configure(
@@ -109,11 +130,15 @@ async def test_form_user_reauth(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "reauth_successful"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reauth_successful")
 
 
-async def test_form_user_reauth_different_unique_id(hass: HomeAssistant) -> None:
+@test
+async def form_user_reauth_different_unique_id(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth."""
     entry = mock_config_entry()
     entry.add_to_hass(hass)
@@ -121,12 +146,12 @@ async def test_form_user_reauth_different_unique_id(hass: HomeAssistant) -> None
     result = await entry.start_reauth_flow(hass)
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
-    assert "flow_id" in flows[0]
+    expect(len(flows)).to_equal(1)
+    expect("flow_id" in flows[0]).to_be(True)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     system_info = deepcopy(DEFAULT_SYSTEM_INFO)
     system_info[API_SYS_SYSINFO][API_SYS_SYSINFO_SERIAL] = "000000000"
@@ -141,11 +166,15 @@ async def test_form_user_reauth_different_unique_id(hass: HomeAssistant) -> None
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "invalid_host"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("invalid_host")
 
 
-async def test_form_user_reauth_invalid_auth(hass: HomeAssistant) -> None:
+@test
+async def form_user_reauth_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth."""
     entry = mock_config_entry()
     entry.add_to_hass(hass)
@@ -153,12 +182,12 @@ async def test_form_user_reauth_invalid_auth(hass: HomeAssistant) -> None:
     result = await entry.start_reauth_flow(hass)
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
-    assert "flow_id" in flows[0]
+    expect(len(flows)).to_equal(1)
+    expect("flow_id" in flows[0]).to_be(True)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with RuckusAjaxApiPatchContext(
         login_mock=AsyncMock(side_effect=AuthenticationError(ERROR_LOGIN_INCORRECT))
@@ -173,11 +202,15 @@ async def test_form_user_reauth_invalid_auth(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-async def test_form_user_reauth_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_user_reauth_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth."""
     entry = mock_config_entry()
     entry.add_to_hass(hass)
@@ -185,12 +218,12 @@ async def test_form_user_reauth_cannot_connect(hass: HomeAssistant) -> None:
     result = await entry.start_reauth_flow(hass)
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
-    assert "flow_id" in flows[0]
+    expect(len(flows)).to_equal(1)
+    expect("flow_id" in flows[0]).to_be(True)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with RuckusAjaxApiPatchContext(
         login_mock=AsyncMock(side_effect=ConnectionError(ERROR_CONNECT_TIMEOUT))
@@ -205,11 +238,15 @@ async def test_form_user_reauth_cannot_connect(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_user_reauth_general_exception(hass: HomeAssistant) -> None:
+@test
+async def form_user_reauth_general_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test reauth."""
     entry = mock_config_entry()
     entry.add_to_hass(hass)
@@ -217,12 +254,12 @@ async def test_form_user_reauth_general_exception(hass: HomeAssistant) -> None:
     result = await entry.start_reauth_flow(hass)
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
-    assert "flow_id" in flows[0]
+    expect(len(flows)).to_equal(1)
+    expect("flow_id" in flows[0]).to_be(True)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
     with RuckusAjaxApiPatchContext(login_mock=AsyncMock(side_effect=Exception)):
         result2 = await hass.config_entries.flow.async_configure(
@@ -235,12 +272,16 @@ async def test_form_user_reauth_general_exception(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "user"
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("user")
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -254,11 +295,15 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
             CONFIG,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_general_exception(hass: HomeAssistant) -> None:
+@test
+async def form_general_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle cannot connect error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -270,12 +315,16 @@ async def test_form_general_exception(hass: HomeAssistant) -> None:
             CONFIG,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["step_id"] == "user"
-    assert result2["errors"] == {"base": "unknown"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("user")
+    expect(result2["errors"]).to_equal({"base": "unknown"})
 
 
-async def test_form_unexpected_response(hass: HomeAssistant) -> None:
+@test
+async def form_unexpected_response(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle unknown error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -291,11 +340,15 @@ async def test_form_unexpected_response(hass: HomeAssistant) -> None:
             CONFIG,
         )
 
-    assert result2["type"] is FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-async def test_form_duplicate_error(hass: HomeAssistant) -> None:
+@test
+async def form_duplicate_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test we handle duplicate error."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -314,28 +367,31 @@ async def test_form_duplicate_error(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
         )
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"] == {}
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({})
 
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             CONFIG,
         )
 
-    assert result2["type"] is FlowResultType.ABORT
-    assert result2["reason"] == "already_configured"
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")
 
 
-async def test_options_flow(hass: HomeAssistant) -> None:
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test options flow shows form and accepts selection."""
     entry = await init_integration(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
-    # Verify selecting the active client works
     with RuckusAjaxApiPatchContext():
         result2 = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -343,11 +399,15 @@ async def test_options_flow(hass: HomeAssistant) -> None:
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_MAC_FILTER] == [TEST_CLIENT[API_CLIENT_MAC]]
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options[CONF_MAC_FILTER]).to_equal([TEST_CLIENT[API_CLIENT_MAC]])
 
 
-async def test_options_flow_offline_clients_preserved(hass: HomeAssistant) -> None:
+@test
+async def options_flow_offline_clients_preserved(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test previously selected but now-offline clients remain selectable."""
     offline_mac = "FF:EE:DD:CC:BB:AA"
     entry = await init_integration(hass)
@@ -356,9 +416,8 @@ async def test_options_flow_offline_clients_preserved(hass: HomeAssistant) -> No
     )
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.FORM
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
-    # Verify the offline MAC is still a valid option by submitting it
     with RuckusAjaxApiPatchContext():
         result2 = await hass.config_entries.options.async_configure(
             result["flow_id"],
@@ -366,24 +425,27 @@ async def test_options_flow_offline_clients_preserved(hass: HomeAssistant) -> No
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_MAC_FILTER] == [offline_mac]
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options[CONF_MAC_FILTER]).to_equal([offline_mac])
 
 
-async def test_options_flow_removes_deselected_entities(
-    hass: HomeAssistant, entity_registry: er.EntityRegistry
+@test
+async def options_flow_removes_deselected_entities(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fx),
 ) -> None:
     """Test that deselected devices have their entities removed."""
     entry = await init_integration(hass)
 
-    # Verify entity exists for TEST_CLIENT
-    assert entity_registry.async_get_entity_id(
-        "device_tracker", DOMAIN, TEST_CLIENT[API_CLIENT_MAC]
-    )
+    expect(
+        bool(
+            entity_registry.async_get_entity_id(
+                "device_tracker", DOMAIN, TEST_CLIENT[API_CLIENT_MAC]
+            )
+        )
+    ).to_be(True)
 
-    # Set a filter that excludes TEST_CLIENT by selecting a different MAC.
-    # We add both the active client and a previously-selected offline MAC to
-    # the current options so both appear in the multi-select.
     offline_mac = "FF:EE:DD:CC:BB:AA"
     hass.config_entries.async_update_entry(
         entry,
@@ -399,32 +461,39 @@ async def test_options_flow_removes_deselected_entities(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
-    # TEST_CLIENT entity should be removed since it's not in the new filter
-    assert not entity_registry.async_get_entity_id(
-        "device_tracker", DOMAIN, TEST_CLIENT[API_CLIENT_MAC]
-    )
+    expect(
+        bool(
+            entity_registry.async_get_entity_id(
+                "device_tracker", DOMAIN, TEST_CLIENT[API_CLIENT_MAC]
+            )
+        )
+    ).to_be(False)
 
 
-async def test_options_flow_clear_filter_keeps_entities(
-    hass: HomeAssistant, entity_registry: er.EntityRegistry
+@test
+async def options_flow_clear_filter_keeps_entities(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fx),
 ) -> None:
     """Test that clearing the filter does not remove entities."""
     entry = await init_integration(hass)
 
-    # Verify entity exists
-    assert entity_registry.async_get_entity_id(
-        "device_tracker", DOMAIN, TEST_CLIENT[API_CLIENT_MAC]
-    )
+    expect(
+        bool(
+            entity_registry.async_get_entity_id(
+                "device_tracker", DOMAIN, TEST_CLIENT[API_CLIENT_MAC]
+            )
+        )
+    ).to_be(True)
 
-    # Set a filter first
     hass.config_entries.async_update_entry(
         entry,
         options={CONF_MAC_FILTER: [TEST_CLIENT[API_CLIENT_MAC]]},
     )
 
-    # Now clear the filter (empty = track all)
     result = await hass.config_entries.options.async_init(entry.entry_id)
 
     with RuckusAjaxApiPatchContext():
@@ -434,10 +503,13 @@ async def test_options_flow_clear_filter_keeps_entities(
         )
         await hass.async_block_till_done()
 
-    assert result2["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_MAC_FILTER] == []
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.options[CONF_MAC_FILTER]).to_equal([])
 
-    # Entity should NOT be removed when going back to track-all
-    assert entity_registry.async_get_entity_id(
-        "device_tracker", DOMAIN, TEST_CLIENT[API_CLIENT_MAC]
-    )
+    expect(
+        bool(
+            entity_registry.async_get_entity_id(
+                "device_tracker", DOMAIN, TEST_CLIENT[API_CLIENT_MAC]
+            )
+        )
+    ).to_be(True)
