@@ -1,34 +1,253 @@
-"""Tryke skip-stubs for ovo_energy config flow tests.
+"""Test the OVO Energy config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from unittest.mock import patch
 
-from tryke import test
+import aiohttp
+from tryke import Depends, expect, fixture, test
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def show_form() -> None:
-    """Stub for test_show_form (port deferred)."""
+from homeassistant import config_entries
+from homeassistant.components.ovo_energy.const import CONF_ACCOUNT, DOMAIN
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def authorization_error() -> None:
-    """Stub for test_authorization_error (port deferred)."""
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def connection_error() -> None:
-    """Stub for test_connection_error (port deferred)."""
+FIXTURE_REAUTH_INPUT = {CONF_PASSWORD: "something1"}
+FIXTURE_USER_INPUT = {
+    CONF_USERNAME: "example@example.com",
+    CONF_PASSWORD: "something",
+    CONF_ACCOUNT: "123456",
+}
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def full_flow_implementation() -> None:
-    """Stub for test_full_flow_implementation (port deferred)."""
+UNIQUE_ID = "example@example.com"
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def reauth_authorization_error() -> None:
-    """Stub for test_reauth_authorization_error (port deferred)."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def reauth_connection_error() -> None:
-    """Stub for test_reauth_connection_error (port deferred)."""
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture so tryke fully resolves Depends across the module."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def reauth_flow() -> None:
-    """Stub for test_reauth_flow (port deferred)."""
+
+@test
+async def show_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test that the setup form is served."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+
+@test
+async def authorization_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we show user form on connection error."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+    with (
+        patch(
+            "homeassistant.components.ovo_energy.config_flow.OVOEnergy.authenticate",
+            return_value=False,
+        ),
+        patch(
+            "homeassistant.components.ovo_energy.config_flow.OVOEnergy.bootstrap_accounts",
+        ),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            FIXTURE_USER_INPUT,
+        )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("user")
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
+
+
+@test
+async def connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we show user form on connection error."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+    with patch(
+        "homeassistant.components.ovo_energy.config_flow.OVOEnergy.authenticate",
+        side_effect=aiohttp.ClientError,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            FIXTURE_USER_INPUT,
+        )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("user")
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
+
+
+@test
+async def full_flow_implementation(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test registering an integration and finishing flow works."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+    with (
+        patch(
+            "homeassistant.components.ovo_energy.config_flow.OVOEnergy.authenticate",
+            return_value=True,
+        ),
+        patch(
+            "homeassistant.components.ovo_energy.config_flow.OVOEnergy.bootstrap_accounts",
+        ),
+        patch(
+            "homeassistant.components.ovo_energy.config_flow.OVOEnergy.username",
+            "some_name",
+        ),
+        patch(
+            "homeassistant.components.ovo_energy.async_setup_entry",
+            return_value=True,
+        ),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            FIXTURE_USER_INPUT,
+        )
+
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["data"][CONF_USERNAME]).to_equal(FIXTURE_USER_INPUT[CONF_USERNAME])
+    expect(result2["data"][CONF_PASSWORD]).to_equal(FIXTURE_USER_INPUT[CONF_PASSWORD])
+    expect(result2["data"][CONF_ACCOUNT]).to_equal(FIXTURE_USER_INPUT[CONF_ACCOUNT])
+
+
+@test
+async def reauth_authorization_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we show user form on authorization error."""
+    mock_config = MockConfigEntry(
+        domain=DOMAIN, unique_id=UNIQUE_ID, data=FIXTURE_USER_INPUT
+    )
+    mock_config.add_to_hass(hass)
+    result = await mock_config.start_reauth_flow(hass)
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    with patch(
+        "homeassistant.components.ovo_energy.config_flow.OVOEnergy.authenticate",
+        return_value=False,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            FIXTURE_REAUTH_INPUT,
+        )
+        await hass.async_block_till_done()
+
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["step_id"]).to_equal("reauth_confirm")
+        expect(result2["errors"]).to_equal({"base": "authorization_error"})
+
+
+@test
+async def reauth_connection_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we show user form on connection error."""
+    mock_config = MockConfigEntry(
+        domain=DOMAIN, unique_id=UNIQUE_ID, data=FIXTURE_USER_INPUT
+    )
+    mock_config.add_to_hass(hass)
+    result = await mock_config.start_reauth_flow(hass)
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
+
+    with patch(
+        "homeassistant.components.ovo_energy.config_flow.OVOEnergy.authenticate",
+        side_effect=aiohttp.ClientError,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            FIXTURE_REAUTH_INPUT,
+        )
+        await hass.async_block_till_done()
+
+        expect(result2["type"]).to_be(FlowResultType.FORM)
+        expect(result2["step_id"]).to_equal("reauth_confirm")
+        expect(result2["errors"]).to_equal({"base": "connection_error"})
+
+
+@test
+async def reauth_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test reauth works."""
+    mock_config = MockConfigEntry(
+        domain=DOMAIN, unique_id=UNIQUE_ID, data=FIXTURE_USER_INPUT
+    )
+    mock_config.add_to_hass(hass)
+    result = await mock_config.start_reauth_flow(hass)
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reauth_confirm")
+    expect(result["errors"]).to_equal({})
+
+    with patch(
+        "homeassistant.components.ovo_energy.config_flow.OVOEnergy.authenticate",
+        return_value=False,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            FIXTURE_REAUTH_INPUT,
+        )
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["step_id"]).to_equal("reauth_confirm")
+        expect(result["errors"]).to_equal({"base": "authorization_error"})
+
+    with (
+        patch(
+            "homeassistant.components.ovo_energy.config_flow.OVOEnergy.authenticate",
+            return_value=True,
+        ),
+        patch(
+            "homeassistant.components.ovo_energy.config_flow.OVOEnergy.username",
+            return_value=FIXTURE_USER_INPUT[CONF_USERNAME],
+        ),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            FIXTURE_REAUTH_INPUT,
+        )
+        await hass.async_block_till_done()
+
+        expect(result2["type"]).to_be(FlowResultType.ABORT)
+        expect(result2["reason"]).to_equal("reauth_successful")
