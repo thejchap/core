@@ -4,23 +4,36 @@ from unittest.mock import AsyncMock
 
 from aiohttp import ClientError
 from imgw_pib.exceptions import ApiError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.imgw_pib.const import CONF_STATION_ID, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_imgw_pib_client, mock_setup_entry
 
-async def test_create_entry(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_imgw_pib_client: AsyncMock
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def create_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _client: AsyncMock = Depends(mock_imgw_pib_client),
 ) -> None:
     """Test that the user step works."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -28,60 +41,65 @@ async def test_create_entry(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "River Name (Station Name)"
-    assert result["data"] == {CONF_STATION_ID: "123"}
-    assert result["context"]["unique_id"] == "123"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("River Name (Station Name)")
+    expect(result["data"]).to_equal({CONF_STATION_ID: "123"})
+    expect(result["context"]["unique_id"]).to_equal("123")
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize("exc", [ApiError("API Error"), ClientError, TimeoutError])
-async def test_form_no_station_list(
-    hass: HomeAssistant, exc: Exception, mock_imgw_pib_client: AsyncMock
+@test.cases(
+    test.case("api_error", exc=ApiError("API Error")),
+    test.case("client_error", exc=ClientError),
+    test.case("timeout", exc=TimeoutError),
+)
+async def form_no_station_list(
+    exc: Exception,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_imgw_pib_client),
 ) -> None:
     """Test aborting the flow when we cannot get the list of hydrological stations."""
-    mock_imgw_pib_client.update_hydrological_stations.side_effect = exc
+    client.update_hydrological_stations.side_effect = exc
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-@pytest.mark.parametrize(
-    ("exc", "base_error"),
-    [
-        (Exception, "unknown"),
-        (ApiError("API Error"), "cannot_connect"),
-        (ClientError, "cannot_connect"),
-        (TimeoutError, "cannot_connect"),
-    ],
+@test.cases(
+    test.case("unknown_exception", exc=Exception, base_error="unknown"),
+    test.case("api_error", exc=ApiError("API Error"), base_error="cannot_connect"),
+    test.case("client_error", exc=ClientError, base_error="cannot_connect"),
+    test.case("timeout", exc=TimeoutError, base_error="cannot_connect"),
 )
-async def test_form_with_exceptions(
-    hass: HomeAssistant,
+async def form_with_exceptions(
     exc: Exception,
     base_error: str,
-    mock_setup_entry: AsyncMock,
-    mock_imgw_pib_client: AsyncMock,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    client: AsyncMock = Depends(mock_imgw_pib_client),
 ) -> None:
     """Test we get the form."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
-    mock_imgw_pib_client.get_hydrological_data.side_effect = exc
+    client.get_hydrological_data.side_effect = exc
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_STATION_ID: "123"},
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": base_error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": base_error})
 
-    mock_imgw_pib_client.get_hydrological_data.side_effect = None
+    client.get_hydrological_data.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -89,8 +107,8 @@ async def test_form_with_exceptions(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "River Name (Station Name)"
-    assert result["data"] == {CONF_STATION_ID: "123"}
-    assert result["context"]["unique_id"] == "123"
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("River Name (Station Name)")
+    expect(result["data"]).to_equal({CONF_STATION_ID: "123"})
+    expect(result["context"]["unique_id"]).to_equal("123")
+    expect(len(setup_entry.mock_calls)).to_equal(1)
