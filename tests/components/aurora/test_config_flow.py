@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock
 
 from aiohttp import ClientError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.aurora.const import CONF_THRESHOLD, DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -12,8 +12,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import setup_integration
+from ._fixtures import mock_aurora_client, mock_config_entry, mock_setup_entry
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 DATA = {
     CONF_LATITUDE: -10,
@@ -21,39 +23,48 @@ DATA = {
 }
 
 
-async def test_full_flow(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_aurora_client: AsyncMock
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _client: AsyncMock = Depends(mock_aurora_client),
 ) -> None:
     """Test full flow."""
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], DATA)
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Aurora visibility"
-    assert result["data"] == DATA
-    assert len(mock_setup_entry.mock_calls) == 1
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Aurora visibility")
+    expect(result["data"]).to_equal(DATA)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@pytest.mark.parametrize(
-    ("side_effect", "error"),
-    [
-        (ClientError, "cannot_connect"),
-        (Exception, "unknown"),
-    ],
+@test.cases(
+    test.case("cannot_connect", side_effect=ClientError, error="cannot_connect"),
+    test.case("unknown", side_effect=Exception, error="unknown"),
 )
-async def test_form_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_aurora_client: AsyncMock,
-    side_effect: Exception,
+async def form_errors(
+    side_effect: type[Exception],
     error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    aurora_client: AsyncMock = Depends(mock_aurora_client),
 ) -> None:
     """Test if invalid response or no connection returned from the API."""
 
@@ -61,40 +72,42 @@ async def test_form_errors(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    mock_aurora_client.get_forecast_data.side_effect = side_effect
+    aurora_client.get_forecast_data.side_effect = side_effect
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], DATA)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": error}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": error})
 
-    mock_aurora_client.get_forecast_data.side_effect = None
+    aurora_client.get_forecast_data.side_effect = None
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], DATA)
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_option_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_aurora_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def option_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_entry: AsyncMock = Depends(mock_setup_entry),
+    _aurora_client: AsyncMock = Depends(mock_aurora_client),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test option flow."""
-    await setup_integration(hass, mock_config_entry)
+    await setup_integration(hass, config_entry)
 
-    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={CONF_THRESHOLD: 65},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_THRESHOLD] == 65
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"][CONF_THRESHOLD]).to_equal(65)
