@@ -1,11 +1,14 @@
 """Test requirements module."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
+from typing import Any
 from unittest.mock import call, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant import loader, setup
 from homeassistant.core import HomeAssistant
@@ -21,16 +24,36 @@ from homeassistant.requirements import (
 )
 
 from .common import MockModule, mock_integration
+from .hass_fixtures import LogCapture, caplog, hass
 
 
-def env_without_wheel_links():
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+def env_without_wheel_links() -> dict[str, str]:
     """Return env without wheel links."""
     env = dict(os.environ)
     env.pop("WHEEL_LINKS", None)
     return env
 
 
-async def test_requirement_installed_in_venv(hass: HomeAssistant) -> None:
+async def _expect_raises(
+    exc_type: type[BaseException], coro: Any
+) -> BaseException | None:
+    """Await coro and return the caught exception (or None)."""
+    try:
+        await coro
+    except exc_type as exc:
+        return exc
+    else:
+        raise AssertionError(f"Expected {exc_type.__name__}")
+
+
+@test
+async def requirement_installed_in_venv(hass: HomeAssistant = Depends(hass)) -> None:
     """Test requirement installed in virtual environment."""
     with (
         patch("os.path.dirname", return_value="ha_package_path"),
@@ -43,16 +66,19 @@ async def test_requirement_installed_in_venv(hass: HomeAssistant) -> None:
     ):
         hass.config.skip_pip = False
         mock_integration(hass, MockModule("comp", requirements=["package==0.0.1"]))
-        assert await setup.async_setup_component(hass, "comp", {})
-        assert "comp" in hass.config.components
-        assert mock_install.call_args == call(
-            "package==0.0.1",
-            constraints=os.path.join("ha_package_path", CONSTRAINT_FILE),
-            timeout=60,
+        expect(await setup.async_setup_component(hass, "comp", {})).to_be_truthy()
+        expect("comp" in hass.config.components).to_be_truthy()
+        expect(mock_install.call_args).to_equal(
+            call(
+                "package==0.0.1",
+                constraints=os.path.join("ha_package_path", CONSTRAINT_FILE),
+                timeout=60,
+            )
         )
 
 
-async def test_requirement_installed_in_deps(hass: HomeAssistant) -> None:
+@test
+async def requirement_installed_in_deps(hass: HomeAssistant = Depends(hass)) -> None:
     """Test requirement installed in deps directory."""
     with (
         patch("os.path.dirname", return_value="ha_package_path"),
@@ -65,24 +91,27 @@ async def test_requirement_installed_in_deps(hass: HomeAssistant) -> None:
     ):
         hass.config.skip_pip = False
         mock_integration(hass, MockModule("comp", requirements=["package==0.0.1"]))
-        assert await setup.async_setup_component(hass, "comp", {})
-        assert "comp" in hass.config.components
-        assert mock_install.call_args == call(
-            "package==0.0.1",
-            target=hass.config.path("deps"),
-            constraints=os.path.join("ha_package_path", CONSTRAINT_FILE),
-            timeout=60,
+        expect(await setup.async_setup_component(hass, "comp", {})).to_be_truthy()
+        expect("comp" in hass.config.components).to_be_truthy()
+        expect(mock_install.call_args).to_equal(
+            call(
+                "package==0.0.1",
+                target=hass.config.path("deps"),
+                constraints=os.path.join("ha_package_path", CONSTRAINT_FILE),
+                timeout=60,
+            )
         )
 
 
-async def test_install_existing_package(hass: HomeAssistant) -> None:
+@test
+async def install_existing_package(hass: HomeAssistant = Depends(hass)) -> None:
     """Test an install attempt on an existing package."""
     with patch(
         "homeassistant.util.package.install_package", return_value=True
     ) as mock_inst:
         await async_process_requirements(hass, "test_component", ["hello==1.0.0"])
 
-    assert len(mock_inst.mock_calls) == 1
+    expect(len(mock_inst.mock_calls)).to_equal(1)
 
     with (
         patch("homeassistant.util.package.is_installed", return_value=True),
@@ -90,24 +119,27 @@ async def test_install_existing_package(hass: HomeAssistant) -> None:
     ):
         await async_process_requirements(hass, "test_component", ["hello==1.0.0"])
 
-    assert len(mock_inst.mock_calls) == 0
+    expect(len(mock_inst.mock_calls)).to_equal(0)
 
 
-async def test_install_missing_package(hass: HomeAssistant) -> None:
+@test
+async def install_missing_package(hass: HomeAssistant = Depends(hass)) -> None:
     """Test an install attempt on an existing package."""
-    with (
-        patch(
-            "homeassistant.util.package.install_package", return_value=False
-        ) as mock_inst,
-        pytest.raises(RequirementsNotFound),
-    ):
-        await async_process_requirements(hass, "test_component", ["hello==1.0.0"])
+    with patch(
+        "homeassistant.util.package.install_package", return_value=False
+    ) as mock_inst:
+        await _expect_raises(
+            RequirementsNotFound,
+            async_process_requirements(hass, "test_component", ["hello==1.0.0"]),
+        )
 
-    assert len(mock_inst.mock_calls) == 3
+    expect(len(mock_inst.mock_calls)).to_equal(3)
 
 
-async def test_install_skipped_package(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@test
+async def install_skipped_package(
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test an install attempt on a dependency that should be skipped."""
     with patch(
@@ -119,13 +151,16 @@ async def test_install_skipped_package(
                 hass, "test_component", ["hello==1.0.0", "not_skipped==1.2.3"]
             )
 
-    assert "Skipping requirement hello==1.0.0" in caplog.text
+    expect("Skipping requirement hello==1.0.0" in caplog.text).to_be_truthy()
 
-    assert len(mock_inst.mock_calls) == 1
-    assert mock_inst.mock_calls[0].args[0] == "not_skipped==1.2.3"
+    expect(len(mock_inst.mock_calls)).to_equal(1)
+    expect(mock_inst.mock_calls[0].args[0]).to_equal("not_skipped==1.2.3")
 
 
-async def test_get_integration_with_requirements(hass: HomeAssistant) -> None:
+@test
+async def get_integration_with_requirements(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Check getting an integration with loaded requirements."""
     hass.config.skip_pip = False
     mock_integration(
@@ -158,25 +193,34 @@ async def test_get_integration_with_requirements(hass: HomeAssistant) -> None:
         integration = await async_get_integration_with_requirements(
             hass, "test_component"
         )
-        assert integration
-        assert integration.domain == "test_component"
+        expect(integration).to_be_truthy()
+        expect(integration.domain).to_equal("test_component")
 
-    assert len(mock_is_installed.mock_calls) == 3
-    assert sorted(mock_call[1][0] for mock_call in mock_is_installed.mock_calls) == [
-        "test-comp-after-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-        "test-comp==1.0.0",
-    ]
+    expect(len(mock_is_installed.mock_calls)).to_equal(3)
+    expect(
+        sorted(mock_call[1][0] for mock_call in mock_is_installed.mock_calls)
+    ).to_equal(
+        [
+            "test-comp-after-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+            "test-comp==1.0.0",
+        ]
+    )
 
-    assert len(mock_inst.mock_calls) == 3
-    assert sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls) == [
-        "test-comp-after-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-        "test-comp==1.0.0",
-    ]
+    expect(len(mock_inst.mock_calls)).to_equal(3)
+    expect(sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls)).to_equal(
+        [
+            "test-comp-after-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+            "test-comp==1.0.0",
+        ]
+    )
 
 
-async def test_get_integration_with_requirements_cache(hass: HomeAssistant) -> None:
+@test
+async def get_integration_with_requirements_cache(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Check getting an integration with loaded requirements considers cache.
 
     We want to make sure that we do not check requirements for dependencies
@@ -226,30 +270,36 @@ async def test_get_integration_with_requirements_cache(hass: HomeAssistant) -> N
         integration = await async_get_integration_with_requirements(
             hass, "test_component"
         )
-        assert integration
-        assert integration.domain == "test_component"
+        expect(integration).to_be_truthy()
+        expect(integration.domain).to_equal("test_component")
 
-        assert len(mock_is_installed.mock_calls) == 3
-        assert sorted(
-            mock_call[1][0] for mock_call in mock_is_installed.mock_calls
-        ) == [
-            "test-comp-after-dep==1.0.0",
-            "test-comp-dep==1.0.0",
-            "test-comp==1.0.0",
-        ]
+        expect(len(mock_is_installed.mock_calls)).to_equal(3)
+        expect(
+            sorted(mock_call[1][0] for mock_call in mock_is_installed.mock_calls)
+        ).to_equal(
+            [
+                "test-comp-after-dep==1.0.0",
+                "test-comp-dep==1.0.0",
+                "test-comp==1.0.0",
+            ]
+        )
 
-        assert len(mock_inst.mock_calls) == 3
-        assert sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls) == [
-            "test-comp-after-dep==1.0.0",
-            "test-comp-dep==1.0.0",
-            "test-comp==1.0.0",
-        ]
+        expect(len(mock_inst.mock_calls)).to_equal(3)
+        expect(sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls)).to_equal(
+            [
+                "test-comp-after-dep==1.0.0",
+                "test-comp-dep==1.0.0",
+                "test-comp==1.0.0",
+            ]
+        )
 
         # The dependent integrations should be fetched since
-        assert len(mock_async_get_integration.mock_calls) == 3
-        assert sorted(
-            mock_call[1][1] for mock_call in mock_async_get_integration.mock_calls
-        ) == ["test_component", "test_component_after_dep", "test_component_dep"]
+        expect(len(mock_async_get_integration.mock_calls)).to_equal(3)
+        expect(
+            sorted(
+                mock_call[1][1] for mock_call in mock_async_get_integration.mock_calls
+            )
+        ).to_equal(["test_component", "test_component_after_dep", "test_component_dep"])
 
         # test_component2 has the same deps as test_component and we should
         # not check the requirements for the deps again
@@ -262,30 +312,39 @@ async def test_get_integration_with_requirements_cache(hass: HomeAssistant) -> N
             hass, "test_component2"
         )
 
-    assert integration
-    assert integration.domain == "test_component2"
+    expect(integration).to_be_truthy()
+    expect(integration.domain).to_equal("test_component2")
 
-    assert len(mock_is_installed.mock_calls) == 1
-    assert sorted(mock_call[1][0] for mock_call in mock_is_installed.mock_calls) == [
-        "test-comp2==1.0.0",
-    ]
+    expect(len(mock_is_installed.mock_calls)).to_equal(1)
+    expect(
+        sorted(mock_call[1][0] for mock_call in mock_is_installed.mock_calls)
+    ).to_equal(
+        [
+            "test-comp2==1.0.0",
+        ]
+    )
 
-    assert len(mock_inst.mock_calls) == 1
-    assert sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls) == [
-        "test-comp2==1.0.0",
-    ]
+    expect(len(mock_inst.mock_calls)).to_equal(1)
+    expect(sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls)).to_equal(
+        [
+            "test-comp2==1.0.0",
+        ]
+    )
 
     # The dependent integrations should not be fetched again
-    assert len(mock_async_get_integration.mock_calls) == 1
-    assert sorted(
-        mock_call[1][1] for mock_call in mock_async_get_integration.mock_calls
-    ) == [
-        "test_component2",
-    ]
+    expect(len(mock_async_get_integration.mock_calls)).to_equal(1)
+    expect(
+        sorted(mock_call[1][1] for mock_call in mock_async_get_integration.mock_calls)
+    ).to_equal(
+        [
+            "test_component2",
+        ]
+    )
 
 
-async def test_get_integration_with_requirements_concurrency(
-    hass: HomeAssistant,
+@test
+async def get_integration_with_requirements_concurrency(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test that we don't install the same requirement concurrently."""
     hass.config.skip_pip = False
@@ -295,7 +354,7 @@ async def test_get_integration_with_requirements_concurrency(
 
     process_integration_calls = 0
 
-    async def _async_process_integration_slowed(*args, **kwargs):
+    async def _async_process_integration_slowed(*args: Any, **kwargs: Any) -> None:
         nonlocal process_integration_calls
         process_integration_calls += 1
         await asyncio.sleep(0)
@@ -309,13 +368,16 @@ async def test_get_integration_with_requirements_concurrency(
             for _ in range(10)
         ]
         results = await asyncio.gather(*tasks)
-        assert all(result.domain == "test_component_dep" for result in results)
+        expect(
+            all(result.domain == "test_component_dep" for result in results)
+        ).to_be_truthy()
 
-    assert process_integration_calls == 1
+    expect(process_integration_calls).to_equal(1)
 
 
-async def test_get_integration_with_requirements_pip_install_fails_two_passes(
-    hass: HomeAssistant,
+@test
+async def get_integration_with_requirements_pip_install_fails_two_passes(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Check getting an integration with loaded requirements and the pip install fails two passes."""
     hass.config.skip_pip = False
@@ -338,14 +400,13 @@ async def test_get_integration_with_requirements_pip_install_fails_two_passes(
         ),
     )
 
-    def _mock_install_package(package, **kwargs):
+    def _mock_install_package(package: str, **kwargs: Any) -> bool:
         if package == "test-comp==1.0.0":
             return True
         return False
 
     # 1st pass
     with (
-        pytest.raises(RequirementsNotFound),
         patch(
             "homeassistant.util.package.is_installed", return_value=False
         ) as mock_is_installed,
@@ -354,31 +415,37 @@ async def test_get_integration_with_requirements_pip_install_fails_two_passes(
             side_effect=_mock_install_package,
         ) as mock_inst,
     ):
-        integration = await async_get_integration_with_requirements(
-            hass, "test_component"
+        await _expect_raises(
+            RequirementsNotFound,
+            async_get_integration_with_requirements(hass, "test_component"),
         )
 
-    assert len(mock_is_installed.mock_calls) == 3
-    assert sorted(mock_call[1][0] for mock_call in mock_is_installed.mock_calls) == [
-        "test-comp-after-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-        "test-comp==1.0.0",
-    ]
+    expect(len(mock_is_installed.mock_calls)).to_equal(3)
+    expect(
+        sorted(mock_call[1][0] for mock_call in mock_is_installed.mock_calls)
+    ).to_equal(
+        [
+            "test-comp-after-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+            "test-comp==1.0.0",
+        ]
+    )
 
-    assert len(mock_inst.mock_calls) == 7
-    assert sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls) == [
-        "test-comp-after-dep==1.0.0",
-        "test-comp-after-dep==1.0.0",
-        "test-comp-after-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-        "test-comp==1.0.0",
-    ]
+    expect(len(mock_inst.mock_calls)).to_equal(7)
+    expect(sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls)).to_equal(
+        [
+            "test-comp-after-dep==1.0.0",
+            "test-comp-after-dep==1.0.0",
+            "test-comp-after-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+            "test-comp==1.0.0",
+        ]
+    )
 
     # 2nd pass
     with (
-        pytest.raises(RequirementsNotFound),
         patch(
             "homeassistant.util.package.is_installed", return_value=False
         ) as mock_is_installed,
@@ -387,19 +454,19 @@ async def test_get_integration_with_requirements_pip_install_fails_two_passes(
             side_effect=_mock_install_package,
         ) as mock_inst,
     ):
-        integration = await async_get_integration_with_requirements(
-            hass, "test_component"
+        await _expect_raises(
+            RequirementsNotFound,
+            async_get_integration_with_requirements(hass, "test_component"),
         )
 
-    assert len(mock_is_installed.mock_calls) == 0
+    expect(len(mock_is_installed.mock_calls)).to_equal(0)
     # On another attempt we remember failures and don't try again
-    assert len(mock_inst.mock_calls) == 0
+    expect(len(mock_inst.mock_calls)).to_equal(0)
 
     # Now clear the history and so we try again
     async_clear_install_history(hass)
 
     with (
-        pytest.raises(RequirementsNotFound),
         patch(
             "homeassistant.util.package.is_installed", return_value=False
         ) as mock_is_installed,
@@ -408,25 +475,32 @@ async def test_get_integration_with_requirements_pip_install_fails_two_passes(
             side_effect=_mock_install_package,
         ) as mock_inst,
     ):
-        integration = await async_get_integration_with_requirements(
-            hass, "test_component"
+        await _expect_raises(
+            RequirementsNotFound,
+            async_get_integration_with_requirements(hass, "test_component"),
         )
 
-    assert len(mock_is_installed.mock_calls) == 2
-    assert sorted(mock_call[1][0] for mock_call in mock_is_installed.mock_calls) == [
-        "test-comp-after-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-    ]
+    expect(len(mock_is_installed.mock_calls)).to_equal(2)
+    expect(
+        sorted(mock_call[1][0] for mock_call in mock_is_installed.mock_calls)
+    ).to_equal(
+        [
+            "test-comp-after-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+        ]
+    )
 
-    assert len(mock_inst.mock_calls) == 6
-    assert sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls) == [
-        "test-comp-after-dep==1.0.0",
-        "test-comp-after-dep==1.0.0",
-        "test-comp-after-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-    ]
+    expect(len(mock_inst.mock_calls)).to_equal(6)
+    expect(sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls)).to_equal(
+        [
+            "test-comp-after-dep==1.0.0",
+            "test-comp-after-dep==1.0.0",
+            "test-comp-after-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+        ]
+    )
 
     # Now clear the history and mock success
     async_clear_install_history(hass)
@@ -442,23 +516,32 @@ async def test_get_integration_with_requirements_pip_install_fails_two_passes(
         integration = await async_get_integration_with_requirements(
             hass, "test_component"
         )
-        assert integration
-        assert integration.domain == "test_component"
+        expect(integration).to_be_truthy()
+        expect(integration.domain).to_equal("test_component")
 
-    assert len(mock_is_installed.mock_calls) == 2
-    assert sorted(mock_call[1][0] for mock_call in mock_is_installed.mock_calls) == [
-        "test-comp-after-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-    ]
+    expect(len(mock_is_installed.mock_calls)).to_equal(2)
+    expect(
+        sorted(mock_call[1][0] for mock_call in mock_is_installed.mock_calls)
+    ).to_equal(
+        [
+            "test-comp-after-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+        ]
+    )
 
-    assert len(mock_inst.mock_calls) == 2
-    assert sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls) == [
-        "test-comp-after-dep==1.0.0",
-        "test-comp-dep==1.0.0",
-    ]
+    expect(len(mock_inst.mock_calls)).to_equal(2)
+    expect(sorted(mock_call[1][0] for mock_call in mock_inst.mock_calls)).to_equal(
+        [
+            "test-comp-after-dep==1.0.0",
+            "test-comp-dep==1.0.0",
+        ]
+    )
 
 
-async def test_get_integration_with_missing_dependencies(hass: HomeAssistant) -> None:
+@test
+async def get_integration_with_missing_dependencies(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Check getting an integration with missing dependencies."""
     hass.config.skip_pip = False
     mock_integration(
@@ -482,14 +565,19 @@ async def test_get_integration_with_missing_dependencies(hass: HomeAssistant) ->
         ),
         built_in=False,
     )
-    with pytest.raises(loader.IntegrationNotFound):
-        await async_get_integration_with_requirements(hass, "test_component")
-    with pytest.raises(loader.IntegrationNotFound):
-        await async_get_integration_with_requirements(hass, "test_custom_component")
+    await _expect_raises(
+        loader.IntegrationNotFound,
+        async_get_integration_with_requirements(hass, "test_component"),
+    )
+    await _expect_raises(
+        loader.IntegrationNotFound,
+        async_get_integration_with_requirements(hass, "test_custom_component"),
+    )
 
 
-async def test_get_built_in_integration_with_missing_after_dependencies(
-    hass: HomeAssistant,
+@test
+async def get_built_in_integration_with_missing_after_dependencies(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Check getting a built_in integration with missing after_dependencies results in exception."""
     hass.config.skip_pip = False
@@ -501,12 +589,15 @@ async def test_get_built_in_integration_with_missing_after_dependencies(
         ),
         built_in=True,
     )
-    with pytest.raises(loader.IntegrationNotFound):
-        await async_get_integration_with_requirements(hass, "test_component")
+    await _expect_raises(
+        loader.IntegrationNotFound,
+        async_get_integration_with_requirements(hass, "test_component"),
+    )
 
 
-async def test_get_custom_integration_with_missing_after_dependencies(
-    hass: HomeAssistant,
+@test
+async def get_custom_integration_with_missing_after_dependencies(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Check getting a custom integration with missing after_dependencies."""
     hass.config.skip_pip = False
@@ -521,11 +612,12 @@ async def test_get_custom_integration_with_missing_after_dependencies(
     integration = await async_get_integration_with_requirements(
         hass, "test_custom_component"
     )
-    assert integration
-    assert integration.domain == "test_custom_component"
+    expect(integration).to_be_truthy()
+    expect(integration.domain).to_equal("test_custom_component")
 
 
-async def test_install_with_wheels_index(hass: HomeAssistant) -> None:
+@test
+async def install_with_wheels_index(hass: HomeAssistant = Depends(hass)) -> None:
     """Test an install attempt with wheels index URL."""
     hass.config.skip_pip = False
     mock_integration(hass, MockModule("comp", requirements=["hello==1.0.0"]))
@@ -540,17 +632,20 @@ async def test_install_with_wheels_index(hass: HomeAssistant) -> None:
         ) as mock_dir,
     ):
         mock_dir.return_value = "ha_package_path"
-        assert await setup.async_setup_component(hass, "comp", {})
-        assert "comp" in hass.config.components
+        expect(await setup.async_setup_component(hass, "comp", {})).to_be_truthy()
+        expect("comp" in hass.config.components).to_be_truthy()
 
-        assert mock_inst.call_args == call(
-            "hello==1.0.0",
-            constraints=os.path.join("ha_package_path", CONSTRAINT_FILE),
-            timeout=60,
+        expect(mock_inst.call_args).to_equal(
+            call(
+                "hello==1.0.0",
+                constraints=os.path.join("ha_package_path", CONSTRAINT_FILE),
+                timeout=60,
+            )
         )
 
 
-async def test_install_on_docker(hass: HomeAssistant) -> None:
+@test
+async def install_on_docker(hass: HomeAssistant = Depends(hass)) -> None:
     """Test an install attempt on an docker system env."""
     hass.config.skip_pip = False
     mock_integration(hass, MockModule("comp", requirements=["hello==1.0.0"]))
@@ -563,17 +658,20 @@ async def test_install_on_docker(hass: HomeAssistant) -> None:
         patch.dict(os.environ, env_without_wheel_links(), clear=True),
     ):
         mock_dir.return_value = "ha_package_path"
-        assert await setup.async_setup_component(hass, "comp", {})
-        assert "comp" in hass.config.components
+        expect(await setup.async_setup_component(hass, "comp", {})).to_be_truthy()
+        expect("comp" in hass.config.components).to_be_truthy()
 
-        assert mock_inst.call_args == call(
-            "hello==1.0.0",
-            constraints=os.path.join("ha_package_path", CONSTRAINT_FILE),
-            timeout=60,
+        expect(mock_inst.call_args).to_equal(
+            call(
+                "hello==1.0.0",
+                constraints=os.path.join("ha_package_path", CONSTRAINT_FILE),
+                timeout=60,
+            )
         )
 
 
-async def test_discovery_requirements_mqtt(hass: HomeAssistant) -> None:
+@test
+async def discovery_requirements_mqtt(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that we load discovery requirements."""
     hass.config.skip_pip = False
     mqtt = await loader.async_get_integration(hass, "mqtt")
@@ -586,12 +684,13 @@ async def test_discovery_requirements_mqtt(hass: HomeAssistant) -> None:
     ) as mock_process:
         await async_get_integration_with_requirements(hass, "mqtt_comp")
 
-    assert len(mock_process.mock_calls) == 2
-    # one for mqtt and one for hassio
-    assert mock_process.mock_calls[0][1][1] == mqtt.requirements
+    expect(len(mock_process.mock_calls)).to_equal(2)
+    # One for mqtt and one for hassio
+    expect(mock_process.mock_calls[0][1][1]).to_equal(mqtt.requirements)
 
 
-async def test_discovery_requirements_ssdp(hass: HomeAssistant) -> None:
+@test
+async def discovery_requirements_ssdp(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that we load discovery requirements."""
     hass.config.skip_pip = False
     ssdp = await loader.async_get_integration(hass, "ssdp")
@@ -604,20 +703,29 @@ async def test_discovery_requirements_ssdp(hass: HomeAssistant) -> None:
     ) as mock_process:
         await async_get_integration_with_requirements(hass, "ssdp_comp")
 
-    assert len(mock_process.mock_calls) == 2
-    assert mock_process.mock_calls[0][1][1] == ssdp.requirements
-    assert {
-        mock_process.mock_calls[0][1][0],
-        mock_process.mock_calls[1][1][0],
-    } == {"network", "ssdp"}
+    expect(len(mock_process.mock_calls)).to_equal(2)
+    expect(mock_process.mock_calls[0][1][1]).to_equal(ssdp.requirements)
+    expect(
+        {
+            mock_process.mock_calls[0][1][0],
+            mock_process.mock_calls[1][1][0],
+        }
+    ).to_equal({"network", "ssdp"})
 
 
-@pytest.mark.parametrize(
-    "partial_manifest",
-    [{"zeroconf": ["_googlecast._tcp.local."]}, {"homekit": {"models": ["LIFX"]}}],
+@test.cases(
+    test.case(
+        "zeroconf",
+        partial_manifest={"zeroconf": ["_googlecast._tcp.local."]},
+    ),
+    test.case(
+        "homekit",
+        partial_manifest={"homekit": {"models": ["LIFX"]}},
+    ),
 )
-async def test_discovery_requirements_zeroconf(
-    hass: HomeAssistant, partial_manifest
+async def discovery_requirements_zeroconf(
+    partial_manifest: dict[str, Any],
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test that we load discovery requirements."""
     hass.config.skip_pip = False
@@ -633,11 +741,12 @@ async def test_discovery_requirements_zeroconf(
     ) as mock_process:
         await async_get_integration_with_requirements(hass, "comp")
 
-    assert len(mock_process.mock_calls) == 2
-    assert mock_process.mock_calls[0][1][1] == zeroconf.requirements
+    expect(len(mock_process.mock_calls)).to_equal(2)
+    expect(mock_process.mock_calls[0][1][1]).to_equal(zeroconf.requirements)
 
 
-async def test_discovery_requirements_dhcp(hass: HomeAssistant) -> None:
+@test
+async def discovery_requirements_dhcp(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that we load dhcp discovery requirements."""
     hass.config.skip_pip = False
     dhcp = await loader.async_get_integration(hass, "dhcp")
@@ -656,56 +765,61 @@ async def test_discovery_requirements_dhcp(hass: HomeAssistant) -> None:
     ) as mock_process:
         await async_get_integration_with_requirements(hass, "comp")
 
-    assert len(mock_process.mock_calls) == 2  # dhcp does not depend on http
-    assert mock_process.mock_calls[0][1][1] == dhcp.requirements
+    expect(len(mock_process.mock_calls)).to_equal(2)  # dhcp does not depend on http
+    expect(mock_process.mock_calls[0][1][1]).to_equal(dhcp.requirements)
 
 
-@pytest.mark.parametrize(
-    ("requirement", "is_built_in", "deprecation_prefix", "deprecation_info"),
-    [
-        (
-            "hello",
-            True,
-            "Detected that integration",
-            "which is deprecated for testing. This will stop working in Home Assistant"
-            " 2020.12, please create a bug report at https://github.com/home-assistant/"
-            "core/issues?q=is%3Aopen+is%3Aissue+label%3A%22integration%3A+test_component%22",
-        ),
-        (
-            "hello>=1.0.0",
-            False,
-            "Detected that custom integration",
-            "which is deprecated for testing. This will stop working in Home Assistant"
-            " 2020.12, please create a bug report at https://github.com/home-assistant/"
-            "core/issues?q=is%3Aopen+is%3Aissue+label%3A%22integration%3A+test_component%22",
-        ),
-        (
-            "pyserial-asyncio",
-            False,
-            "Detected that custom integration",
-            "which should be replaced by pyserial-asyncio-fast. This will stop"
-            " working in Home Assistant 2026.7, please create a bug report at "
-            "https://github.com/home-assistant/core/issues?q=is%3Aopen+is%3Aissue+"
-            "label%3A%22integration%3A+test_component%22",
-        ),
-        (
-            "pyserial-asyncio>=0.6",
-            True,
-            "Detected that integration",
-            "which should be replaced by pyserial-asyncio-fast. This will stop"
-            " working in Home Assistant 2026.7, please create a bug report at "
-            "https://github.com/home-assistant/core/issues?q=is%3Aopen+is%3Aissue+"
-            "label%3A%22integration%3A+test_component%22",
-        ),
-    ],
+_DEPRECATION_HELLO = (
+    "which is deprecated for testing. This will stop working in Home Assistant"
+    " 2020.12, please create a bug report at https://github.com/home-assistant/"
+    "core/issues?q=is%3Aopen+is%3Aissue+label%3A%22integration%3A+test_component%22"
 )
-async def test_install_deprecated_package(
-    hass: HomeAssistant,
+
+_DEPRECATION_PYSERIAL = (
+    "which should be replaced by pyserial-asyncio-fast. This will stop"
+    " working in Home Assistant 2026.7, please create a bug report at "
+    "https://github.com/home-assistant/core/issues?q=is%3Aopen+is%3Aissue+"
+    "label%3A%22integration%3A+test_component%22"
+)
+
+
+@test.cases(
+    test.case(
+        "built_in_hello",
+        requirement="hello",
+        is_built_in=True,
+        deprecation_prefix="Detected that integration",
+        deprecation_info=_DEPRECATION_HELLO,
+    ),
+    test.case(
+        "custom_hello_versioned",
+        requirement="hello>=1.0.0",
+        is_built_in=False,
+        deprecation_prefix="Detected that custom integration",
+        deprecation_info=_DEPRECATION_HELLO,
+    ),
+    test.case(
+        "custom_pyserial",
+        requirement="pyserial-asyncio",
+        is_built_in=False,
+        deprecation_prefix="Detected that custom integration",
+        deprecation_info=_DEPRECATION_PYSERIAL,
+    ),
+    test.case(
+        "built_in_pyserial_versioned",
+        requirement="pyserial-asyncio>=0.6",
+        is_built_in=True,
+        deprecation_prefix="Detected that integration",
+        deprecation_info=_DEPRECATION_PYSERIAL,
+    ),
+)
+async def install_deprecated_package(
     requirement: str,
     is_built_in: bool,
     deprecation_prefix: str,
     deprecation_info: str,
-    caplog: pytest.LogCaptureFixture,
+    hass: HomeAssistant = Depends(hass),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test installation of a deprecated package."""
     with (
@@ -724,7 +838,8 @@ async def test_install_deprecated_package(
             is_built_in,
         )
 
-    assert (
+    expected = (
         f"{deprecation_prefix} 'test_component'"
         f" has requirement '{requirement}' {deprecation_info}"
-    ) in caplog.text
+    )
+    expect(expected in caplog.text).to_be_truthy()

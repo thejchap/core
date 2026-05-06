@@ -1,11 +1,14 @@
 """Test the flow classes."""
 
+from __future__ import annotations
+
 import asyncio
 import dataclasses
 import logging
+from typing import Any
 from unittest.mock import Mock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 import voluptuous as vol
 
 from homeassistant import config_entries, data_entry_flow
@@ -14,6 +17,13 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.util.decorator import Registry
 
 from .common import async_capture_events
+from .hass_fixtures import LogCapture, caplog, hass
+
+
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
 
 
 class MockFlowManager(data_entry_flow.FlowManager):
@@ -45,13 +55,38 @@ class MockFlowManager(data_entry_flow.FlowManager):
         return result
 
 
-@pytest.fixture
+@fixture
 def manager() -> MockFlowManager:
     """Return a flow manager."""
     return MockFlowManager()
 
 
-async def test_configure_reuses_handler_instance(manager: MockFlowManager) -> None:
+def _expect_raises_sync(
+    exc_type: type[BaseException], fn: Any, *args: Any, **kwargs: Any
+) -> BaseException:
+    """Call fn and return the caught exception."""
+    try:
+        fn(*args, **kwargs)
+    except exc_type as exc:
+        return exc
+    raise AssertionError(f"Expected {exc_type.__name__}")
+
+
+async def _expect_raises_async(
+    exc_type: type[BaseException], coro: Any
+) -> BaseException:
+    """Await coro and return the caught exception."""
+    try:
+        await coro
+    except exc_type as exc:
+        return exc
+    raise AssertionError(f"Expected {exc_type.__name__}")
+
+
+@test
+async def configure_reuses_handler_instance(
+    manager: MockFlowManager = Depends(manager),
+) -> None:
     """Test that we reuse instances."""
 
     @manager.mock_reg_handler("test")
@@ -65,21 +100,24 @@ async def test_configure_reuses_handler_instance(manager: MockFlowManager) -> No
             )
 
     form = await manager.async_init("test")
-    assert form["errors"]["base"] == "1"
+    expect(form["errors"]["base"]).to_equal("1")
     form = await manager.async_configure(form["flow_id"])
-    assert form["errors"]["base"] == "2"
-    assert manager.async_progress() == [
-        {
-            "flow_id": form["flow_id"],
-            "handler": "test",
-            "step_id": "init",
-            "context": {},
-        }
-    ]
-    assert len(manager.mock_created_entries) == 0
+    expect(form["errors"]["base"]).to_equal("2")
+    expect(manager.async_progress()).to_equal(
+        [
+            {
+                "flow_id": form["flow_id"],
+                "handler": "test",
+                "step_id": "init",
+                "context": {},
+            }
+        ]
+    )
+    expect(len(manager.mock_created_entries)).to_equal(0)
 
 
-async def test_configure_two_steps(manager: MockFlowManager) -> None:
+@test
+async def configure_two_steps(manager: MockFlowManager = Depends(manager)) -> None:
     """Test that we reuse instances."""
 
     @manager.mock_reg_handler("test")
@@ -102,19 +140,21 @@ async def test_configure_two_steps(manager: MockFlowManager) -> None:
         "test", context={"init_step": "first"}, data=["INIT-DATA"]
     )
 
-    with pytest.raises(vol.Invalid):
-        form = await manager.async_configure(form["flow_id"], "INCORRECT-DATA")
+    await _expect_raises_async(
+        vol.Invalid, manager.async_configure(form["flow_id"], "INCORRECT-DATA")
+    )
 
     form = await manager.async_configure(form["flow_id"], ["SECOND-DATA"])
-    assert form["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert len(manager.async_progress()) == 0
-    assert len(manager.mock_created_entries) == 1
+    expect(form["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(len(manager.async_progress())).to_equal(0)
+    expect(len(manager.mock_created_entries)).to_equal(1)
     result = manager.mock_created_entries[0]
-    assert result["handler"] == "test"
-    assert result["data"] == ["INIT-DATA", "SECOND-DATA"]
+    expect(result["handler"]).to_equal("test")
+    expect(result["data"]).to_equal(["INIT-DATA", "SECOND-DATA"])
 
 
-async def test_show_form(manager: MockFlowManager) -> None:
+@test
+async def show_form(manager: MockFlowManager = Depends(manager)) -> None:
     """Test that we can show a form."""
     schema = vol.Schema({vol.Required("username"): str, vol.Required("password"): str})
 
@@ -128,25 +168,28 @@ async def test_show_form(manager: MockFlowManager) -> None:
             )
 
     form = await manager.async_init("test")
-    assert form["type"] == data_entry_flow.FlowResultType.FORM
-    assert form["data_schema"] is schema
-    assert form["errors"] == {"username": "Should be unique."}
+    expect(form["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(form["data_schema"]).to_be(schema)
+    expect(form["errors"]).to_equal({"username": "Should be unique."})
 
 
-async def test_form_shows_with_added_suggested_values(manager: MockFlowManager) -> None:
+@test
+async def form_shows_with_added_suggested_values(
+    manager: MockFlowManager = Depends(manager),
+) -> None:
     """Test that we can show a form with suggested values."""
 
     def compare_schemas(schema: vol.Schema, expected_schema: vol.Schema) -> None:
         """Compare two schemas."""
-        assert schema.schema is not expected_schema.schema
+        expect(schema.schema).not_.to_be(expected_schema.schema)
 
-        assert list(schema.schema) == list(expected_schema.schema)
+        expect(list(schema.schema)).to_equal(list(expected_schema.schema))
 
         for key, validator in schema.schema.items():
             if isinstance(validator, data_entry_flow.section):
-                assert validator.schema == expected_schema.schema[key].schema
+                expect(validator.schema).to_equal(expected_schema.schema[key].schema)
                 continue
-            assert validator == expected_schema.schema[key]
+            expect(validator).to_equal(expected_schema.schema[key])
 
     schema = vol.Schema(
         {
@@ -183,56 +226,57 @@ async def test_form_shows_with_added_suggested_values(manager: MockFlowManager) 
             "section_1": {"full_name": "John Doe"},
         },
     )
-    assert form["type"] == data_entry_flow.FlowResultType.FORM
-    assert form["data_schema"].schema is not schema.schema
-    assert form["data_schema"].schema != schema.schema
+    expect(form["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(form["data_schema"].schema).not_.to_be(schema.schema)
+    expect(form["data_schema"].schema).not_.to_equal(schema.schema)
     compare_schemas(form["data_schema"], schema)
     markers = list(form["data_schema"].schema)
-    assert len(markers) == 3
-    assert markers[0] == "username"
-    assert markers[0].description == {"suggested_value": "doej"}
-    assert markers[1] == "password"
-    assert markers[1].description == {"suggested_value": "verySecret1"}
-    assert markers[2] == "section_1"
+    expect(len(markers)).to_equal(3)
+    expect(markers[0]).to_equal("username")
+    expect(markers[0].description).to_equal({"suggested_value": "doej"})
+    expect(markers[1]).to_equal("password")
+    expect(markers[1].description).to_equal({"suggested_value": "verySecret1"})
+    expect(markers[2]).to_equal("section_1")
     section_validator = form["data_schema"].schema["section_1"]
-    assert isinstance(section_validator, data_entry_flow.section)
+    expect(isinstance(section_validator, data_entry_flow.section)).to_be_truthy()
     # The section instance was copied
-    assert section_validator is not schema.schema["section_1"]
+    expect(section_validator).not_.to_be(schema.schema["section_1"])
     # The section schema instance was copied
-    assert section_validator.schema is not schema.schema["section_1"].schema
-    assert section_validator.schema == schema.schema["section_1"].schema
+    expect(section_validator.schema).not_.to_be(schema.schema["section_1"].schema)
+    expect(section_validator.schema).to_equal(schema.schema["section_1"].schema)
     section_markers = list(section_validator.schema.schema)
-    assert len(section_markers) == 1
-    assert section_markers[0] == "full_name"
-    assert section_markers[0].description == {"suggested_value": "John Doe"}
+    expect(len(section_markers)).to_equal(1)
+    expect(section_markers[0]).to_equal("full_name")
+    expect(section_markers[0].description).to_equal({"suggested_value": "John Doe"})
 
     # Test again without suggested values to make sure we're not mutating the schema
     form = await manager.async_init(
         "test",
     )
-    assert form["type"] == data_entry_flow.FlowResultType.FORM
-    assert form["data_schema"].schema is not schema.schema
-    assert form["data_schema"].schema == schema.schema
+    expect(form["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(form["data_schema"].schema).not_.to_be(schema.schema)
+    expect(form["data_schema"].schema).to_equal(schema.schema)
     markers = list(form["data_schema"].schema)
-    assert len(markers) == 3
-    assert markers[0] == "username"
-    assert markers[0].description is None
-    assert markers[1] == "password"
-    assert markers[1].description is None
-    assert markers[2] == "section_1"
+    expect(len(markers)).to_equal(3)
+    expect(markers[0]).to_equal("username")
+    expect(markers[0].description).to_be(None)
+    expect(markers[1]).to_equal("password")
+    expect(markers[1].description).to_be(None)
+    expect(markers[2]).to_equal("section_1")
     section_validator = form["data_schema"].schema["section_1"]
-    assert isinstance(section_validator, data_entry_flow.section)
+    expect(isinstance(section_validator, data_entry_flow.section)).to_be_truthy()
     # The section class is not replaced if there is no suggested value for the section
-    assert section_validator is schema.schema["section_1"]
+    expect(section_validator).to_be(schema.schema["section_1"])
     # The section schema is not replaced if there is no suggested value for the section
-    assert section_validator.schema is schema.schema["section_1"].schema
+    expect(section_validator.schema).to_be(schema.schema["section_1"].schema)
     section_markers = list(section_validator.schema.schema)
-    assert len(section_markers) == 1
-    assert section_markers[0] == "full_name"
-    assert section_markers[0].description is None
+    expect(len(section_markers)).to_equal(1)
+    expect(section_markers[0]).to_equal("full_name")
+    expect(section_markers[0].description).to_be(None)
 
 
-async def test_abort_removes_instance(manager: MockFlowManager) -> None:
+@test
+async def abort_removes_instance(manager: MockFlowManager = Depends(manager)) -> None:
     """Test that abort removes the flow from progress."""
 
     @manager.mock_reg_handler("test")
@@ -245,16 +289,17 @@ async def test_abort_removes_instance(manager: MockFlowManager) -> None:
             return self.async_abort(reason=str(old))
 
     form = await manager.async_init("test")
-    assert form["reason"] == "True"
-    assert len(manager.async_progress()) == 0
-    assert len(manager.mock_created_entries) == 0
+    expect(form["reason"]).to_equal("True")
+    expect(len(manager.async_progress())).to_equal(0)
+    expect(len(manager.mock_created_entries)).to_equal(0)
     form = await manager.async_init("test")
-    assert form["reason"] == "True"
-    assert len(manager.async_progress()) == 0
-    assert len(manager.mock_created_entries) == 0
+    expect(form["reason"]).to_equal("True")
+    expect(len(manager.async_progress())).to_equal(0)
+    expect(len(manager.mock_created_entries)).to_equal(0)
 
 
-async def test_abort_aborted_flow(manager: MockFlowManager) -> None:
+@test
+async def abort_aborted_flow(manager: MockFlowManager = Depends(manager)) -> None:
     """Test return abort from aborted flow."""
 
     @manager.mock_reg_handler("test")
@@ -264,12 +309,15 @@ async def test_abort_aborted_flow(manager: MockFlowManager) -> None:
             return self.async_abort(reason="blah")
 
     form = await manager.async_init("test")
-    assert form["reason"] == "blah"
-    assert len(manager.async_progress()) == 0
-    assert len(manager.mock_created_entries) == 0
+    expect(form["reason"]).to_equal("blah")
+    expect(len(manager.async_progress())).to_equal(0)
+    expect(len(manager.mock_created_entries)).to_equal(0)
 
 
-async def test_abort_calls_async_remove(manager: MockFlowManager) -> None:
+@test
+async def abort_calls_async_remove(
+    manager: MockFlowManager = Depends(manager),
+) -> None:
     """Test abort calling the async_remove FlowHandler method."""
 
     @manager.mock_reg_handler("test")
@@ -283,11 +331,14 @@ async def test_abort_calls_async_remove(manager: MockFlowManager) -> None:
 
     TestFlow.async_remove.assert_called_once()
 
-    assert len(manager.async_progress()) == 0
-    assert len(manager.mock_created_entries) == 0
+    expect(len(manager.async_progress())).to_equal(0)
+    expect(len(manager.mock_created_entries)).to_equal(0)
 
 
-async def test_abort_calls_async_flow_removed(manager: MockFlowManager) -> None:
+@test
+async def abort_calls_async_flow_removed(
+    manager: MockFlowManager = Depends(manager),
+) -> None:
     """Test abort calling the async_flow_removed FlowManager method."""
 
     @manager.mock_reg_handler("test")
@@ -300,12 +351,14 @@ async def test_abort_calls_async_flow_removed(manager: MockFlowManager) -> None:
 
     manager.async_flow_removed.assert_called_once()
 
-    assert len(manager.async_progress()) == 0
-    assert len(manager.mock_created_entries) == 0
+    expect(len(manager.async_progress())).to_equal(0)
+    expect(len(manager.mock_created_entries)).to_equal(0)
 
 
-async def test_abort_calls_async_remove_with_exception(
-    manager: MockFlowManager, caplog: pytest.LogCaptureFixture
+@test
+async def abort_calls_async_remove_with_exception(
+    manager: MockFlowManager = Depends(manager),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test abort calling the async_remove FlowHandler method, with an exception."""
 
@@ -319,15 +372,16 @@ async def test_abort_calls_async_remove_with_exception(
     with caplog.at_level(logging.ERROR):
         await manager.async_init("test")
 
-    assert "Error removing test flow" in caplog.text
+    expect("Error removing test flow" in caplog.text).to_be_truthy()
 
     TestFlow.async_remove.assert_called_once()
 
-    assert len(manager.async_progress()) == 0
-    assert len(manager.mock_created_entries) == 0
+    expect(len(manager.async_progress())).to_equal(0)
+    expect(len(manager.mock_created_entries)).to_equal(0)
 
 
-async def test_create_saves_data(manager: MockFlowManager) -> None:
+@test
+async def create_saves_data(manager: MockFlowManager = Depends(manager)) -> None:
     """Test creating a config entry."""
 
     @manager.mock_reg_handler("test")
@@ -338,17 +392,18 @@ async def test_create_saves_data(manager: MockFlowManager) -> None:
             return self.async_create_entry(title="Test Title", data="Test Data")
 
     await manager.async_init("test")
-    assert len(manager.async_progress()) == 0
-    assert len(manager.mock_created_entries) == 1
+    expect(len(manager.async_progress())).to_equal(0)
+    expect(len(manager.mock_created_entries)).to_equal(1)
 
     entry = manager.mock_created_entries[0]
-    assert entry["handler"] == "test"
-    assert entry["title"] == "Test Title"
-    assert entry["data"] == "Test Data"
-    assert entry["source"] is None
+    expect(entry["handler"]).to_equal("test")
+    expect(entry["title"]).to_equal("Test Title")
+    expect(entry["data"]).to_equal("Test Data")
+    expect(entry["source"]).to_be(None)
 
 
-async def test_create_aborted_flow(manager: MockFlowManager) -> None:
+@test
+async def create_aborted_flow(manager: MockFlowManager = Depends(manager)) -> None:
     """Test return create_entry from aborted flow."""
 
     @manager.mock_reg_handler("test")
@@ -359,15 +414,17 @@ async def test_create_aborted_flow(manager: MockFlowManager) -> None:
             manager.async_abort(self.flow_id)
             return self.async_create_entry(title="Test Title", data="Test Data")
 
-    with pytest.raises(data_entry_flow.UnknownFlow):
-        await manager.async_init("test")
-    assert len(manager.async_progress()) == 0
+    await _expect_raises_async(data_entry_flow.UnknownFlow, manager.async_init("test"))
+    expect(len(manager.async_progress())).to_equal(0)
 
     # No entry should be created if the flow is aborted
-    assert len(manager.mock_created_entries) == 0
+    expect(len(manager.mock_created_entries)).to_equal(0)
 
 
-async def test_create_calls_async_flow_removed(manager: MockFlowManager) -> None:
+@test
+async def create_calls_async_flow_removed(
+    manager: MockFlowManager = Depends(manager),
+) -> None:
     """Test create calling the async_flow_removed FlowManager method."""
 
     @manager.mock_reg_handler("test")
@@ -380,11 +437,12 @@ async def test_create_calls_async_flow_removed(manager: MockFlowManager) -> None
 
     manager.async_flow_removed.assert_called_once()
 
-    assert len(manager.async_progress()) == 0
-    assert len(manager.mock_created_entries) == 1
+    expect(len(manager.async_progress())).to_equal(0)
+    expect(len(manager.mock_created_entries)).to_equal(1)
 
 
-async def test_discovery_init_flow(manager: MockFlowManager) -> None:
+@test
+async def discovery_init_flow(manager: MockFlowManager = Depends(manager)) -> None:
     """Test a flow initialized by discovery."""
 
     @manager.mock_reg_handler("test")
@@ -399,17 +457,20 @@ async def test_discovery_init_flow(manager: MockFlowManager) -> None:
     await manager.async_init(
         "test", context={"source": config_entries.SOURCE_DISCOVERY}, data=data
     )
-    assert len(manager.async_progress()) == 0
-    assert len(manager.mock_created_entries) == 1
+    expect(len(manager.async_progress())).to_equal(0)
+    expect(len(manager.mock_created_entries)).to_equal(1)
 
     entry = manager.mock_created_entries[0]
-    assert entry["handler"] == "test"
-    assert entry["title"] == "hello"
-    assert entry["data"] == data
-    assert entry["source"] == config_entries.SOURCE_DISCOVERY
+    expect(entry["handler"]).to_equal("test")
+    expect(entry["title"]).to_equal("hello")
+    expect(entry["data"]).to_equal(data)
+    expect(entry["source"]).to_equal(config_entries.SOURCE_DISCOVERY)
 
 
-async def test_finish_callback_change_result_type(hass: HomeAssistant) -> None:
+@test
+async def finish_callback_change_result_type(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test finish callback can change result type."""
 
     class TestFlow(data_entry_flow.FlowHandler):
@@ -441,20 +502,24 @@ async def test_finish_callback_change_result_type(hass: HomeAssistant) -> None:
     manager = FlowManager(hass)
 
     result = await manager.async_init("test")
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await manager.async_configure(result["flow_id"], {"count": 0})
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert "result" not in result
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+    expect("result" not in result).to_be_truthy()
 
     result = await manager.async_configure(result["flow_id"], {"count": 2})
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["result"] == 2
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["result"]).to_equal(2)
 
 
-async def test_external_step(hass: HomeAssistant, manager: MockFlowManager) -> None:
+@test
+async def external_step(
+    hass: HomeAssistant = Depends(hass),
+    manager: MockFlowManager = Depends(manager),
+) -> None:
     """Test external step logic."""
     manager.hass = hass
 
@@ -480,34 +545,40 @@ async def test_external_step(hass: HomeAssistant, manager: MockFlowManager) -> N
     )
 
     result = await manager.async_init("test")
-    assert result["type"] == data_entry_flow.FlowResultType.EXTERNAL_STEP
-    assert len(manager.async_progress()) == 1
-    assert len(manager.async_progress_by_handler("test")) == 1
-    assert manager.async_get(result["flow_id"])["handler"] == "test"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.EXTERNAL_STEP)
+    expect(len(manager.async_progress())).to_equal(1)
+    expect(len(manager.async_progress_by_handler("test"))).to_equal(1)
+    expect(manager.async_get(result["flow_id"])["handler"]).to_equal("test")
 
     # Mimic external step
     # Called by integrations: `hass.config_entries.flow.async_configure(…)`
     result = await manager.async_configure(result["flow_id"], {"title": "Hello"})
-    assert result["type"] == data_entry_flow.FlowResultType.EXTERNAL_STEP_DONE
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.EXTERNAL_STEP_DONE)
 
     await hass.async_block_till_done()
-    assert len(events) == 1
-    assert events[0].data == {
-        "handler": "test",
-        "flow_id": result["flow_id"],
-        "refresh": True,
-    }
+    expect(len(events)).to_equal(1)
+    expect(events[0].data).to_equal(
+        {
+            "handler": "test",
+            "flow_id": result["flow_id"],
+            "refresh": True,
+        }
+    )
 
     # Frontend refreshes the flow
     result = await manager.async_configure(result["flow_id"])
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Hello"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Hello")
 
 
-async def test_show_progress(hass: HomeAssistant, manager: MockFlowManager) -> None:
+@test
+async def show_progress(
+    hass: HomeAssistant = Depends(hass),
+    manager: MockFlowManager = Depends(manager),
+) -> None:
     """Test show progress logic."""
     manager.hass = hass
-    events = []
+    events: list[Event] = []
     progress_update_events = async_capture_events(
         hass, data_entry_flow.EVENT_DATA_ENTRY_FLOW_PROGRESS_UPDATE
     )
@@ -556,7 +627,7 @@ async def test_show_progress(hass: HomeAssistant, manager: MockFlowManager) -> N
                     uncompleted_task = self.task_two
 
             if uncompleted_task:
-                assert progress_action
+                expect(progress_action).to_be_truthy()
                 return self.async_show_progress(
                     progress_action=progress_action,
                     progress_task=uncompleted_task,
@@ -573,63 +644,73 @@ async def test_show_progress(hass: HomeAssistant, manager: MockFlowManager) -> N
     )
 
     result = await manager.async_init("test")
-    assert result["type"] == data_entry_flow.FlowResultType.SHOW_PROGRESS
-    assert result["progress_action"] == "task_one"
-    assert len(manager.async_progress()) == 1
-    assert len(manager.async_progress_by_handler("test")) == 1
-    assert manager.async_get(result["flow_id"])["handler"] == "test"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.SHOW_PROGRESS)
+    expect(result["progress_action"]).to_equal("task_one")
+    expect(len(manager.async_progress())).to_equal(1)
+    expect(len(manager.async_progress_by_handler("test"))).to_equal(1)
+    expect(manager.async_get(result["flow_id"])["handler"]).to_equal("test")
 
     # Set task one done and wait for event
     task_one_evt.set()
     await event_received_evt.wait()
     event_received_evt.clear()
-    assert len(events) == 1
-    assert events[0].data == {
-        "handler": "test",
-        "flow_id": result["flow_id"],
-        "refresh": True,
-    }
+    expect(len(events)).to_equal(1)
+    expect(events[0].data).to_equal(
+        {
+            "handler": "test",
+            "flow_id": result["flow_id"],
+            "refresh": True,
+        }
+    )
 
     # Frontend refreshes the flow
     result = await manager.async_configure(result["flow_id"])
-    assert result["type"] == data_entry_flow.FlowResultType.SHOW_PROGRESS
-    assert result["progress_action"] == "task_two"
-    assert len(progress_update_events) == 1
-    assert progress_update_events[0].data == {
-        "handler": "test",
-        "flow_id": result["flow_id"],
-        "progress": 0.25,
-    }
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.SHOW_PROGRESS)
+    expect(result["progress_action"]).to_equal("task_two")
+    expect(len(progress_update_events)).to_equal(1)
+    expect(progress_update_events[0].data).to_equal(
+        {
+            "handler": "test",
+            "flow_id": result["flow_id"],
+            "progress": 0.25,
+        }
+    )
 
     # Set task two done and wait for event
     task_two_evt.set()
     await event_received_evt.wait()
     event_received_evt.clear()
-    assert len(events) == 2  # 1 for task one and 1 for task two
-    assert events[1].data == {
-        "handler": "test",
-        "flow_id": result["flow_id"],
-        "refresh": True,
-    }
-    assert len(progress_update_events) == 2
-    assert progress_update_events[1].data == {
-        "handler": "test",
-        "flow_id": result["flow_id"],
-        "progress": 0.75,
-    }
+    expect(len(events)).to_equal(2)  # 1 for task one and 1 for task two
+    expect(events[1].data).to_equal(
+        {
+            "handler": "test",
+            "flow_id": result["flow_id"],
+            "refresh": True,
+        }
+    )
+    expect(len(progress_update_events)).to_equal(2)
+    expect(progress_update_events[1].data).to_equal(
+        {
+            "handler": "test",
+            "flow_id": result["flow_id"],
+            "progress": 0.75,
+        }
+    )
 
     # Frontend refreshes the flow
     result = await manager.async_configure(result["flow_id"])
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Hello"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Hello")
 
 
-async def test_show_progress_error(
-    hass: HomeAssistant, manager: MockFlowManager
+@test
+async def show_progress_error(
+    hass: HomeAssistant = Depends(hass),
+    manager: MockFlowManager = Depends(manager),
 ) -> None:
     """Test show progress logic."""
     manager.hass = hass
-    events = []
+    events: list[Event] = []
     event_received_evt = asyncio.Event()
 
     @callback
@@ -667,30 +748,34 @@ async def test_show_progress_error(
     )
 
     result = await manager.async_init("test")
-    assert result["type"] == data_entry_flow.FlowResultType.SHOW_PROGRESS
-    assert result["progress_action"] == "task"
-    assert len(manager.async_progress()) == 1
-    assert len(manager.async_progress_by_handler("test")) == 1
-    assert manager.async_get(result["flow_id"])["handler"] == "test"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.SHOW_PROGRESS)
+    expect(result["progress_action"]).to_equal("task")
+    expect(len(manager.async_progress())).to_equal(1)
+    expect(len(manager.async_progress_by_handler("test"))).to_equal(1)
+    expect(manager.async_get(result["flow_id"])["handler"]).to_equal("test")
 
     # Set task one done and wait for event
     await event_received_evt.wait()
     event_received_evt.clear()
-    assert len(events) == 1
-    assert events[0].data == {
-        "handler": "test",
-        "flow_id": result["flow_id"],
-        "refresh": True,
-    }
+    expect(len(events)).to_equal(1)
+    expect(events[0].data).to_equal(
+        {
+            "handler": "test",
+            "flow_id": result["flow_id"],
+            "refresh": True,
+        }
+    )
 
     # Frontend refreshes the flow
     result = await manager.async_configure(result["flow_id"])
-    assert result["type"] == data_entry_flow.FlowResultType.ABORT
-    assert result["reason"] == "error"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("error")
 
 
-async def test_show_progress_hidden_from_frontend(
-    hass: HomeAssistant, manager: MockFlowManager
+@test
+async def show_progress_hidden_from_frontend(
+    hass: HomeAssistant = Depends(hass),
+    manager: MockFlowManager = Depends(manager),
 ) -> None:
     """Test show progress done is not sent to frontend."""
     manager.hass = hass
@@ -726,23 +811,26 @@ async def test_show_progress_hidden_from_frontend(
             return self.async_create_entry(title=None, data=self.data)
 
     result = await manager.async_init("test")
-    assert result["type"] == data_entry_flow.FlowResultType.SHOW_PROGRESS
-    assert result["progress_action"] == "task"
-    assert len(manager.async_progress()) == 1
-    assert len(manager.async_progress_by_handler("test")) == 1
-    assert manager.async_get(result["flow_id"])["handler"] == "test"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.SHOW_PROGRESS)
+    expect(result["progress_action"]).to_equal("task")
+    expect(len(manager.async_progress())).to_equal(1)
+    expect(len(manager.async_progress_by_handler("test"))).to_equal(1)
+    expect(manager.async_get(result["flow_id"])["handler"]).to_equal("test")
 
     await progress_task
-    assert not async_show_progress_done_called
+    expect(async_show_progress_done_called).to_be_falsy()
 
     # Frontend refreshes the flow
     result = await manager.async_configure(result["flow_id"])
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert async_show_progress_done_called
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(async_show_progress_done_called).to_be_truthy()
 
 
-async def test_show_progress_legacy(
-    hass: HomeAssistant, manager: MockFlowManager, caplog: pytest.LogCaptureFixture
+@test
+async def show_progress_legacy(
+    hass: HomeAssistant = Depends(hass),
+    manager: MockFlowManager = Depends(manager),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test show progress logic.
 
@@ -786,30 +874,32 @@ async def test_show_progress_legacy(
     )
 
     result = await manager.async_init("test")
-    assert result["type"] == data_entry_flow.FlowResultType.SHOW_PROGRESS
-    assert result["progress_action"] == "task_one"
-    assert len(manager.async_progress()) == 1
-    assert len(manager.async_progress_by_handler("test")) == 1
-    assert manager.async_get(result["flow_id"])["handler"] == "test"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.SHOW_PROGRESS)
+    expect(result["progress_action"]).to_equal("task_one")
+    expect(len(manager.async_progress())).to_equal(1)
+    expect(len(manager.async_progress_by_handler("test"))).to_equal(1)
+    expect(manager.async_get(result["flow_id"])["handler"]).to_equal("test")
 
     # Mimic task one done and moving to task two
     # Called by integrations: `hass.config_entries.flow.async_configure(…)`
     result = await manager.async_configure(result["flow_id"], {"task_finished": 1})
-    assert result["type"] == data_entry_flow.FlowResultType.SHOW_PROGRESS
-    assert result["progress_action"] == "task_two"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.SHOW_PROGRESS)
+    expect(result["progress_action"]).to_equal("task_two")
 
     await hass.async_block_till_done()
-    assert len(events) == 1
-    assert events[0].data == {
-        "handler": "test",
-        "flow_id": result["flow_id"],
-        "refresh": True,
-    }
+    expect(len(events)).to_equal(1)
+    expect(events[0].data).to_equal(
+        {
+            "handler": "test",
+            "flow_id": result["flow_id"],
+            "refresh": True,
+        }
+    )
 
     # Frontend refreshes the flow
     result = await manager.async_configure(result["flow_id"])
-    assert result["type"] == data_entry_flow.FlowResultType.SHOW_PROGRESS
-    assert result["progress_action"] == "task_two"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.SHOW_PROGRESS)
+    expect(result["progress_action"]).to_equal("task_two")
 
     # Mimic task two done and continuing step
     # Called by integrations: `hass.config_entries.flow.async_configure(…)`
@@ -818,33 +908,38 @@ async def test_show_progress_legacy(
     )
     # Note: The SHOW_PROGRESS_DONE is not hidden from frontend when flows manage
     # the progress tasks themselves
-    assert result["type"] == data_entry_flow.FlowResultType.SHOW_PROGRESS_DONE
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.SHOW_PROGRESS_DONE)
 
     # Frontend refreshes the flow
     result = await manager.async_configure(
         result["flow_id"], {"task_finished": 2, "title": "Hello"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Hello"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Hello")
 
     await hass.async_block_till_done()
-    assert len(events) == 2  # 1 for task one and 1 for task two
-    assert events[1].data == {
-        "handler": "test",
-        "flow_id": result["flow_id"],
-        "refresh": True,
-    }
+    expect(len(events)).to_equal(2)  # 1 for task one and 1 for task two
+    expect(events[1].data).to_equal(
+        {
+            "handler": "test",
+            "flow_id": result["flow_id"],
+            "refresh": True,
+        }
+    )
 
     # Check for deprecation warning
-    assert (
+    expected = (
         "tests.test_data_entry_flow::TestFlow calls async_show_progress without passing"
         " a progress task, this is not valid and will break in Home Assistant "
         "Core 2024.8."
-    ) in caplog.text
+    )
+    expect(expected in caplog.text).to_be_truthy()
 
 
-async def test_show_progress_fires_only_when_changed(
-    hass: HomeAssistant, manager: MockFlowManager
+@test
+async def show_progress_fires_only_when_changed(
+    hass: HomeAssistant = Depends(hass),
+    manager: MockFlowManager = Depends(manager),
 ) -> None:
     """Test show progress change logic."""
     manager.hass = hass
@@ -872,13 +967,13 @@ async def test_show_progress_fires_only_when_changed(
         hass, data_entry_flow.EVENT_DATA_ENTRY_FLOW_PROGRESSED
     )
 
-    async def test_change(
-        flow_id,
-        events,
-        progress_action,
-        description_placeholders_progress,
-        number_of_events,
-        is_change,
+    async def assert_change(
+        flow_id: str,
+        events: list[Event],
+        progress_action: str,
+        description_placeholders_progress: int,
+        number_of_events: int,
+        is_change: bool,
     ) -> None:
         # Called by integrations: `hass.config_entries.flow.async_configure(…)`
         result = await manager.async_configure(
@@ -890,47 +985,53 @@ async def test_show_progress_fires_only_when_changed(
                 },
             },
         )
-        assert result["type"] == data_entry_flow.FlowResultType.SHOW_PROGRESS
-        assert result["progress_action"] == progress_action
-        assert (
-            result["description_placeholders"]["progress"]
-            == description_placeholders_progress
+        expect(result["type"]).to_equal(data_entry_flow.FlowResultType.SHOW_PROGRESS)
+        expect(result["progress_action"]).to_equal(progress_action)
+        expect(result["description_placeholders"]["progress"]).to_equal(
+            description_placeholders_progress
         )
 
         await hass.async_block_till_done()
-        assert len(events) == number_of_events
+        expect(len(events)).to_equal(number_of_events)
         if is_change:
-            assert events[number_of_events - 1].data == {
-                "handler": "test",
-                "flow_id": result["flow_id"],
-                "refresh": True,
-            }
+            expect(events[number_of_events - 1].data).to_equal(
+                {
+                    "handler": "test",
+                    "flow_id": result["flow_id"],
+                    "refresh": True,
+                }
+            )
 
     result = await manager.async_init("test")
-    assert result["type"] == data_entry_flow.FlowResultType.SHOW_PROGRESS
-    assert result["progress_action"] == "task_one"
-    assert len(manager.async_progress()) == 1
-    assert len(manager.async_progress_by_handler("test")) == 1
-    assert manager.async_get(result["flow_id"])["handler"] == "test"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.SHOW_PROGRESS)
+    expect(result["progress_action"]).to_equal("task_one")
+    expect(len(manager.async_progress())).to_equal(1)
+    expect(len(manager.async_progress_by_handler("test"))).to_equal(1)
+    expect(manager.async_get(result["flow_id"])["handler"]).to_equal("test")
 
     # Mimic task one tests
-    await test_change(
+    await assert_change(
         result["flow_id"], events, "task_one", 0, 1, True
     )  # change (progress action)
-    await test_change(result["flow_id"], events, "task_one", 0, 1, False)  # no change
-    await test_change(
+    await assert_change(result["flow_id"], events, "task_one", 0, 1, False)  # no change
+    await assert_change(
         result["flow_id"], events, "task_one", 25, 2, True
     )  # change (description placeholder)
-    await test_change(
+    await assert_change(
         result["flow_id"], events, "task_two", 50, 3, True
     )  # change (progress action and description placeholder)
-    await test_change(result["flow_id"], events, "task_two", 50, 3, False)  # no change
-    await test_change(
+    await assert_change(
+        result["flow_id"], events, "task_two", 50, 3, False
+    )  # no change
+    await assert_change(
         result["flow_id"], events, "task_two", 100, 4, True
     )  # change (description placeholder)
 
 
-async def test_abort_flow_exception_step(manager: MockFlowManager) -> None:
+@test
+async def abort_flow_exception_step(
+    manager: MockFlowManager = Depends(manager),
+) -> None:
     """Test that the AbortFlow exception works in a step."""
 
     @manager.mock_reg_handler("test")
@@ -939,12 +1040,15 @@ async def test_abort_flow_exception_step(manager: MockFlowManager) -> None:
             raise data_entry_flow.AbortFlow("mock-reason", {"placeholder": "yo"})
 
     form = await manager.async_init("test")
-    assert form["type"] == data_entry_flow.FlowResultType.ABORT
-    assert form["reason"] == "mock-reason"
-    assert form["description_placeholders"] == {"placeholder": "yo"}
+    expect(form["type"]).to_equal(data_entry_flow.FlowResultType.ABORT)
+    expect(form["reason"]).to_equal("mock-reason")
+    expect(form["description_placeholders"]).to_equal({"placeholder": "yo"})
 
 
-async def test_abort_flow_exception_finish_flow(hass: HomeAssistant) -> None:
+@test
+async def abort_flow_exception_finish_flow(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test that the AbortFlow exception works when finishing a flow."""
 
     class TestFlow(data_entry_flow.FlowHandler):
@@ -966,30 +1070,33 @@ async def test_abort_flow_exception_finish_flow(hass: HomeAssistant) -> None:
     manager = FlowManager(hass)
 
     form = await manager.async_init("test")
-    assert form["type"] == data_entry_flow.FlowResultType.ABORT
-    assert form["reason"] == "mock-reason"
-    assert form["description_placeholders"] == {"placeholder": "yo"}
+    expect(form["type"]).to_equal(data_entry_flow.FlowResultType.ABORT)
+    expect(form["reason"]).to_equal("mock-reason")
+    expect(form["description_placeholders"]).to_equal({"placeholder": "yo"})
 
 
-async def test_init_unknown_flow(manager: MockFlowManager) -> None:
+@test
+async def init_unknown_flow(manager: MockFlowManager = Depends(manager)) -> None:
     """Test that UnknownFlow is raised when async_create_flow returns None."""
 
-    with (
-        pytest.raises(data_entry_flow.UnknownFlow),
-        patch.object(manager, "async_create_flow", return_value=None),
-    ):
-        await manager.async_init("test")
+    with patch.object(manager, "async_create_flow", return_value=None):
+        await _expect_raises_async(
+            data_entry_flow.UnknownFlow, manager.async_init("test")
+        )
 
 
-async def test_async_get_unknown_flow(manager: MockFlowManager) -> None:
+@test
+async def async_get_unknown_flow(manager: MockFlowManager = Depends(manager)) -> None:
     """Test that UnknownFlow is raised when async_get is called with a flow_id that does not exist."""
 
-    with pytest.raises(data_entry_flow.UnknownFlow):
-        await manager.async_get("does_not_exist")
+    _expect_raises_sync(
+        data_entry_flow.UnknownFlow, manager.async_get, "does_not_exist"
+    )
 
 
-async def test_move_to_unknown_step_raises_and_removes_from_in_progress(
-    manager: MockFlowManager,
+@test
+async def move_to_unknown_step_raises_and_removes_from_in_progress(
+    manager: MockFlowManager = Depends(manager),
 ) -> None:
     """Test that moving to an unknown step raises and removes the flow from in progress."""
 
@@ -997,25 +1104,50 @@ async def test_move_to_unknown_step_raises_and_removes_from_in_progress(
     class TestFlow(data_entry_flow.FlowHandler):
         VERSION = 1
 
-    with pytest.raises(data_entry_flow.UnknownStep):
-        await manager.async_init("test", context={"init_step": "does_not_exist"})
+    await _expect_raises_async(
+        data_entry_flow.UnknownStep,
+        manager.async_init("test", context={"init_step": "does_not_exist"}),
+    )
 
-    assert manager.async_progress() == []
+    expect(manager.async_progress()).to_equal([])
 
 
-@pytest.mark.parametrize(
-    ("result_type", "params"),
-    [
-        ("async_external_step_done", {"next_step_id": "does_not_exist"}),
-        ("async_external_step", {"step_id": "does_not_exist", "url": "blah"}),
-        ("async_show_form", {"step_id": "does_not_exist"}),
-        ("async_show_menu", {"step_id": "does_not_exist", "menu_options": []}),
-        ("async_show_progress_done", {"next_step_id": "does_not_exist"}),
-        ("async_show_progress", {"step_id": "does_not_exist", "progress_action": ""}),
-    ],
+@test.cases(
+    test.case(
+        "external_step_done",
+        result_type="async_external_step_done",
+        params={"next_step_id": "does_not_exist"},
+    ),
+    test.case(
+        "external_step",
+        result_type="async_external_step",
+        params={"step_id": "does_not_exist", "url": "blah"},
+    ),
+    test.case(
+        "show_form",
+        result_type="async_show_form",
+        params={"step_id": "does_not_exist"},
+    ),
+    test.case(
+        "show_menu",
+        result_type="async_show_menu",
+        params={"step_id": "does_not_exist", "menu_options": []},
+    ),
+    test.case(
+        "show_progress_done",
+        result_type="async_show_progress_done",
+        params={"next_step_id": "does_not_exist"},
+    ),
+    test.case(
+        "show_progress",
+        result_type="async_show_progress",
+        params={"step_id": "does_not_exist", "progress_action": ""},
+    ),
 )
-async def test_next_step_unknown_step_raises_and_removes_from_in_progress(
-    manager: MockFlowManager, result_type: str, params: dict[str, str]
+async def next_step_unknown_step_raises_and_removes_from_in_progress(
+    result_type: str,
+    params: dict[str, str],
+    manager: MockFlowManager = Depends(manager),
 ) -> None:
     """Test that moving to an unknown step raises and removes the flow from in progress."""
 
@@ -1026,29 +1158,38 @@ async def test_next_step_unknown_step_raises_and_removes_from_in_progress(
         async def async_step_init(self, user_input=None):
             return getattr(self, result_type)(**params)
 
-    with pytest.raises(data_entry_flow.UnknownStep):
-        await manager.async_init("test", context={"init_step": "init"})
+    await _expect_raises_async(
+        data_entry_flow.UnknownStep,
+        manager.async_init("test", context={"init_step": "init"}),
+    )
 
-    assert manager.async_progress() == []
+    expect(manager.async_progress()).to_equal([])
 
 
-async def test_configure_raises_unknown_flow_if_not_in_progress(
-    manager: MockFlowManager,
+@test
+async def configure_raises_unknown_flow_if_not_in_progress(
+    manager: MockFlowManager = Depends(manager),
 ) -> None:
     """Test configure raises UnknownFlow if the flow is not in progress."""
-    with pytest.raises(data_entry_flow.UnknownFlow):
-        await manager.async_configure("wrong_flow_id")
+    await _expect_raises_async(
+        data_entry_flow.UnknownFlow, manager.async_configure("wrong_flow_id")
+    )
 
 
-async def test_manager_abort_raises_unknown_flow_if_not_in_progress(
-    manager: MockFlowManager,
+@test
+async def manager_abort_raises_unknown_flow_if_not_in_progress(
+    manager: MockFlowManager = Depends(manager),
 ) -> None:
     """Test abort raises UnknownFlow if the flow is not in progress."""
-    with pytest.raises(data_entry_flow.UnknownFlow):
-        manager.async_abort("wrong_flow_id")
+    _expect_raises_sync(
+        data_entry_flow.UnknownFlow, manager.async_abort, "wrong_flow_id"
+    )
 
 
-async def test_manager_abort_calls_async_flow_removed(manager: MockFlowManager) -> None:
+@test
+async def manager_abort_calls_async_flow_removed(
+    manager: MockFlowManager = Depends(manager),
+) -> None:
     """Test abort calling the async_flow_removed FlowManager method."""
 
     @manager.mock_reg_handler("test")
@@ -1058,32 +1199,44 @@ async def test_manager_abort_calls_async_flow_removed(manager: MockFlowManager) 
 
     manager.async_flow_removed = Mock()
     result = await manager.async_init("test")
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     manager.async_flow_removed.assert_not_called()
 
     manager.async_abort(result["flow_id"])
     manager.async_flow_removed.assert_called_once()
 
-    assert len(manager.async_progress()) == 0
-    assert len(manager.mock_created_entries) == 0
+    expect(len(manager.async_progress())).to_equal(0)
+    expect(len(manager.mock_created_entries)).to_equal(0)
 
 
-@pytest.mark.parametrize(
-    ("menu_options", "sort", "expect_sort"),
-    [
-        (["target1", "target2"], None, None),
-        ({"target1": "Target 1", "target2": "Target 2"}, False, None),
-        (["target2", "target1"], True, True),
-    ],
+@test.cases(
+    test.case(
+        "list_no_sort",
+        menu_options=["target1", "target2"],
+        sort=None,
+        expect_sort=None,
+    ),
+    test.case(
+        "dict_no_sort",
+        menu_options={"target1": "Target 1", "target2": "Target 2"},
+        sort=False,
+        expect_sort=None,
+    ),
+    test.case(
+        "list_sort",
+        menu_options=["target2", "target1"],
+        sort=True,
+        expect_sort=True,
+    ),
 )
-async def test_show_menu(
-    hass: HomeAssistant,
-    manager: MockFlowManager,
+async def show_menu(
     menu_options: list[str] | dict[str, str],
     sort: bool | None,
     expect_sort: bool | None,
+    hass: HomeAssistant = Depends(hass),
+    manager: MockFlowManager = Depends(manager),
 ) -> None:
     """Test show menu."""
     manager.hass = hass
@@ -1109,23 +1262,26 @@ async def test_show_menu(
             return self.async_show_form(step_id="target2")
 
     result = await manager.async_init("test")
-    assert result["type"] == data_entry_flow.FlowResultType.MENU
-    assert result["menu_options"] == menu_options
-    assert result["description_placeholders"] == {"name": "Paulus"}
-    assert result.get("sort") == expect_sort
-    assert len(manager.async_progress()) == 1
-    assert len(manager.async_progress_by_handler("test")) == 1
-    assert manager.async_get(result["flow_id"])["handler"] == "test"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.MENU)
+    expect(result["menu_options"]).to_equal(menu_options)
+    expect(result["description_placeholders"]).to_equal({"name": "Paulus"})
+    expect(result.get("sort")).to_equal(expect_sort)
+    expect(len(manager.async_progress())).to_equal(1)
+    expect(len(manager.async_progress_by_handler("test"))).to_equal(1)
+    expect(manager.async_get(result["flow_id"])["handler"]).to_equal("test")
 
     # Mimic picking a step
     result = await manager.async_configure(
         result["flow_id"], {"next_step_id": "target1"}
     )
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "target1"
+    expect(result["type"]).to_equal(data_entry_flow.FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("target1")
 
 
-async def test_find_flows_by_init_data_type(manager: MockFlowManager) -> None:
+@test
+async def find_flows_by_init_data_type(
+    manager: MockFlowManager = Depends(manager),
+) -> None:
     """Test we can find flows by init data type."""
 
     @dataclasses.dataclass
@@ -1165,110 +1321,118 @@ async def test_find_flows_by_init_data_type(manager: MockFlowManager) -> None:
     )
     await manager.async_init("test", context={"init_step": "first"}, data=wifi_data)
 
-    assert (
+    expect(
         len(
             manager.async_progress_by_init_data_type(
                 BluetoothDiscoveryData, lambda data: True
             )
         )
-    ) == 1
-    assert (
+    ).to_equal(1)
+    expect(
         len(
             manager.async_progress_by_init_data_type(
                 BluetoothDiscoveryData,
                 lambda data: bool(data.address == "aa:bb:cc:dd:ee:ff"),
             )
         )
-    ) == 1
-    assert (
+    ).to_equal(1)
+    expect(
         len(
             manager.async_progress_by_init_data_type(
                 BluetoothDiscoveryData, lambda data: bool(data.address == "not it")
             )
         )
-    ) == 0
+    ).to_equal(0)
 
     wifi_flows = manager.async_progress_by_init_data_type(
         WiFiDiscoveryData, lambda data: True
     )
-    assert len(wifi_flows) == 1
+    expect(len(wifi_flows)).to_equal(1)
 
     bluetooth_result = await manager.async_configure(
         bluetooth_form["flow_id"], ["SECOND-DATA"]
     )
-    assert bluetooth_result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert len(manager.async_progress()) == 1
-    assert len(manager.mock_created_entries) == 1
+    expect(bluetooth_result["type"]).to_equal(
+        data_entry_flow.FlowResultType.CREATE_ENTRY
+    )
+    expect(len(manager.async_progress())).to_equal(1)
+    expect(len(manager.mock_created_entries)).to_equal(1)
     result = manager.mock_created_entries[0]
-    assert result["handler"] == "test"
-    assert result["data"] == {"init": bluetooth_data, "user": ["SECOND-DATA"]}
+    expect(result["handler"]).to_equal("test")
+    expect(result["data"]).to_equal({"init": bluetooth_data, "user": ["SECOND-DATA"]})
 
     bluetooth_flows = manager.async_progress_by_init_data_type(
         BluetoothDiscoveryData, lambda data: True
     )
-    assert len(bluetooth_flows) == 0
+    expect(len(bluetooth_flows)).to_equal(0)
 
     wifi_flows = manager.async_progress_by_init_data_type(
         WiFiDiscoveryData, lambda data: True
     )
-    assert len(wifi_flows) == 1
+    expect(len(wifi_flows)).to_equal(1)
 
     manager.async_abort(wifi_flows[0]["flow_id"])
 
     wifi_flows = manager.async_progress_by_init_data_type(
         WiFiDiscoveryData, lambda data: True
     )
-    assert len(wifi_flows) == 0
-    assert len(manager.async_progress()) == 0
+    expect(len(wifi_flows)).to_equal(0)
+    expect(len(manager.async_progress())).to_equal(0)
 
 
-def test_section_in_serializer() -> None:
+@test
+def section_in_serializer() -> None:
     """Test section with custom_serializer."""
-    assert cv.custom_serializer(
-        data_entry_flow.section(
-            vol.Schema(
-                {
-                    vol.Optional("option_1", default=False): bool,
-                    vol.Required("option_2"): int,
-                }
-            ),
-            {"collapsed": False},
-        )
-    ) == {
-        "expanded": True,
-        "schema": [
-            {
-                "default": False,
-                "name": "option_1",
-                "optional": True,
-                "required": False,
-                "type": "boolean",
-            },
-            {"name": "option_2", "required": True, "type": "integer"},
-        ],
-        "type": "expandable",
-    }
-
-
-def test_nested_section_in_serializer() -> None:
-    """Test section with custom_serializer."""
-    with pytest.raises(
-        ValueError, match="Nesting expandable sections is not supported"
-    ):
+    expect(
         cv.custom_serializer(
             data_entry_flow.section(
                 vol.Schema(
                     {
-                        vol.Required("section_1"): data_entry_flow.section(
-                            vol.Schema(
-                                {
-                                    vol.Optional("option_1", default=False): bool,
-                                    vol.Required("option_2"): int,
-                                }
-                            )
-                        )
+                        vol.Optional("option_1", default=False): bool,
+                        vol.Required("option_2"): int,
                     }
                 ),
                 {"collapsed": False},
             )
         )
+    ).to_equal(
+        {
+            "expanded": True,
+            "schema": [
+                {
+                    "default": False,
+                    "name": "option_1",
+                    "optional": True,
+                    "required": False,
+                    "type": "boolean",
+                },
+                {"name": "option_2", "required": True, "type": "integer"},
+            ],
+            "type": "expandable",
+        }
+    )
+
+
+@test
+def nested_section_in_serializer() -> None:
+    """Test section with custom_serializer."""
+    exc = _expect_raises_sync(
+        ValueError,
+        cv.custom_serializer,
+        data_entry_flow.section(
+            vol.Schema(
+                {
+                    vol.Required("section_1"): data_entry_flow.section(
+                        vol.Schema(
+                            {
+                                vol.Optional("option_1", default=False): bool,
+                                vol.Required("option_2"): int,
+                            }
+                        )
+                    )
+                }
+            ),
+            {"collapsed": False},
+        ),
+    )
+    expect("Nesting expandable sections is not supported" in str(exc)).to_be_truthy()

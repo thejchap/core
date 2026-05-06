@@ -1,5 +1,7 @@
 """Test core_config."""
 
+from __future__ import annotations
+
 import asyncio
 from collections import OrderedDict
 import copy
@@ -9,7 +11,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 from unittest.mock import Mock, PropertyMock, patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 from voluptuous import Invalid, MultipleInvalid
 from webrtc_models import RTCConfiguration, RTCIceServer
 
@@ -46,9 +48,39 @@ from homeassistant.util.unit_system import (
 )
 
 from .common import MockEntityPlatform, MockUser, async_capture_events
+from .hass_fixtures import LogCapture, caplog, hass, hass_storage, issue_registry
 
 
-def test_core_config_schema() -> None:
+@fixture
+def _trigger_executor() -> int:
+    """Dummy local fixture to opt into Tryke's HookExecutor path."""
+    return 0
+
+
+def _expect_raises_sync(
+    exc_type: type[BaseException], fn: Any, *args: Any, **kwargs: Any
+) -> BaseException:
+    """Call fn and return the caught exception."""
+    try:
+        fn(*args, **kwargs)
+    except exc_type as exc:
+        return exc
+    raise AssertionError(f"Expected {exc_type.__name__}")
+
+
+async def _expect_raises_async(
+    exc_type: type[BaseException], coro: Any
+) -> BaseException:
+    """Await coro and return the caught exception."""
+    try:
+        await coro
+    except exc_type as exc:
+        return exc
+    raise AssertionError(f"Expected {exc_type.__name__}")
+
+
+@test
+def core_config_schema() -> None:
     """Test core config schema."""
     for value in (
         {"unit_system": "K"},
@@ -67,8 +99,7 @@ def test_core_config_schema() -> None:
         {"webrtc": "bla"},
         {"webrtc": {}},
     ):
-        with pytest.raises(MultipleInvalid):
-            CORE_CONFIG_SCHEMA(value)
+        _expect_raises_sync(MultipleInvalid, CORE_CONFIG_SCHEMA, value)
 
     CORE_CONFIG_SCHEMA(
         {
@@ -88,8 +119,9 @@ def test_core_config_schema() -> None:
     )
 
 
-def test_core_config_schema_internal_external_warning(
-    caplog: pytest.LogCaptureFixture,
+@test
+def core_config_schema_internal_external_warning(
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test that we warn for internal/external URL with path."""
     CORE_CONFIG_SCHEMA(
@@ -99,25 +131,30 @@ def test_core_config_schema_internal_external_warning(
         }
     )
 
-    assert "Invalid external_url set" in caplog.text
-    assert "Invalid internal_url set" in caplog.text
+    expect("Invalid external_url set" in caplog.text).to_be_truthy()
+    expect("Invalid internal_url set" in caplog.text).to_be_truthy()
 
 
-def test_customize_dict_schema() -> None:
+@test
+def customize_dict_schema() -> None:
     """Test basic customize config validation."""
     values = ({ATTR_FRIENDLY_NAME: None}, {ATTR_ASSUMED_STATE: "2"})
 
     for val in values:
-        with pytest.raises(MultipleInvalid):
-            _CUSTOMIZE_DICT_SCHEMA(val)
+        _expect_raises_sync(MultipleInvalid, _CUSTOMIZE_DICT_SCHEMA, val)
 
-    assert _CUSTOMIZE_DICT_SCHEMA({ATTR_FRIENDLY_NAME: 2, ATTR_ASSUMED_STATE: "0"}) == {
-        ATTR_FRIENDLY_NAME: "2",
-        ATTR_ASSUMED_STATE: False,
-    }
+    expect(
+        _CUSTOMIZE_DICT_SCHEMA({ATTR_FRIENDLY_NAME: 2, ATTR_ASSUMED_STATE: "0"})
+    ).to_equal(
+        {
+            ATTR_FRIENDLY_NAME: "2",
+            ATTR_ASSUMED_STATE: False,
+        }
+    )
 
 
-def test_webrtc_schema() -> None:
+@test
+def webrtc_schema() -> None:
     """Test webrtc config validation."""
     invalid_webrtc_configs = (
         "bla",
@@ -167,15 +204,15 @@ def test_webrtc_schema() -> None:
     )
 
     for config in invalid_webrtc_configs:
-        with pytest.raises(MultipleInvalid):
-            CORE_CONFIG_SCHEMA({"webrtc": config})
+        _expect_raises_sync(MultipleInvalid, CORE_CONFIG_SCHEMA, {"webrtc": config})
 
     for config, validated_webrtc in valid_webrtc_configs:
         validated = CORE_CONFIG_SCHEMA({"webrtc": config})
-        assert validated["webrtc"] == validated_webrtc
+        expect(validated["webrtc"]).to_equal(validated_webrtc)
 
 
-def testvalidate_stun_or_turn_url() -> None:
+@test
+def validate_stun_or_turn_url_parsing() -> None:
     """Test validate_stun_or_turn_url."""
     invalid_urls = (
         "custom_stun_server",
@@ -202,17 +239,17 @@ def testvalidate_stun_or_turn_url() -> None:
     )
 
     for url in invalid_urls:
-        with pytest.raises(Invalid):
-            validate_stun_or_turn_url(url)
+        _expect_raises_sync(Invalid, validate_stun_or_turn_url, url)
 
     for url in valid_urls:
-        assert validate_stun_or_turn_url(url) == url
+        expect(validate_stun_or_turn_url(url)).to_equal(url)
 
 
-def test_customize_glob_is_ordered() -> None:
+@test
+def customize_glob_is_ordered() -> None:
     """Test that customize_glob preserves order."""
     conf = CORE_CONFIG_SCHEMA({"customize_glob": OrderedDict()})
-    assert isinstance(conf["customize_glob"], OrderedDict)
+    expect(isinstance(conf["customize_glob"], OrderedDict)).to_be_truthy()
 
 
 async def _compute_state(hass: HomeAssistant, config: dict[str, Any]) -> State | None:
@@ -230,7 +267,8 @@ async def _compute_state(hass: HomeAssistant, config: dict[str, Any]) -> State |
     return hass.states.get("test.test")
 
 
-async def test_entity_customization(hass: HomeAssistant) -> None:
+@test
+async def entity_customization(hass: HomeAssistant = Depends(hass)) -> None:
     """Test entity customization through configuration."""
     config = {
         CONF_LATITUDE: 50,
@@ -241,11 +279,13 @@ async def test_entity_customization(hass: HomeAssistant) -> None:
 
     state = await _compute_state(hass, config)
 
-    assert state.attributes["hidden"]
+    expect(state.attributes["hidden"]).to_be_truthy()
 
 
-async def test_loading_configuration_from_storage(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def loading_configuration_from_storage(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test loading core config onto hass object."""
     hass_storage["core.config"] = {
@@ -269,25 +309,27 @@ async def test_loading_configuration_from_storage(
     }
     await async_process_ha_core_config(hass, {"allowlist_external_dirs": "/etc"})
 
-    assert hass.config.latitude == 55
-    assert hass.config.longitude == 13
-    assert hass.config.elevation == 10
-    assert hass.config.location_name == "Home"
-    assert hass.config.units is METRIC_SYSTEM
-    assert hass.config.time_zone == "Europe/Copenhagen"
-    assert hass.config.external_url == "https://www.example.com"
-    assert hass.config.internal_url == "http://example.local"
-    assert hass.config.currency == "EUR"
-    assert hass.config.country == "SE"
-    assert hass.config.language == "sv"
-    assert hass.config.radius == 150
-    assert len(hass.config.allowlist_external_dirs) == 3
-    assert "/etc" in hass.config.allowlist_external_dirs
-    assert hass.config.config_source is ConfigSource.STORAGE
+    expect(hass.config.latitude).to_equal(55)
+    expect(hass.config.longitude).to_equal(13)
+    expect(hass.config.elevation).to_equal(10)
+    expect(hass.config.location_name).to_equal("Home")
+    expect(hass.config.units).to_be(METRIC_SYSTEM)
+    expect(hass.config.time_zone).to_equal("Europe/Copenhagen")
+    expect(hass.config.external_url).to_equal("https://www.example.com")
+    expect(hass.config.internal_url).to_equal("http://example.local")
+    expect(hass.config.currency).to_equal("EUR")
+    expect(hass.config.country).to_equal("SE")
+    expect(hass.config.language).to_equal("sv")
+    expect(hass.config.radius).to_equal(150)
+    expect(len(hass.config.allowlist_external_dirs)).to_equal(3)
+    expect("/etc" in hass.config.allowlist_external_dirs).to_be_truthy()
+    expect(hass.config.config_source).to_be(ConfigSource.STORAGE)
 
 
-async def test_loading_configuration_from_storage_with_yaml_only(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def loading_configuration_from_storage_with_yaml_only(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test loading core and YAML config onto hass object."""
     hass_storage["core.config"] = {
@@ -306,20 +348,22 @@ async def test_loading_configuration_from_storage_with_yaml_only(
         hass, {"media_dirs": {"mymedia": "/usr"}, "allowlist_external_dirs": "/etc"}
     )
 
-    assert hass.config.latitude == 55
-    assert hass.config.longitude == 13
-    assert hass.config.elevation == 10
-    assert hass.config.location_name == "Home"
-    assert hass.config.units is METRIC_SYSTEM
-    assert hass.config.time_zone == "Europe/Copenhagen"
-    assert len(hass.config.allowlist_external_dirs) == 3
-    assert "/etc" in hass.config.allowlist_external_dirs
-    assert hass.config.media_dirs == {"mymedia": "/usr"}
-    assert hass.config.config_source is ConfigSource.STORAGE
+    expect(hass.config.latitude).to_equal(55)
+    expect(hass.config.longitude).to_equal(13)
+    expect(hass.config.elevation).to_equal(10)
+    expect(hass.config.location_name).to_equal("Home")
+    expect(hass.config.units).to_be(METRIC_SYSTEM)
+    expect(hass.config.time_zone).to_equal("Europe/Copenhagen")
+    expect(len(hass.config.allowlist_external_dirs)).to_equal(3)
+    expect("/etc" in hass.config.allowlist_external_dirs).to_be_truthy()
+    expect(hass.config.media_dirs).to_equal({"mymedia": "/usr"})
+    expect(hass.config.config_source).to_be(ConfigSource.STORAGE)
 
 
-async def test_migration_and_updating_configuration(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def migration_and_updating_configuration(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test updating configuration stores the new configuration."""
     core_data = {
@@ -355,16 +399,18 @@ async def test_migration_and_updating_configuration(
     expected_new_core_data["data"]["radius"] = 100
     # Bumped minor version
     expected_new_core_data["minor_version"] = 4
-    assert hass_storage["core.config"] == expected_new_core_data
-    assert hass.config.latitude == 50
-    assert hass.config.currency == "USD"
-    assert hass.config.country is None
-    assert hass.config.language == "en"
-    assert hass.config.radius == 100
+    expect(hass_storage["core.config"]).to_equal(expected_new_core_data)
+    expect(hass.config.latitude).to_equal(50)
+    expect(hass.config.currency).to_equal("USD")
+    expect(hass.config.country).to_be(None)
+    expect(hass.config.language).to_equal("en")
+    expect(hass.config.radius).to_equal(100)
 
 
-async def test_override_stored_configuration(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def override_stored_configuration(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test loading core and YAML config onto hass object."""
     hass_storage["core.config"] = {
@@ -383,18 +429,19 @@ async def test_override_stored_configuration(
         hass, {"latitude": 60, "allowlist_external_dirs": "/etc"}
     )
 
-    assert hass.config.latitude == 60
-    assert hass.config.longitude == 13
-    assert hass.config.elevation == 10
-    assert hass.config.location_name == "Home"
-    assert hass.config.units is METRIC_SYSTEM
-    assert hass.config.time_zone == "Europe/Copenhagen"
-    assert len(hass.config.allowlist_external_dirs) == 3
-    assert "/etc" in hass.config.allowlist_external_dirs
-    assert hass.config.config_source is ConfigSource.YAML
+    expect(hass.config.latitude).to_equal(60)
+    expect(hass.config.longitude).to_equal(13)
+    expect(hass.config.elevation).to_equal(10)
+    expect(hass.config.location_name).to_equal("Home")
+    expect(hass.config.units).to_be(METRIC_SYSTEM)
+    expect(hass.config.time_zone).to_equal("Europe/Copenhagen")
+    expect(len(hass.config.allowlist_external_dirs)).to_equal(3)
+    expect("/etc" in hass.config.allowlist_external_dirs).to_be_truthy()
+    expect(hass.config.config_source).to_be(ConfigSource.YAML)
 
 
-async def test_loading_configuration(hass: HomeAssistant) -> None:
+@test
+async def loading_configuration(hass: HomeAssistant = Depends(hass)) -> None:
     """Test loading core config onto hass object."""
     await async_process_ha_core_config(
         hass,
@@ -418,73 +465,98 @@ async def test_loading_configuration(hass: HomeAssistant) -> None:
         },
     )
 
-    assert hass.config.latitude == 60
-    assert hass.config.longitude == 50
-    assert hass.config.elevation == 25
-    assert hass.config.location_name == "Huis"
-    assert hass.config.units is US_CUSTOMARY_SYSTEM
-    assert hass.config.time_zone == "America/New_York"
-    assert hass.config.external_url == "https://www.example.com"
-    assert hass.config.internal_url == "http://example.local"
-    assert len(hass.config.allowlist_external_dirs) == 3
-    assert "/etc" in hass.config.allowlist_external_dirs
-    assert "/usr" in hass.config.allowlist_external_dirs
-    assert hass.config.media_dirs == {"mymedia": "/usr"}
-    assert hass.config.config_source is ConfigSource.YAML
-    assert hass.config.debug is True
-    assert hass.config.currency == "EUR"
-    assert hass.config.country == "SE"
-    assert hass.config.language == "sv"
-    assert hass.config.radius == 150
-    assert hass.config.webrtc == RTCConfiguration(
-        [RTCIceServer(urls=["stun:custom_stun_server:3478"])]
+    expect(hass.config.latitude).to_equal(60)
+    expect(hass.config.longitude).to_equal(50)
+    expect(hass.config.elevation).to_equal(25)
+    expect(hass.config.location_name).to_equal("Huis")
+    expect(hass.config.units).to_be(US_CUSTOMARY_SYSTEM)
+    expect(hass.config.time_zone).to_equal("America/New_York")
+    expect(hass.config.external_url).to_equal("https://www.example.com")
+    expect(hass.config.internal_url).to_equal("http://example.local")
+    expect(len(hass.config.allowlist_external_dirs)).to_equal(3)
+    expect("/etc" in hass.config.allowlist_external_dirs).to_be_truthy()
+    expect("/usr" in hass.config.allowlist_external_dirs).to_be_truthy()
+    expect(hass.config.media_dirs).to_equal({"mymedia": "/usr"})
+    expect(hass.config.config_source).to_be(ConfigSource.YAML)
+    expect(hass.config.debug).to_be(True)
+    expect(hass.config.currency).to_equal("EUR")
+    expect(hass.config.country).to_equal("SE")
+    expect(hass.config.language).to_equal("sv")
+    expect(hass.config.radius).to_equal(150)
+    expect(hass.config.webrtc).to_equal(
+        RTCConfiguration([RTCIceServer(urls=["stun:custom_stun_server:3478"])])
     )
 
 
-@pytest.mark.parametrize(
-    ("minor_version", "users", "user_data", "default_language"),
-    [
-        (2, (), {}, "en"),
-        (2, ({"is_owner": True},), {}, "en"),
-        (
-            2,
-            ({"id": "user1", "is_owner": True},),
-            {"user1": {"language": {"language": "sv"}}},
-            "sv",
-        ),
-        (
-            2,
-            ({"id": "user1", "is_owner": False},),
-            {"user1": {"language": {"language": "sv"}}},
-            "en",
-        ),
-        (3, (), {}, "en"),
-        (3, ({"is_owner": True},), {}, "en"),
-        (
-            3,
-            ({"id": "user1", "is_owner": True},),
-            {"user1": {"language": {"language": "sv"}}},
-            "en",
-        ),
-        (
-            3,
-            ({"id": "user1", "is_owner": False},),
-            {"user1": {"language": {"language": "sv"}}},
-            "en",
-        ),
-    ],
+@test.cases(
+    test.case(
+        "v2_no_users",
+        minor_version=2,
+        users=(),
+        user_data={},
+        default_language="en",
+    ),
+    test.case(
+        "v2_owner_no_data",
+        minor_version=2,
+        users=({"is_owner": True},),
+        user_data={},
+        default_language="en",
+    ),
+    test.case(
+        "v2_owner_sv",
+        minor_version=2,
+        users=({"id": "user1", "is_owner": True},),
+        user_data={"user1": {"language": {"language": "sv"}}},
+        default_language="sv",
+    ),
+    test.case(
+        "v2_non_owner_sv",
+        minor_version=2,
+        users=({"id": "user1", "is_owner": False},),
+        user_data={"user1": {"language": {"language": "sv"}}},
+        default_language="en",
+    ),
+    test.case(
+        "v3_no_users",
+        minor_version=3,
+        users=(),
+        user_data={},
+        default_language="en",
+    ),
+    test.case(
+        "v3_owner_no_data",
+        minor_version=3,
+        users=({"is_owner": True},),
+        user_data={},
+        default_language="en",
+    ),
+    test.case(
+        "v3_owner_sv",
+        minor_version=3,
+        users=({"id": "user1", "is_owner": True},),
+        user_data={"user1": {"language": {"language": "sv"}}},
+        default_language="en",
+    ),
+    test.case(
+        "v3_non_owner_sv",
+        minor_version=3,
+        users=({"id": "user1", "is_owner": False},),
+        user_data={"user1": {"language": {"language": "sv"}}},
+        default_language="en",
+    ),
 )
-async def test_language_default(
-    hass: HomeAssistant,
-    hass_storage: dict[str, Any],
-    minor_version,
-    users,
-    user_data,
-    default_language,
+async def language_default(
+    minor_version: int,
+    users: tuple[dict[str, Any], ...],
+    user_data: dict[str, Any],
+    default_language: str,
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test language config default to owner user's language during migration.
 
-    This should only happen if the core store version < 1.3
+    This should only happen if the core store version < 1.3.
     """
     core_data = {
         "data": {},
@@ -509,11 +581,12 @@ async def test_language_default(
         hass,
         {},
     )
-    assert hass.config.language == default_language
+    expect(hass.config.language).to_equal(default_language)
 
 
-async def test_loading_configuration_default_media_dirs_docker(
-    hass: HomeAssistant,
+@test
+async def loading_configuration_default_media_dirs_docker(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test loading core config onto hass object."""
     with patch("homeassistant.core_config.is_docker_env", return_value=True):
@@ -524,13 +597,16 @@ async def test_loading_configuration_default_media_dirs_docker(
             },
         )
 
-    assert hass.config.location_name == "Huis"
-    assert len(hass.config.allowlist_external_dirs) == 2
-    assert "/media" in hass.config.allowlist_external_dirs
-    assert hass.config.media_dirs == {"local": "/media"}
+    expect(hass.config.location_name).to_equal("Huis")
+    expect(len(hass.config.allowlist_external_dirs)).to_equal(2)
+    expect("/media" in hass.config.allowlist_external_dirs).to_be_truthy()
+    expect(hass.config.media_dirs).to_equal({"local": "/media"})
 
 
-async def test_loading_configuration_from_packages(hass: HomeAssistant) -> None:
+@test
+async def loading_configuration_from_packages(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test loading packages config onto hass object config."""
     await async_process_ha_core_config(
         hass,
@@ -555,8 +631,9 @@ async def test_loading_configuration_from_packages(hass: HomeAssistant) -> None:
     )
 
     # Empty packages not allowed
-    with pytest.raises(MultipleInvalid):
-        await async_process_ha_core_config(
+    await _expect_raises_async(
+        MultipleInvalid,
+        async_process_ha_core_config(
             hass,
             {
                 "latitude": 39,
@@ -567,19 +644,31 @@ async def test_loading_configuration_from_packages(hass: HomeAssistant) -> None:
                 "time_zone": "Europe/Madrid",
                 "packages": {"empty_package": None},
             },
-        )
+        ),
+    )
 
 
-@pytest.mark.parametrize(
-    ("unit_system_name", "expected_unit_system"),
-    [
-        ("metric", METRIC_SYSTEM),
-        ("imperial", US_CUSTOMARY_SYSTEM),
-        ("us_customary", US_CUSTOMARY_SYSTEM),
-    ],
+@test.cases(
+    test.case(
+        "metric",
+        unit_system_name="metric",
+        expected_unit_system=METRIC_SYSTEM,
+    ),
+    test.case(
+        "imperial",
+        unit_system_name="imperial",
+        expected_unit_system=US_CUSTOMARY_SYSTEM,
+    ),
+    test.case(
+        "us_customary",
+        unit_system_name="us_customary",
+        expected_unit_system=US_CUSTOMARY_SYSTEM,
+    ),
 )
-async def test_loading_configuration_unit_system(
-    hass: HomeAssistant, unit_system_name: str, expected_unit_system: UnitSystem
+async def loading_configuration_unit_system(
+    unit_system_name: str,
+    expected_unit_system: UnitSystem,
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test backward compatibility when loading core config."""
     await async_process_ha_core_config(
@@ -596,10 +685,11 @@ async def test_loading_configuration_unit_system(
         },
     )
 
-    assert hass.config.units is expected_unit_system
+    expect(hass.config.units).to_be(expected_unit_system)
 
 
-async def test_merge_customize(hass: HomeAssistant) -> None:
+@test
+async def merge_customize(hass: HomeAssistant = Depends(hass)) -> None:
     """Test loading core config onto hass object."""
     core_config = {
         "latitude": 60,
@@ -615,10 +705,11 @@ async def test_merge_customize(hass: HomeAssistant) -> None:
     }
     await async_process_ha_core_config(hass, core_config)
 
-    assert hass.data[DATA_CUSTOMIZE].get("b.b") == {"friendly_name": "BB"}
+    expect(hass.data[DATA_CUSTOMIZE].get("b.b")).to_equal({"friendly_name": "BB"})
 
 
-async def test_auth_provider_config(hass: HomeAssistant) -> None:
+@test
+async def auth_provider_config(hass: HomeAssistant = Depends(hass)) -> None:
     """Test loading auth provider config onto hass object."""
     core_config = {
         "latitude": 60,
@@ -636,14 +727,15 @@ async def test_auth_provider_config(hass: HomeAssistant) -> None:
         del hass.auth
     await async_process_ha_core_config(hass, core_config)
 
-    assert len(hass.auth.auth_providers) == 1
-    assert hass.auth.auth_providers[0].type == "homeassistant"
-    assert len(hass.auth.auth_mfa_modules) == 2
-    assert hass.auth.auth_mfa_modules[0].id == "totp"
-    assert hass.auth.auth_mfa_modules[1].id == "second"
+    expect(len(hass.auth.auth_providers)).to_equal(1)
+    expect(hass.auth.auth_providers[0].type).to_equal("homeassistant")
+    expect(len(hass.auth.auth_mfa_modules)).to_equal(2)
+    expect(hass.auth.auth_mfa_modules[0].id).to_equal("totp")
+    expect(hass.auth.auth_mfa_modules[1].id).to_equal("second")
 
 
-async def test_auth_provider_config_default(hass: HomeAssistant) -> None:
+@test
+async def auth_provider_config_default(hass: HomeAssistant = Depends(hass)) -> None:
     """Test loading default auth provider config."""
     core_config = {
         "latitude": 60,
@@ -657,13 +749,14 @@ async def test_auth_provider_config_default(hass: HomeAssistant) -> None:
         del hass.auth
     await async_process_ha_core_config(hass, core_config)
 
-    assert len(hass.auth.auth_providers) == 1
-    assert hass.auth.auth_providers[0].type == "homeassistant"
-    assert len(hass.auth.auth_mfa_modules) == 1
-    assert hass.auth.auth_mfa_modules[0].id == "totp"
+    expect(len(hass.auth.auth_providers)).to_equal(1)
+    expect(hass.auth.auth_providers[0].type).to_equal("homeassistant")
+    expect(len(hass.auth.auth_mfa_modules)).to_equal(1)
+    expect(hass.auth.auth_mfa_modules[0].id).to_equal("totp")
 
 
-async def test_disallowed_auth_provider_config(hass: HomeAssistant) -> None:
+@test
+async def disallowed_auth_provider_config(hass: HomeAssistant = Depends(hass)) -> None:
     """Test loading insecure example auth provider is disallowed."""
     core_config = {
         "latitude": 60,
@@ -685,11 +778,13 @@ async def test_disallowed_auth_provider_config(hass: HomeAssistant) -> None:
             }
         ],
     }
-    with pytest.raises(Invalid):
-        await async_process_ha_core_config(hass, core_config)
+    await _expect_raises_async(Invalid, async_process_ha_core_config(hass, core_config))
 
 
-async def test_disallowed_duplicated_auth_provider_config(hass: HomeAssistant) -> None:
+@test
+async def disallowed_duplicated_auth_provider_config(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test loading insecure example auth provider is disallowed."""
     core_config = {
         "latitude": 60,
@@ -700,11 +795,13 @@ async def test_disallowed_duplicated_auth_provider_config(hass: HomeAssistant) -
         "time_zone": "GMT",
         CONF_AUTH_PROVIDERS: [{"type": "homeassistant"}, {"type": "homeassistant"}],
     }
-    with pytest.raises(Invalid):
-        await async_process_ha_core_config(hass, core_config)
+    await _expect_raises_async(Invalid, async_process_ha_core_config(hass, core_config))
 
 
-async def test_disallowed_auth_mfa_module_config(hass: HomeAssistant) -> None:
+@test
+async def disallowed_auth_mfa_module_config(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test loading insecure example auth mfa module is disallowed."""
     core_config = {
         "latitude": 60,
@@ -720,12 +817,12 @@ async def test_disallowed_auth_mfa_module_config(hass: HomeAssistant) -> None:
             }
         ],
     }
-    with pytest.raises(Invalid):
-        await async_process_ha_core_config(hass, core_config)
+    await _expect_raises_async(Invalid, async_process_ha_core_config(hass, core_config))
 
 
-async def test_disallowed_duplicated_auth_mfa_module_config(
-    hass: HomeAssistant,
+@test
+async def disallowed_duplicated_auth_mfa_module_config(
+    hass: HomeAssistant = Depends(hass),
 ) -> None:
     """Test loading insecure example auth mfa module is disallowed."""
     core_config = {
@@ -737,23 +834,27 @@ async def test_disallowed_duplicated_auth_mfa_module_config(
         "time_zone": "GMT",
         CONF_AUTH_MFA_MODULES: [{"type": "totp"}, {"type": "totp"}],
     }
-    with pytest.raises(Invalid):
-        await async_process_ha_core_config(hass, core_config)
+    await _expect_raises_async(Invalid, async_process_ha_core_config(hass, core_config))
 
 
-async def test_core_config_schema_historic_currency(
-    hass: HomeAssistant, issue_registry: ir.IssueRegistry
+@test
+async def core_config_schema_historic_currency(
+    hass: HomeAssistant = Depends(hass),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry),
 ) -> None:
     """Test core config schema."""
     await async_process_ha_core_config(hass, {"currency": "LTT"})
 
     issue = issue_registry.async_get_issue("homeassistant", "historic_currency")
-    assert issue
-    assert issue.translation_placeholders == {"currency": "LTT"}
+    expect(issue).to_be_truthy()
+    expect(issue.translation_placeholders).to_equal({"currency": "LTT"})
 
 
-async def test_core_store_historic_currency(
-    hass: HomeAssistant, hass_storage: dict[str, Any], issue_registry: ir.IssueRegistry
+@test
+async def core_store_historic_currency(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry),
 ) -> None:
     """Test core config store."""
     core_data = {
@@ -769,26 +870,31 @@ async def test_core_store_historic_currency(
 
     issue_id = "historic_currency"
     issue = issue_registry.async_get_issue("homeassistant", issue_id)
-    assert issue
-    assert issue.translation_placeholders == {"currency": "LTT"}
+    expect(issue).to_be_truthy()
+    expect(issue.translation_placeholders).to_equal({"currency": "LTT"})
 
     await hass.config.async_update(currency="EUR")
     issue = issue_registry.async_get_issue("homeassistant", issue_id)
-    assert not issue
+    expect(issue).to_be_falsy()
 
 
-async def test_core_config_schema_no_country(
-    hass: HomeAssistant, issue_registry: ir.IssueRegistry
+@test
+async def core_config_schema_no_country(
+    hass: HomeAssistant = Depends(hass),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry),
 ) -> None:
     """Test core config schema."""
     await async_process_ha_core_config(hass, {})
 
     issue = issue_registry.async_get_issue("homeassistant", "country_not_configured")
-    assert issue
+    expect(issue).to_be_truthy()
 
 
-async def test_core_store_no_country(
-    hass: HomeAssistant, hass_storage: dict[str, Any], issue_registry: ir.IssueRegistry
+@test
+async def core_store_no_country(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry),
 ) -> None:
     """Test core config store."""
     core_data = {
@@ -802,14 +908,17 @@ async def test_core_store_no_country(
 
     issue_id = "country_not_configured"
     issue = issue_registry.async_get_issue("homeassistant", issue_id)
-    assert issue
+    expect(issue).to_be_truthy()
 
     await hass.config.async_update(country="SE")
     issue = issue_registry.async_get_issue("homeassistant", issue_id)
-    assert not issue
+    expect(issue).to_be_falsy()
 
 
-async def test_configuration_legacy_template_is_removed(hass: HomeAssistant) -> None:
+@test
+async def configuration_legacy_template_is_removed(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test loading core config onto hass object."""
     await async_process_ha_core_config(
         hass,
@@ -833,75 +942,82 @@ async def test_configuration_legacy_template_is_removed(hass: HomeAssistant) -> 
         },
     )
 
-    assert not hass.config.legacy_templates
+    expect(hass.config.legacy_templates).to_be_falsy()
 
 
-async def test_config_defaults() -> None:
+@test
+async def config_defaults() -> None:
     """Test config defaults."""
     hass = Mock()
     hass.data = {}
     config = Config(hass, "/test/ha-config")
-    assert config.hass is hass
-    assert config.latitude == 0
-    assert config.longitude == 0
-    assert config.elevation == 0
-    assert config.location_name == "Home"
-    assert config.time_zone == "UTC"
-    assert config.internal_url is None
-    assert config.external_url is None
-    assert config.config_source is ConfigSource.DEFAULT
-    assert config.skip_pip is False
-    assert config.skip_pip_packages == []
-    assert config.components == set()
-    assert config.api is None
-    assert config.config_dir == "/test/ha-config"
-    assert config.allowlist_external_dirs == set()
-    assert config.allowlist_external_urls == set()
-    assert config.media_dirs == {}
-    assert config.recovery_mode is False
-    assert config.legacy_templates is False
-    assert config.currency == "EUR"
-    assert config.country is None
-    assert config.language == "en"
-    assert config.radius == 100
+    expect(config.hass).to_be(hass)
+    expect(config.latitude).to_equal(0)
+    expect(config.longitude).to_equal(0)
+    expect(config.elevation).to_equal(0)
+    expect(config.location_name).to_equal("Home")
+    expect(config.time_zone).to_equal("UTC")
+    expect(config.internal_url).to_be(None)
+    expect(config.external_url).to_be(None)
+    expect(config.config_source).to_be(ConfigSource.DEFAULT)
+    expect(config.skip_pip).to_be(False)
+    expect(config.skip_pip_packages).to_equal([])
+    expect(config.components).to_equal(set())
+    expect(config.api).to_be(None)
+    expect(config.config_dir).to_equal("/test/ha-config")
+    expect(config.allowlist_external_dirs).to_equal(set())
+    expect(config.allowlist_external_urls).to_equal(set())
+    expect(config.media_dirs).to_equal({})
+    expect(config.recovery_mode).to_be(False)
+    expect(config.legacy_templates).to_be(False)
+    expect(config.currency).to_equal("EUR")
+    expect(config.country).to_be(None)
+    expect(config.language).to_equal("en")
+    expect(config.radius).to_equal(100)
 
 
-async def test_config_path_with_file() -> None:
+@test
+async def config_path_with_file() -> None:
     """Test get_config_path method."""
     hass = Mock()
     hass.data = {}
     config = Config(hass, "/test/ha-config")
-    assert config.path("test.conf") == "/test/ha-config/test.conf"
+    expect(config.path("test.conf")).to_equal("/test/ha-config/test.conf")
 
 
-async def test_config_path_with_dir_and_file() -> None:
+@test
+async def config_path_with_dir_and_file() -> None:
     """Test get_config_path method."""
     hass = Mock()
     hass.data = {}
     config = Config(hass, "/test/ha-config")
-    assert config.path("dir", "test.conf") == "/test/ha-config/dir/test.conf"
+    expect(config.path("dir", "test.conf")).to_equal("/test/ha-config/dir/test.conf")
 
 
-async def test_config_cache_path_with_file() -> None:
+@test
+async def config_cache_path_with_file() -> None:
     """Test cache_path method with file."""
     hass = Mock()
     hass.data = {}
     config = Config(hass, "/test/ha-config")
-    assert config.cache_path("test.cache") == "/test/ha-config/.cache/test.cache"
+    expect(config.cache_path("test.cache")).to_equal(
+        "/test/ha-config/.cache/test.cache"
+    )
 
 
-async def test_config_cache_path_with_dir_and_file() -> None:
+@test
+async def config_cache_path_with_dir_and_file() -> None:
     """Test cache_path method with dir and file."""
     hass = Mock()
     hass.data = {}
     config = Config(hass, "/test/ha-config")
-    assert (
-        config.cache_path("dir", "test.cache")
-        == "/test/ha-config/.cache/dir/test.cache"
+    expect(config.cache_path("dir", "test.cache")).to_equal(
+        "/test/ha-config/.cache/dir/test.cache"
     )
 
 
-async def test_config_as_dict() -> None:
+@test
+async def config_as_dict() -> None:
     """Test as dict."""
     hass = Mock()
     hass.data = {}
@@ -933,10 +1049,11 @@ async def test_config_as_dict() -> None:
         "radius": 100,
     }
 
-    assert expected == config.as_dict()
+    expect(expected).to_equal(config.as_dict())
 
 
-async def test_config_is_allowed_path() -> None:
+@test
+async def config_is_allowed_path() -> None:
     """Test is_allowed_path method."""
     hass = Mock()
     hass.data = {}
@@ -953,7 +1070,7 @@ async def test_config_is_allowed_path() -> None:
 
         valid = [test_file, tmp_dir, os.path.join(tmp_dir, "notfound321")]
         for path in valid:
-            assert config.is_allowed_path(path)
+            expect(config.is_allowed_path(path)).to_be_truthy()
 
         config.allowlist_external_dirs = {"/home", "/var"}
 
@@ -965,13 +1082,13 @@ async def test_config_is_allowed_path() -> None:
             test_file,
         ]
         for path in invalid:
-            assert not config.is_allowed_path(path)
+            expect(config.is_allowed_path(path)).to_be_falsy()
 
-        with pytest.raises(AssertionError):
-            config.is_allowed_path(None)
+        _expect_raises_sync(AssertionError, config.is_allowed_path, None)
 
 
-async def test_config_is_allowed_external_url() -> None:
+@test
+async def config_is_allowed_external_url() -> None:
     """Test is_allowed_external_url method."""
     hass = Mock()
     hass.data = {}
@@ -990,7 +1107,7 @@ async def test_config_is_allowed_external_url() -> None:
         "https://z.com/images/1.jpg",
     ]
     for url in valid:
-        assert config.is_allowed_external_url(url)
+        expect(config.is_allowed_external_url(url)).to_be_truthy()
 
     invalid = [
         "https://a.co",
@@ -999,31 +1116,38 @@ async def test_config_is_allowed_external_url() -> None:
         "https://z.com/images",
     ]
     for url in invalid:
-        assert not config.is_allowed_external_url(url)
+        expect(config.is_allowed_external_url(url)).to_be_falsy()
 
 
-async def test_event_on_update(hass: HomeAssistant) -> None:
+@test
+async def event_on_update(hass: HomeAssistant = Depends(hass)) -> None:
     """Test that event is fired on update."""
     events = async_capture_events(hass, EVENT_CORE_CONFIG_UPDATE)
 
-    assert hass.config.latitude != 12
+    expect(hass.config.latitude).not_.to_equal(12)
 
     await hass.config.async_update(latitude=12)
     await hass.async_block_till_done()
 
-    assert hass.config.latitude == 12
-    assert len(events) == 1
-    assert events[0].data == {"latitude": 12}
+    expect(hass.config.latitude).to_equal(12)
+    expect(len(events)).to_equal(1)
+    expect(events[0].data).to_equal({"latitude": 12})
 
 
-async def test_bad_timezone_raises_value_error(hass: HomeAssistant) -> None:
+@test
+async def bad_timezone_raises_value_error(
+    hass: HomeAssistant = Depends(hass),
+) -> None:
     """Test bad timezone raises ValueError."""
-    with pytest.raises(ValueError):
-        await hass.config.async_update(time_zone="not_a_timezone")
+    await _expect_raises_async(
+        ValueError, hass.config.async_update(time_zone="not_a_timezone")
+    )
 
 
-async def test_additional_data_in_core_config(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
+@test
+async def additional_data_in_core_config(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
 ) -> None:
     """Test that we can handle additional data in core configuration."""
     config = Config(hass, "/test/ha-config")
@@ -1033,11 +1157,14 @@ async def test_additional_data_in_core_config(
         "data": {"location_name": "Test Name", "additional_valid_key": "value"},
     }
     await config.async_load()
-    assert config.location_name == "Test Name"
+    expect(config.location_name).to_equal("Test Name")
 
 
-async def test_incorrect_internal_external_url(
-    hass: HomeAssistant, hass_storage: dict[str, Any], caplog: pytest.LogCaptureFixture
+@test
+async def incorrect_internal_external_url(
+    hass: HomeAssistant = Depends(hass),
+    hass_storage: dict[str, Any] = Depends(hass_storage),
+    caplog: LogCapture = Depends(caplog),
 ) -> None:
     """Test that we warn when detecting invalid internal/external url."""
     config = Config(hass, "/test/ha-config")
@@ -1051,8 +1178,8 @@ async def test_incorrect_internal_external_url(
         },
     }
     await config.async_load()
-    assert "Invalid external_url set" not in caplog.text
-    assert "Invalid internal_url set" not in caplog.text
+    expect("Invalid external_url set" in caplog.text).to_be_falsy()
+    expect("Invalid internal_url set" in caplog.text).to_be_falsy()
 
     config = Config(hass, "/test/ha-config")
     config.async_initialize()
@@ -1065,34 +1192,40 @@ async def test_incorrect_internal_external_url(
         },
     }
     await config.async_load()
-    assert "Invalid external_url set" in caplog.text
-    assert "Invalid internal_url set" in caplog.text
+    expect("Invalid external_url set" in caplog.text).to_be_truthy()
+    expect("Invalid internal_url set" in caplog.text).to_be_truthy()
 
 
-async def test_top_level_components(hass: HomeAssistant) -> None:
+@test
+async def top_level_components(hass: HomeAssistant = Depends(hass)) -> None:
     """Test top level components are updated when components change."""
     hass.config.components.add("homeassistant")
-    assert hass.config.components == {"homeassistant"}
-    assert hass.config.top_level_components == {"homeassistant"}
+    expect(hass.config.components).to_equal({"homeassistant"})
+    expect(hass.config.top_level_components).to_equal({"homeassistant"})
     hass.config.components.add("homeassistant.scene")
-    assert hass.config.components == {"homeassistant", "homeassistant.scene"}
-    assert hass.config.top_level_components == {"homeassistant"}
+    expect(hass.config.components).to_equal({"homeassistant", "homeassistant.scene"})
+    expect(hass.config.top_level_components).to_equal({"homeassistant"})
     hass.config.components.remove("homeassistant")
-    assert hass.config.components == {"homeassistant.scene"}
-    assert hass.config.top_level_components == set()
-    with pytest.raises(ValueError):
-        hass.config.components.remove("homeassistant.scene")
-    with pytest.raises(NotImplementedError):
-        hass.config.components.discard("homeassistant")
+    expect(hass.config.components).to_equal({"homeassistant.scene"})
+    expect(hass.config.top_level_components).to_equal(set())
+    _expect_raises_sync(
+        ValueError, hass.config.components.remove, "homeassistant.scene"
+    )
+    _expect_raises_sync(
+        NotImplementedError, hass.config.components.discard, "homeassistant"
+    )
 
 
-async def test_debug_mode_defaults_to_off(hass: HomeAssistant) -> None:
+@test
+async def debug_mode_defaults_to_off(hass: HomeAssistant = Depends(hass)) -> None:
     """Test debug mode defaults to off."""
-    assert not hass.config.debug
+    expect(hass.config.debug).to_be_falsy()
 
 
-async def test_core_config_schema_imperial_unit(
-    hass: HomeAssistant, issue_registry: ir.IssueRegistry
+@test
+async def core_config_schema_imperial_unit(
+    hass: HomeAssistant = Depends(hass),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry),
 ) -> None:
     """Test core config schema."""
     await async_process_ha_core_config(
@@ -1112,4 +1245,4 @@ async def test_core_config_schema_imperial_unit(
     )
 
     issue = issue_registry.async_get_issue("homeassistant", "imperial_unit_system")
-    assert issue
+    expect(issue).to_be_truthy()
