@@ -3,8 +3,8 @@
 from typing import Any
 from unittest.mock import AsyncMock
 
-import pytest
 from python_opensky.exceptions import OpenSkyUnauthenticatedError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.opensky.const import (
     CONF_ALTITUDE,
@@ -23,11 +23,26 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from . import setup_integration
+from ._fixtures import config_entry, mock_setup_entry, opensky_client
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_full_user_flow(hass: HomeAssistant, mock_setup_entry) -> None:
+@fixture
+def _trigger_executor(
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    _network: None = Depends(mock_network),
+) -> None:
+    """Module-level fixture priming common mocks."""
+
+
+@test
+async def full_user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -43,54 +58,66 @@ async def test_full_user_flow(hass: HomeAssistant, mock_setup_entry) -> None:
             CONF_ALTITUDE: 0,
         },
     )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "OpenSky"
-    assert result["data"] == {
-        CONF_LATITUDE: 0.0,
-        CONF_LONGITUDE: 0.0,
-    }
-    assert result["options"] == {
-        CONF_ALTITUDE: 0.0,
-        CONF_RADIUS: 10.0,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("OpenSky")
+    expect(result["data"]).to_equal(
+        {
+            CONF_LATITUDE: 0.0,
+            CONF_LONGITUDE: 0.0,
+        }
+    )
+    expect(result["options"]).to_equal(
+        {
+            CONF_ALTITUDE: 0.0,
+            CONF_RADIUS: 10.0,
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    ("user_input", "error"),
-    [
-        (
-            {CONF_USERNAME: "homeassistant", CONF_CONTRIBUTING_USER: False},
-            "password_missing",
-        ),
-        ({CONF_PASSWORD: "secret", CONF_CONTRIBUTING_USER: False}, "username_missing"),
-        ({CONF_CONTRIBUTING_USER: True}, "no_authentication"),
-        (
-            {
-                CONF_USERNAME: "homeassistant",
-                CONF_PASSWORD: "secret",
-                CONF_CONTRIBUTING_USER: True,
-            },
-            "invalid_auth",
-        ),
-    ],
+@test.cases(
+    test.case(
+        "password_missing",
+        user_input={CONF_USERNAME: "homeassistant", CONF_CONTRIBUTING_USER: False},
+        error="password_missing",
+    ),
+    test.case(
+        "username_missing",
+        user_input={CONF_PASSWORD: "secret", CONF_CONTRIBUTING_USER: False},
+        error="username_missing",
+    ),
+    test.case(
+        "no_authentication",
+        user_input={CONF_CONTRIBUTING_USER: True},
+        error="no_authentication",
+    ),
+    test.case(
+        "invalid_auth",
+        user_input={
+            CONF_USERNAME: "homeassistant",
+            CONF_PASSWORD: "secret",
+            CONF_CONTRIBUTING_USER: True,
+        },
+        error="invalid_auth",
+    ),
 )
-async def test_options_flow_failures(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    opensky_client: AsyncMock,
-    config_entry: MockConfigEntry,
+async def options_flow_failures(
     user_input: dict[str, Any],
     error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    client: AsyncMock = Depends(opensky_client),
+    entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test load and unload entry."""
-    await setup_integration(hass, config_entry)
+    await setup_integration(hass, entry)
 
-    opensky_client.authenticate.side_effect = OpenSkyUnauthenticatedError
-    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    client.authenticate.side_effect = OpenSkyUnauthenticatedError
+    result = await hass.config_entries.options.async_init(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -98,10 +125,10 @@ async def test_options_flow_failures(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "init"
-    assert result["errors"]["base"] == error
-    opensky_client.authenticate.side_effect = None
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+    expect(result["errors"]["base"]).to_equal(error)
+    client.authenticate.side_effect = None
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input={
@@ -113,24 +140,28 @@ async def test_options_flow_failures(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_RADIUS: 10000,
-        CONF_USERNAME: "homeassistant",
-        CONF_PASSWORD: "secret",
-        CONF_CONTRIBUTING_USER: True,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_RADIUS: 10000,
+            CONF_USERNAME: "homeassistant",
+            CONF_PASSWORD: "secret",
+            CONF_CONTRIBUTING_USER: True,
+        }
+    )
 
 
-async def test_options_flow(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    opensky_client: AsyncMock,
-    config_entry: MockConfigEntry,
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    _client: AsyncMock = Depends(opensky_client),
+    entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test options flow."""
-    await setup_integration(hass, config_entry)
-    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    await setup_integration(hass, entry)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
     await hass.async_block_till_done()
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
@@ -143,10 +174,12 @@ async def test_options_flow(
     )
     await hass.async_block_till_done()
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {
-        CONF_RADIUS: 10000,
-        CONF_USERNAME: "homeassistant",
-        CONF_PASSWORD: "secret",
-        CONF_CONTRIBUTING_USER: True,
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["data"]).to_equal(
+        {
+            CONF_RADIUS: 10000,
+            CONF_USERNAME: "homeassistant",
+            CONF_PASSWORD: "secret",
+            CONF_CONTRIBUTING_USER: True,
+        }
+    )
