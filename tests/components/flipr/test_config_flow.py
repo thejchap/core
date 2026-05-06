@@ -2,8 +2,8 @@
 
 from unittest.mock import AsyncMock
 
-import pytest
 from requests.exceptions import HTTPError, Timeout
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.flipr.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
@@ -11,18 +11,30 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from ._fixtures import mock_flipr_client, mock_setup_entry
 
-async def test_full_flow(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_flipr_client: AsyncMock
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    _client: AsyncMock = Depends(mock_flipr_client),
 ) -> None:
     """Test the full flow."""
-
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert not result["errors"]
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -33,33 +45,41 @@ async def test_full_flow(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Flipr dummylogin"
-    assert result["result"].unique_id == "dummylogin"
-    assert result["data"] == {
-        CONF_EMAIL: "dummylogin",
-        CONF_PASSWORD: "dummypass",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Flipr dummylogin")
+    expect(result["result"].unique_id).to_equal("dummylogin")
+    expect(result["data"]).to_equal(
+        {
+            CONF_EMAIL: "dummylogin",
+            CONF_PASSWORD: "dummypass",
+        }
+    )
 
 
-@pytest.mark.parametrize(
-    ("exception", "expected"),
-    [
-        (Exception("Bad request Boy :) --"), {"base": "unknown"}),
-        (HTTPError, {"base": "invalid_auth"}),
-        (Timeout, {"base": "cannot_connect"}),
-        (ConnectionError, {"base": "cannot_connect"}),
-    ],
+@test.cases(
+    test.case(
+        "unknown_exception",
+        exception=Exception("Bad request Boy :) --"),
+        expected={"base": "unknown"},
+    ),
+    test.case("http_error", exception=HTTPError, expected={"base": "invalid_auth"}),
+    test.case("timeout", exception=Timeout, expected={"base": "cannot_connect"}),
+    test.case(
+        "connection_error",
+        exception=ConnectionError,
+        expected={"base": "cannot_connect"},
+    ),
 )
-async def test_errors(
-    hass: HomeAssistant,
-    mock_setup_entry: AsyncMock,
-    mock_flipr_client: AsyncMock,
+async def errors(
     exception: Exception,
     expected: dict[str, str],
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    client: AsyncMock = Depends(mock_flipr_client),
 ) -> None:
     """Test we handle any error."""
-    mock_flipr_client.search_all_ids.side_effect = exception
+    client.search_all_ids.side_effect = exception
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -70,12 +90,11 @@ async def test_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == expected
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal(expected)
 
-    # Test of recover in normal state after correction of the 1st error
-    mock_flipr_client.search_all_ids.side_effect = None
+    client.search_all_ids.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -84,20 +103,25 @@ async def test_errors(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Flipr dummylogin"
-    assert result["data"] == {
-        CONF_EMAIL: "dummylogin",
-        CONF_PASSWORD: "dummypass",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Flipr dummylogin")
+    expect(result["data"]).to_equal(
+        {
+            CONF_EMAIL: "dummylogin",
+            CONF_PASSWORD: "dummypass",
+        }
+    )
 
 
-async def test_no_flipr_found(
-    hass: HomeAssistant, mock_setup_entry: AsyncMock, mock_flipr_client: AsyncMock
+@test
+async def no_flipr_found(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    client: AsyncMock = Depends(mock_flipr_client),
 ) -> None:
     """Test the case where there is no flipr found."""
-
-    mock_flipr_client.search_all_ids.return_value = {"flipr": [], "hub": []}
+    client.search_all_ids.return_value = {"flipr": [], "hub": []}
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -107,12 +131,11 @@ async def test_no_flipr_found(
             CONF_PASSWORD: "nadap",
         },
     )
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
-    assert result["errors"] == {"base": "no_flipr_id_found"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "no_flipr_id_found"})
 
-    # Test of recover in normal state after correction of the 1st error
-    mock_flipr_client.search_all_ids.return_value = {"flipr": ["myfliprid"], "hub": []}
+    client.search_all_ids.return_value = {"flipr": ["myfliprid"], "hub": []}
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -123,9 +146,11 @@ async def test_no_flipr_found(
         },
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Flipr dummylogin"
-    assert result["data"] == {
-        CONF_EMAIL: "dummylogin",
-        CONF_PASSWORD: "dummypass",
-    }
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Flipr dummylogin")
+    expect(result["data"]).to_equal(
+        {
+            CONF_EMAIL: "dummylogin",
+            CONF_PASSWORD: "dummypass",
+        }
+    )
