@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock
 
 from pypalazzetti.exceptions import CommunicationError
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.palazzetti.const import DOMAIN
 from homeassistant.config_entries import SOURCE_DHCP, SOURCE_USER
@@ -11,92 +12,119 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
+from ._fixtures import (
+    mock_config_entry,
+    mock_palazzetti_client,
+    mock_setup_entry,
+)
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_full_user_flow(
-    hass: HomeAssistant, mock_palazzetti_client: AsyncMock, mock_setup_entry: AsyncMock
+@fixture
+def _trigger_executor(
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    _client: AsyncMock = Depends(mock_palazzetti_client),
+    _network: None = Depends(mock_network),
+) -> None:
+    """Module-level fixture priming common mocks."""
+
+
+@test
+async def full_user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_palazzetti_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the full user configuration flow."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "192.168.1.1"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Stove"
-    assert result["data"] == {CONF_HOST: "192.168.1.1"}
-    assert result["result"].unique_id == "11:22:33:44:55:66"
-    assert len(mock_palazzetti_client.connect.mock_calls) > 0
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Stove")
+    expect(result["data"]).to_equal({CONF_HOST: "192.168.1.1"})
+    expect(result["result"].unique_id).to_equal("11:22:33:44:55:66")
+    expect(len(client.connect.mock_calls) > 0).to_be(True)
 
 
-async def test_invalid_host(
-    hass: HomeAssistant,
-    mock_palazzetti_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
+@test
+async def invalid_host(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_palazzetti_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test cannot connect error."""
-
-    mock_palazzetti_client.connect.side_effect = CommunicationError()
+    client.connect.side_effect = CommunicationError()
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "192.168.1.1"},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "cannot_connect"}
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
 
-    mock_palazzetti_client.connect.side_effect = None
+    client.connect.side_effect = None
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         user_input={CONF_HOST: "192.168.1.1"},
     )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-async def test_duplicate(
-    hass: HomeAssistant,
-    mock_palazzetti_client: AsyncMock,
-    mock_setup_entry: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test
+async def duplicate(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(mock_palazzetti_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test duplicate flow."""
-    mock_config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
     )
 
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "user"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {CONF_HOST: "192.168.1.1"},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-async def test_dhcp_flow(
-    hass: HomeAssistant, mock_palazzetti_client: AsyncMock, mock_setup_entry: AsyncMock
+@test
+async def dhcp_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _client: AsyncMock = Depends(mock_palazzetti_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the DHCP flow."""
     result = await hass.config_entries.flow.async_init(
@@ -108,8 +136,8 @@ async def test_dhcp_flow(
     )
 
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "discovery_confirm"
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -117,16 +145,20 @@ async def test_dhcp_flow(
     )
 
     await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Stove"
-    assert result["result"].unique_id == "11:22:33:44:55:66"
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Stove")
+    expect(result["result"].unique_id).to_equal("11:22:33:44:55:66")
 
 
-async def test_dhcp_flow_error(
-    hass: HomeAssistant, mock_palazzetti_client: AsyncMock, mock_setup_entry: AsyncMock
+@test
+async def dhcp_flow_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: AsyncMock = Depends(mock_palazzetti_client),
+    _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Test the DHCP flow."""
-    mock_palazzetti_client.connect.side_effect = CommunicationError()
+    client.connect.side_effect = CommunicationError()
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
@@ -136,5 +168,5 @@ async def test_dhcp_flow_error(
         context={"source": SOURCE_DHCP},
     )
 
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "cannot_connect"
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
