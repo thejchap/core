@@ -1,9 +1,107 @@
 """Tryke fixtures for the indevolt integration."""
 
+from collections.abc import Generator
+from unittest.mock import AsyncMock, patch
+
 from tryke import fixture
+
+from homeassistant.components.indevolt.const import (
+    CONF_GENERATION,
+    CONF_SERIAL_NUMBER,
+    DOMAIN,
+)
+from homeassistant.const import CONF_HOST, CONF_MODEL
+
+from tests.common import MockConfigEntry, load_json_object_fixture
+
+TEST_HOST = "192.168.1.100"
+ALT_TEST_HOST = "192.168.1.101"
+TEST_PORT = 8080
+TEST_DEVICE_SN_GEN1 = "BK1600-12345678"
+TEST_DEVICE_SN_GEN2 = "SolidFlex2000-87654321"
+TEST_FW_VERSION = "1.2.3"
+
+# Map device fixture names to generation and fixture files
+DEVICE_MAPPING = {
+    1: {
+        "device": "BK1600",
+        "generation": 1,
+        "sn": TEST_DEVICE_SN_GEN1,
+        "host": ALT_TEST_HOST,
+    },
+    2: {
+        "device": "CMS-SF2000",
+        "generation": 2,
+        "sn": TEST_DEVICE_SN_GEN2,
+        "host": TEST_HOST,
+    },
+}
+
+# Default generation; pytest indirect parametrize is not supported by tryke
+# 0.0.27 — every config-flow test in this module exercises the gen-2 device.
+DEFAULT_GENERATION = 2
 
 
 @fixture
-def _module_marker() -> None:
-    """Sentinel fixture to keep the module non-empty."""
-    return None
+def mock_config_entry() -> MockConfigEntry:
+    """Return the default mocked config entry (gen 2)."""
+    device_info = DEVICE_MAPPING[DEFAULT_GENERATION]
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title=device_info["device"],
+        version=1,
+        data={
+            CONF_HOST: device_info["host"],
+            CONF_SERIAL_NUMBER: device_info["sn"],
+            CONF_MODEL: device_info["device"],
+            CONF_GENERATION: device_info["generation"],
+        },
+        unique_id=device_info["sn"],
+    )
+
+
+@fixture
+def mock_indevolt() -> Generator[AsyncMock]:
+    """Mock an IndevoltAPI client (gen 2)."""
+    device_info = DEVICE_MAPPING[DEFAULT_GENERATION]
+    fixture_data = load_json_object_fixture(f"gen_{DEFAULT_GENERATION}.json", DOMAIN)
+
+    with (
+        patch(
+            "homeassistant.components.indevolt.coordinator.IndevoltAPI",
+            autospec=True,
+        ) as mock_client,
+        patch(
+            "homeassistant.components.indevolt.config_flow.IndevoltAPI",
+            new=mock_client,
+        ),
+    ):
+        client = mock_client.return_value
+        client.fetch_data.return_value = dict(fixture_data)
+        client.fetch_data.side_effect = lambda keys: {
+            k: v for k, v in client.fetch_data.return_value.items() if k in keys
+        }
+        client.set_data.return_value = True
+        client.stop.return_value = True
+        client.charge.return_value = True
+        client.discharge.return_value = True
+        client.get_config.return_value = {
+            "device": {
+                "sn": device_info["sn"],
+                "type": device_info["device"],
+                "generation": device_info["generation"],
+                "fw": TEST_FW_VERSION,
+            }
+        }
+
+        yield client
+
+
+@fixture
+def mock_setup_entry() -> Generator[AsyncMock]:
+    """Mock the async_setup_entry function."""
+    with patch(
+        "homeassistant.components.indevolt.async_setup_entry",
+        return_value=True,
+    ) as mock_setup:
+        yield mock_setup
