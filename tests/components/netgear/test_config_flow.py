@@ -1,46 +1,385 @@
-"""Tryke skip-stubs for netgear config flow tests.
+"""Tests for the Netgear config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from unittest.mock import Mock
 
-from tryke import test
+from pynetgear import DEFAULT_USER
+from tryke import Depends, expect, fixture, test
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def user() -> None:
-    """Stub for test_user (port deferred)."""
+from homeassistant.components.netgear.const import (
+    CONF_CONSIDER_HOME,
+    DOMAIN,
+    MODELS_PORT_5555,
+    PORT_80,
+    PORT_5555,
+)
+from homeassistant.config_entries import SOURCE_SSDP, SOURCE_USER
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_PORT,
+    CONF_SSL,
+    CONF_USERNAME,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers.service_info.ssdp import (
+    ATTR_UPNP_MODEL_NUMBER,
+    ATTR_UPNP_PRESENTATION_URL,
+    ATTR_UPNP_SERIAL,
+    SsdpServiceInfo,
+)
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def user_connect_error() -> None:
-    """Stub for test_user_connect_error (port deferred)."""
+from ._fixtures import ROUTER_INFOS, mock_service
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def user_incomplete_info() -> None:
-    """Stub for test_user_incomplete_info (port deferred)."""
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def abort_if_already_setup() -> None:
-    """Stub for test_abort_if_already_setup (port deferred)."""
+URL = "http://routerlogin.net"
+URL_SSL = "https://routerlogin.net"
+SERIAL = "5ER1AL0000001"
+TITLE = f"{ROUTER_INFOS['ModelName']} - {ROUTER_INFOS['DeviceName']}"
+TITLE_INCOMPLETE = ROUTER_INFOS["ModelName"]
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def ssdp_already_configured() -> None:
-    """Stub for test_ssdp_already_configured (port deferred)."""
+HOST = "10.0.0.1"
+SERIAL_2 = "5ER1AL0000002"
+PORT = 80
+SSL = False
+USERNAME = "Home_Assistant"
+PASSWORD = "password"
+SSDP_URL = f"http://{HOST}:{PORT}/rootDesc.xml"
+SSDP_URLipv6 = f"http://[::ffff:a00:1]:{PORT}/rootDesc.xml"
+SSDP_URL_SLL = f"https://{HOST}:{PORT}/rootDesc.xml"
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def ssdp_no_serial() -> None:
-    """Stub for test_ssdp_no_serial (port deferred)."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def ssdp_ipv6() -> None:
-    """Stub for test_ssdp_ipv6 (port deferred)."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Anchor fixture for tryke fixture-injection."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def ssdp() -> None:
-    """Stub for test_ssdp (port deferred)."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def ssdp_port_5555() -> None:
-    """Stub for test_ssdp_port_5555 (port deferred)."""
+@test
+async def user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    service: Mock = Depends(mock_service),
+) -> None:
+    """Test user step."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def options_flow() -> None:
-    """Stub for test_options_flow (port deferred)."""
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_HOST: HOST,
+            CONF_USERNAME: USERNAME,
+            CONF_PASSWORD: PASSWORD,
+        },
+    )
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal(SERIAL)
+    expect(result["title"]).to_equal(TITLE)
+    expect(result["data"].get(CONF_HOST)).to_equal(HOST)
+    expect(result["data"].get(CONF_PORT)).to_equal(PORT)
+    expect(result["data"].get(CONF_SSL)).to_equal(SSL)
+    expect(result["data"].get(CONF_USERNAME)).to_equal(USERNAME)
+    expect(result["data"][CONF_PASSWORD]).to_equal(PASSWORD)
+
+
+@test
+async def user_connect_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    service: Mock = Depends(mock_service),
+) -> None:
+    """Test user step with connection failure."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+    service.return_value.get_info = Mock(return_value=None)
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_HOST: HOST,
+            CONF_USERNAME: USERNAME,
+            CONF_PASSWORD: PASSWORD,
+        },
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "info"})
+
+    service.return_value.login_try_port = Mock(return_value=None)
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_HOST: HOST,
+            CONF_USERNAME: USERNAME,
+            CONF_PASSWORD: PASSWORD,
+        },
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": "config"})
+
+
+@test
+async def user_incomplete_info(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    service: Mock = Depends(mock_service),
+) -> None:
+    """Test user step with incomplete device info."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+    router_infos = ROUTER_INFOS.copy()
+    router_infos.pop("DeviceName")
+    service.return_value.get_info = Mock(return_value=router_infos)
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_HOST: HOST,
+            CONF_USERNAME: USERNAME,
+            CONF_PASSWORD: PASSWORD,
+        },
+    )
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal(SERIAL)
+    expect(result["title"]).to_equal(TITLE_INCOMPLETE)
+    expect(result["data"].get(CONF_HOST)).to_equal(HOST)
+    expect(result["data"].get(CONF_PORT)).to_equal(PORT)
+    expect(result["data"].get(CONF_SSL)).to_equal(SSL)
+    expect(result["data"].get(CONF_USERNAME)).to_equal(USERNAME)
+    expect(result["data"][CONF_PASSWORD]).to_equal(PASSWORD)
+
+
+@test
+async def abort_if_already_setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    service: Mock = Depends(mock_service),
+) -> None:
+    """Test we abort if the router is already setup."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_PASSWORD: PASSWORD},
+        unique_id=SERIAL,
+    ).add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_PASSWORD: PASSWORD},
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+
+
+@test
+async def ssdp_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test ssdp abort when the router is already configured."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_PASSWORD: PASSWORD},
+        unique_id=SERIAL,
+    ).add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_location=SSDP_URL_SLL,
+            upnp={
+                ATTR_UPNP_MODEL_NUMBER: "RBR20",
+                ATTR_UPNP_PRESENTATION_URL: URL,
+                ATTR_UPNP_SERIAL: SERIAL,
+            },
+        ),
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+
+
+@test
+async def ssdp_no_serial(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test ssdp abort when the ssdp info does not include a serial number."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_location=SSDP_URL,
+            upnp={
+                ATTR_UPNP_MODEL_NUMBER: "RBR20",
+                ATTR_UPNP_PRESENTATION_URL: URL,
+            },
+        ),
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_serial")
+
+
+@test
+async def ssdp_ipv6(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test ssdp abort when using a ipv6 address."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_PASSWORD: PASSWORD},
+        unique_id=SERIAL,
+    ).add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_location=SSDP_URLipv6,
+            upnp={
+                ATTR_UPNP_MODEL_NUMBER: "RBR20",
+                ATTR_UPNP_PRESENTATION_URL: URL,
+                ATTR_UPNP_SERIAL: SERIAL,
+            },
+        ),
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("not_ipv4_address")
+
+
+@test
+async def ssdp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    service: Mock = Depends(mock_service),
+) -> None:
+    """Test ssdp step."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_location=SSDP_URL,
+            upnp={
+                ATTR_UPNP_MODEL_NUMBER: "RBR20",
+                ATTR_UPNP_PRESENTATION_URL: URL,
+                ATTR_UPNP_SERIAL: SERIAL,
+            },
+        ),
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_PASSWORD: PASSWORD}
+    )
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal(SERIAL)
+    expect(result["title"]).to_equal(TITLE)
+    expect(result["data"].get(CONF_HOST)).to_equal(HOST)
+    expect(result["data"].get(CONF_PORT)).to_equal(PORT_80)
+    expect(result["data"].get(CONF_SSL)).to_equal(SSL)
+    expect(result["data"].get(CONF_USERNAME)).to_equal(DEFAULT_USER)
+    expect(result["data"][CONF_PASSWORD]).to_equal(PASSWORD)
+
+
+@test
+async def ssdp_port_5555(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    service: Mock = Depends(mock_service),
+) -> None:
+    """Test ssdp step with port 5555."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_location=SSDP_URL_SLL,
+            upnp={
+                ATTR_UPNP_MODEL_NUMBER: MODELS_PORT_5555[0],
+                ATTR_UPNP_PRESENTATION_URL: URL_SSL,
+                ATTR_UPNP_SERIAL: SERIAL,
+            },
+        ),
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+    service.return_value.port = 5555
+    service.return_value.ssl = True
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_PASSWORD: PASSWORD}
+    )
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["result"].unique_id).to_equal(SERIAL)
+    expect(result["title"]).to_equal(TITLE)
+    expect(result["data"].get(CONF_HOST)).to_equal(HOST)
+    expect(result["data"].get(CONF_PORT)).to_equal(PORT_5555)
+    expect(result["data"].get(CONF_SSL)).to_be(True)
+    expect(result["data"].get(CONF_USERNAME)).to_equal(DEFAULT_USER)
+    expect(result["data"][CONF_PASSWORD]).to_equal(PASSWORD)
+
+
+@test
+async def options_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    service: Mock = Depends(mock_service),
+) -> None:
+    """Test specifying non default settings using options flow."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_PASSWORD: PASSWORD},
+        unique_id=SERIAL,
+        title=TITLE,
+    )
+    config_entry.add_to_hass(hass)
+
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be_truthy()
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("init")
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_CONSIDER_HOME: 1800,
+        },
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(config_entry.options).to_equal({CONF_CONSIDER_HOME: 1800})
