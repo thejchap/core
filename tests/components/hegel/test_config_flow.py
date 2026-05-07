@@ -1,10 +1,25 @@
-"""Test the hegel config flow."""
+"""Test the Hegel config flow."""
+
+from unittest.mock import AsyncMock, MagicMock
 
 from tryke import Depends, expect, fixture, test
 
+from homeassistant.components.hegel.const import CONF_MODEL, DOMAIN
+from homeassistant.config_entries import SOURCE_SSDP, SOURCE_USER
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers.service_info.ssdp import SsdpServiceInfo
 
+from ._fixtures import mock_config_entry, mock_hegel_client, mock_setup_entry
+from .const import TEST_HOST, TEST_MODEL, TEST_UDN
+
+from tests.common import MockConfigEntry
 from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+TEST_NAME = "Hegel H190"
+TEST_SSDP_LOCATION = f"http://{TEST_HOST}:8080/description.xml"
 
 
 @fixture
@@ -12,111 +27,392 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def user_flow_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_hegel_client: MagicMock = Depends(mock_hegel_client),
 ) -> None:
     """Test successful user flow."""
-    expect(True).to_be(True)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_MODEL: TEST_MODEL,
+        },
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(f"Hegel {TEST_MODEL}")
+    expect(result["data"]).to_equal({
+        CONF_HOST: TEST_HOST,
+        CONF_MODEL: TEST_MODEL,
+    })
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def user_flow_exception(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_hegel_client: MagicMock = Depends(mock_hegel_client),
 ) -> None:
     """Test user flow when connection fails."""
-    expect(True).to_be(True)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+    mock_hegel_client.ensure_connected.side_effect = OSError("Connection refused")
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_MODEL: TEST_MODEL,
+        },
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
+
+    mock_hegel_client.ensure_connected.side_effect = None
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_MODEL: TEST_MODEL,
+        },
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def user_flow_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test user flow aborts when device is already configured."""
-    expect(True).to_be(True)
+    mock_config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_HOST: TEST_HOST,
+            CONF_MODEL: TEST_MODEL,
+        },
+    )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def ssdp_discovery_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_hegel_client: MagicMock = Depends(mock_hegel_client),
 ) -> None:
     """Test successful SSDP discovery."""
-    expect(True).to_be(True)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_udn=TEST_UDN,
+            ssdp_location=TEST_SSDP_LOCATION,
+            upnp={
+                "presentationURL": f"http://{TEST_HOST}/",
+                "friendlyName": TEST_NAME,
+                "modelName": TEST_MODEL,
+            },
+        ),
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_MODEL: TEST_MODEL}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_NAME)
+    expect(result["data"]).to_equal({CONF_HOST: TEST_HOST, CONF_MODEL: TEST_MODEL})
+    expect(result["result"].unique_id).to_equal(TEST_UDN)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def ssdp_discovery_from_ssdp_location(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_hegel_client: MagicMock = Depends(mock_hegel_client),
 ) -> None:
     """Test SSDP discovery extracts host from ssdp_location when presentationURL is not available."""
-    expect(True).to_be(True)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_udn=TEST_UDN,
+            ssdp_location=TEST_SSDP_LOCATION,
+            upnp={"friendlyName": TEST_NAME, "modelName": TEST_MODEL},
+        ),
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_MODEL: TEST_MODEL}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(TEST_NAME)
+    expect(result["data"]).to_equal({CONF_HOST: TEST_HOST, CONF_MODEL: TEST_MODEL})
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def ssdp_discovery_no_host(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test SSDP discovery aborts when no host can be determined."""
-    expect(True).to_be(True)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_udn=TEST_UDN,
+            ssdp_location="",
+            upnp={},
+        ),
+    )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_host_found")
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def ssdp_discovery_no_udn(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test SSDP discovery aborts when no UDN is available."""
-    expect(True).to_be(True)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_location=TEST_SSDP_LOCATION,
+            upnp={
+                "presentationURL": f"http://{TEST_HOST}/",
+                "friendlyName": TEST_NAME,
+            },
+        ),
+    )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_host_found")
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def ssdp_discovery_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test SSDP discovery aborts when device is already configured."""
-    expect(True).to_be(True)
+    mock_config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_udn=TEST_UDN,
+            ssdp_location=TEST_SSDP_LOCATION,
+            upnp={
+                "presentationURL": f"http://{TEST_HOST}/",
+                "friendlyName": TEST_NAME,
+                "modelName": TEST_MODEL,
+            },
+        ),
+    )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def ssdp_discovery_already_configured_updates_host(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_hegel_client: MagicMock = Depends(mock_hegel_client),
 ) -> None:
     """Test SSDP discovery updates host when device is already configured with different IP."""
-    expect(True).to_be(True)
+    new_host = "192.168.1.50"
+
+    mock_config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_udn=TEST_UDN,
+            ssdp_location=f"http://{new_host}:8080/description.xml",
+            upnp={
+                "presentationURL": f"http://{new_host}/",
+                "friendlyName": TEST_NAME,
+                "modelName": TEST_MODEL,
+            },
+        ),
+    )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+
+    # Verify the host was updated
+    expect(mock_config_entry.data[CONF_HOST]).to_equal(new_host)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def ssdp_discovery_cannot_connect(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    mock_hegel_client: MagicMock = Depends(mock_hegel_client),
 ) -> None:
     """Test SSDP discovery aborts when connection fails."""
-    expect(True).to_be(True)
+    mock_hegel_client.ensure_connected.side_effect = OSError("Connection refused")
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_udn=TEST_UDN,
+            ssdp_location=TEST_SSDP_LOCATION,
+            upnp={
+                "presentationURL": f"http://{TEST_HOST}/",
+                "friendlyName": TEST_NAME,
+                "modelName": TEST_MODEL,
+            },
+        ),
+    )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def ssdp_discovery_unknown_model(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    mock_hegel_client: MagicMock = Depends(mock_hegel_client),
 ) -> None:
     """Test SSDP discovery with unknown model falls back to first model in list."""
-    expect(True).to_be(True)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn="mock_usn",
+            ssdp_st="mock_st",
+            ssdp_udn=TEST_UDN,
+            ssdp_location=TEST_SSDP_LOCATION,
+            upnp={
+                "presentationURL": f"http://{TEST_HOST}/",
+                "friendlyName": "Hegel Unknown",
+                "modelName": "UnknownModel",
+            },
+        ),
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("discovery_confirm")
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test
 async def ssdp_discovery_multiple_services_same_device(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    mock_hegel_client: MagicMock = Depends(mock_hegel_client),
 ) -> None:
-    """Test that multiple SSDP discoveries from same device result in single discovery."""
-    expect(True).to_be(True)
+    """Test that multiple SSDP discoveries from same device result in single discovery.
 
+    A MediaRenderer device advertises multiple SSDP services (RenderingControl,
+    AVTransport, ConnectionManager) each with different USN but same UDN.
+    This test verifies that only one discovery entry is created.
+    """
+    # First discovery - RenderingControl service
+    result1 = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn=f"{TEST_UDN}::urn:schemas-upnp-org:service:RenderingControl:1",
+            ssdp_st="urn:schemas-upnp-org:service:RenderingControl:1",
+            ssdp_udn=TEST_UDN,
+            ssdp_location=TEST_SSDP_LOCATION,
+            upnp={
+                "presentationURL": f"http://{TEST_HOST}/",
+                "friendlyName": TEST_NAME,
+                "modelName": TEST_MODEL,
+            },
+        ),
+    )
 
+    expect(result1["type"]).to_be(FlowResultType.FORM)
+    expect(result1["step_id"]).to_equal("discovery_confirm")
+    flow_id = result1["flow_id"]
+
+    # Second discovery - AVTransport service (different USN, same UDN)
+    result2 = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(
+            ssdp_usn=f"{TEST_UDN}::urn:schemas-upnp-org:service:AVTransport:1",
+            ssdp_st="urn:schemas-upnp-org:service:AVTransport:1",
+            ssdp_udn=TEST_UDN,
+            ssdp_location=TEST_SSDP_LOCATION,
+            upnp={
+                "presentationURL": f"http://{TEST_HOST}/",
+                "friendlyName": TEST_NAME,
+                "modelName": TEST_MODEL,
+            },
+        ),
+    )
+
+    # Second discovery should abort since same UDN is already in progress
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_in_progress")
+
+    # Original flow should still be available
+    flows = hass.config_entries.flow.async_progress()
+    expect(len([f for f in flows if f["flow_id"] == flow_id])).to_equal(1)
