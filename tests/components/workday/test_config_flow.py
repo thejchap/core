@@ -1,60 +1,812 @@
 """Test the Workday config flow."""
 
-from tryke import test
+from unittest.mock import AsyncMock
+
+from holidays import HALF_DAY, OPTIONAL
+from tryke import Depends, expect, fixture, test
+
+from homeassistant import config_entries
+from homeassistant.components.workday.const import (
+    CONF_ADD_HOLIDAYS,
+    CONF_CATEGORY,
+    CONF_EXCLUDES,
+    CONF_OFFSET,
+    CONF_PROVINCE,
+    CONF_REMOVE_HOLIDAYS,
+    CONF_WORKDAYS,
+    DEFAULT_EXCLUDES,
+    DEFAULT_OFFSET,
+    DEFAULT_WORKDAYS,
+    DOMAIN,
+)
+from homeassistant.const import CONF_COUNTRY, CONF_LANGUAGE, CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from . import init_integration
+from ._fixtures import mock_setup_entry
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def form() -> None:
-    """Skipped pending fixture port."""
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture to force tryke to resolve dependencies."""
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def form_province_no_alias() -> None:
-    """Skipped pending fixture port."""
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def form_no_country() -> None:
-    """Skipped pending fixture port."""
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the forms."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def form_no_subdivision() -> None:
-    """Skipped pending fixture port."""
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Workday Sensor",
+            CONF_COUNTRY: "DE",
+        },
+    )
+    await hass.async_block_till_done()
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: [],
+            CONF_REMOVE_HOLIDAYS: [],
+            CONF_LANGUAGE: "en_US",
+        },
+    )
+    await hass.async_block_till_done()
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def options_form() -> None:
-    """Skipped pending fixture port."""
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Workday Sensor")
+    expect(result3["options"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "country": "DE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "language": "en_US",
+        }
+    )
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def form_incorrect_dates() -> None:
-    """Skipped pending fixture port."""
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def options_form_incorrect_dates() -> None:
-    """Skipped pending fixture port."""
+@test
+async def form_province_no_alias(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the forms."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def options_form_abort_duplicate() -> None:
-    """Skipped pending fixture port."""
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Workday Sensor",
+            CONF_COUNTRY: "US",
+        },
+    )
+    await hass.async_block_till_done()
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: [],
+            CONF_REMOVE_HOLIDAYS: [],
+        },
+    )
+    await hass.async_block_till_done()
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def form_incorrect_date_range() -> None:
-    """Skipped pending fixture port."""
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Workday Sensor")
+    expect(result3["options"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "country": "US",
+            "excludes": ["sat", "sun", "holiday"],
+            "language": "en_US",
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+        }
+    )
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def options_form_incorrect_date_ranges() -> None:
-    """Skipped pending fixture port."""
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
+@test
+async def form_no_country(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the forms correctly without a country."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Workday Sensor",
+        },
+    )
+    await hass.async_block_till_done()
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: [],
+            CONF_REMOVE_HOLIDAYS: [],
+        },
+    )
+    await hass.async_block_till_done()
+
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Workday Sensor")
+    expect(result3["options"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+        }
+    )
+
+
+@test
+async def form_no_subdivision(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the forms correctly without subdivision."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Workday Sensor",
+            CONF_COUNTRY: "SE",
+        },
+    )
+    await hass.async_block_till_done()
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: [],
+            CONF_REMOVE_HOLIDAYS: [],
+        },
+    )
+    await hass.async_block_till_done()
+
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Workday Sensor")
+    expect(result3["options"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "country": "SE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "language": "sv",
+        }
+    )
+
+
+@test
+async def options_form(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the form in options."""
+    entry = await init_integration(
+        hass,
+        {
+            "name": "Workday Sensor",
+            "country": "DE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "language": "de",
+        },
+    )
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "province": "BW",
+            "language": "de",
+        },
+    )
+
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["data"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "country": "DE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "province": "BW",
+            "language": "de",
+        }
+    )
+
+
+@test
+async def form_incorrect_dates(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test errors in setup entry."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Workday Sensor",
+            CONF_COUNTRY: "DE",
+        },
+    )
+    await hass.async_block_till_done()
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: ["2022-xx-12"],
+            CONF_REMOVE_HOLIDAYS: [],
+            CONF_LANGUAGE: "de",
+        },
+    )
+    await hass.async_block_till_done()
+    expect(result3["errors"]).to_equal({"add_holidays": "add_holiday_error"})
+
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: ["2022-12-12"],
+            CONF_REMOVE_HOLIDAYS: ["Does not exist"],
+            CONF_LANGUAGE: "de",
+        },
+    )
+    await hass.async_block_till_done()
+
+    expect(result3["errors"]).to_equal({"remove_holidays": "remove_holiday_error"})
+
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: ["2022-12-12"],
+            CONF_REMOVE_HOLIDAYS: ["Weihnachtstag"],
+            CONF_LANGUAGE: "de",
+        },
+    )
+    await hass.async_block_till_done()
+
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Workday Sensor")
+    expect(result3["options"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "country": "DE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": ["2022-12-12"],
+            "remove_holidays": ["Weihnachtstag"],
+            "language": "de",
+        }
+    )
+
+
+@test
+async def options_form_incorrect_dates(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test errors in options."""
+    entry = await init_integration(
+        hass,
+        {
+            "name": "Workday Sensor",
+            "country": "DE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "language": "de",
+        },
+    )
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": ["2022-xx-12"],
+            "remove_holidays": [],
+            "province": "BW",
+            "language": "de",
+        },
+    )
+
+    expect(result2["errors"]).to_equal({"add_holidays": "add_holiday_error"})
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": ["2022-12-12"],
+            "remove_holidays": ["Does not exist"],
+            "province": "BW",
+            "language": "de",
+        },
+    )
+
+    expect(result2["errors"]).to_equal({"remove_holidays": "remove_holiday_error"})
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": ["2022-12-12"],
+            "remove_holidays": ["Weihnachtstag"],
+            "province": "BW",
+            "language": "de",
+        },
+    )
+
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["data"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "country": "DE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": ["2022-12-12"],
+            "remove_holidays": ["Weihnachtstag"],
+            "province": "BW",
+            "language": "de",
+        }
+    )
+
+
+@test
+async def options_form_abort_duplicate(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test errors in options for duplicates."""
+    await init_integration(
+        hass,
+        {
+            "name": "Workday Sensor",
+            "country": "CH",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "province": "FR",
+            "category": [OPTIONAL],
+        },
+        entry_id="1",
+    )
+    entry2 = await init_integration(
+        hass,
+        {
+            "name": "Workday Sensor2",
+            "country": "CH",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": ["2023-03-28"],
+            "remove_holidays": [],
+            "province": "FR",
+            "category": [OPTIONAL],
+        },
+        entry_id="2",
+    )
+
+    result = await hass.config_entries.options.async_init(entry2.entry_id)
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0.0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "province": "FR",
+            "category": [OPTIONAL],
+        },
+    )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "already_configured"})
+
+
+@test
+async def form_incorrect_date_range(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test errors in setup entry."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Workday Sensor",
+            CONF_COUNTRY: "DE",
+        },
+    )
+    await hass.async_block_till_done()
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: ["2022-12-12", "2022-12-30,2022-12-32"],
+            CONF_REMOVE_HOLIDAYS: [],
+            CONF_LANGUAGE: "de",
+        },
+    )
+    await hass.async_block_till_done()
+    expect(result3["errors"]).to_equal({"add_holidays": "add_holiday_range_error"})
+
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: ["2022-12-12"],
+            CONF_REMOVE_HOLIDAYS: ["2022-12-25", "2022-12-30,2022-12-32"],
+            CONF_LANGUAGE: "de",
+        },
+    )
+    await hass.async_block_till_done()
+
+    expect(result3["errors"]).to_equal({"remove_holidays": "remove_holiday_range_error"})
+
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: ["2022-12-12", "2022-12-01,2022-12-10"],
+            CONF_REMOVE_HOLIDAYS: ["2022-12-25", "2022-12-30,2022-12-31"],
+            CONF_LANGUAGE: "de",
+        },
+    )
+    await hass.async_block_till_done()
+
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Workday Sensor")
+    expect(result3["options"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "country": "DE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": ["2022-12-12", "2022-12-01,2022-12-10"],
+            "remove_holidays": ["2022-12-25", "2022-12-30,2022-12-31"],
+            "language": "de",
+        }
+    )
+
+
+@test
+async def options_form_incorrect_date_ranges(
+    _trigger: None = Depends(_trigger_executor),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test errors in options."""
+    entry = await init_integration(
+        hass,
+        {
+            "name": "Workday Sensor",
+            "country": "DE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "language": "de",
+        },
+    )
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": ["2022-12-30,2022-12-32"],
+            "remove_holidays": [],
+            "province": "BW",
+            "language": "de",
+        },
+    )
+
+    expect(result2["errors"]).to_equal({"add_holidays": "add_holiday_range_error"})
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": ["2022-12-30,2022-12-31"],
+            "remove_holidays": ["2022-13-25,2022-12-26"],
+            "province": "BW",
+            "language": "de",
+        },
+    )
+
+    expect(result2["errors"]).to_equal({"remove_holidays": "remove_holiday_range_error"})
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": ["2022-12-30,2022-12-31"],
+            "remove_holidays": ["2022-12-25,2022-12-26"],
+            "province": "BW",
+            "language": "de",
+        },
+    )
+
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["data"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "country": "DE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": ["2022-12-30,2022-12-31"],
+            "remove_holidays": ["2022-12-25,2022-12-26"],
+            "province": "BW",
+            "language": "de",
+        }
+    )
+
+
+@test.skip("parametrized test runs real setup that depends on freezer + binary_sensor state")
 async def language() -> None:
-    """Skipped pending fixture port."""
+    """Test we get the forms — needs freezer + real setup."""
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def form_with_categories() -> None:
-    """Skipped pending fixture port."""
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def form_with_categories_can_remove_day() -> None:
-    """Skipped pending fixture port."""
+@test
+async def form_with_categories(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test optional categories."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
-@test.skip("14 tests; doable but verbose; deferred to next pass")
-async def options_form_removes_subdiv() -> None:
-    """Skipped pending fixture port."""
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Workday Sensor",
+            CONF_COUNTRY: "CH",
+        },
+    )
+    await hass.async_block_till_done()
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: [],
+            CONF_REMOVE_HOLIDAYS: [],
+            CONF_LANGUAGE: "de",
+            CONF_CATEGORY: [HALF_DAY],
+        },
+    )
+    await hass.async_block_till_done()
+
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Workday Sensor")
+    expect(result3["options"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "country": "CH",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "language": "de",
+            "category": ["half_day"],
+        }
+    )
+
+
+@test
+async def form_with_categories_can_remove_day(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test optional categories, days can be removed."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Workday Sensor",
+            CONF_COUNTRY: "CH",
+        },
+    )
+    await hass.async_block_till_done()
+    result3 = await hass.config_entries.flow.async_configure(
+        result2["flow_id"],
+        {
+            CONF_PROVINCE: "FR",
+            CONF_EXCLUDES: DEFAULT_EXCLUDES,
+            CONF_OFFSET: DEFAULT_OFFSET,
+            CONF_WORKDAYS: DEFAULT_WORKDAYS,
+            CONF_ADD_HOLIDAYS: [],
+            CONF_REMOVE_HOLIDAYS: ["Berchtoldstag"],
+            CONF_LANGUAGE: "de",
+            CONF_CATEGORY: [OPTIONAL],
+        },
+    )
+    await hass.async_block_till_done()
+
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal("Workday Sensor")
+    expect(result3["options"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "country": "CH",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "province": "FR",
+            "remove_holidays": ["Berchtoldstag"],
+            "language": "de",
+            "category": ["optional"],
+        }
+    )
+
+
+@test
+async def options_form_removes_subdiv(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the form in options when removing a configured subdivision."""
+    entry = await init_integration(
+        hass,
+        {
+            "name": "Workday Sensor",
+            "country": "DE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "language": "de",
+            "province": "BW",
+        },
+    )
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    result2 = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "language": "de",
+        },
+    )
+
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["data"]).to_equal(
+        {
+            "name": "Workday Sensor",
+            "country": "DE",
+            "excludes": ["sat", "sun", "holiday"],
+            "days_offset": 0,
+            "workdays": ["mon", "tue", "wed", "thu", "fri"],
+            "add_holidays": [],
+            "remove_holidays": [],
+            "language": "de",
+        }
+    )
