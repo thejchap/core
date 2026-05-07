@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def flow_works(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def flow_works(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def pro_flow_works(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def pro_flow_works(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def ssdp(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def ssdp(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def import_no_host_user_finish(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def import_no_host_user_finish(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def import_ssdp_host_user_finish(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def import_ssdp_host_user_finish(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def ssdp_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def ssdp_already_configured(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def ssdp_host_update(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def ssdp_host_update(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def import_existing_config(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def import_existing_config(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def import_existing_config_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def import_existing_config_entry(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def import_pin_config(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def import_pin_config(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def option_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def option_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def option_flow_pro(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def option_flow_pro(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def option_flow_import(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def option_flow_import(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex SsdpServiceInfo + multi-step pairing flow (not in tryke shim)")
 async def option_flow_existing(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def user_step_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def user_step_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def user_step_success_authorize(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def user_step_success_authorize(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def user_step_no_devices_found(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def user_step_no_devices_found(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def async_step_user_takes_precedence_over_discovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def async_step_user_takes_precedence_over_discovery(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def user_setup_removes_ignored_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def user_setup_removes_ignored_entry(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def bluetooth_step_provisioned_device(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def bluetooth_step_provisioned_device(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def bluetooth_step_provisioned_device_2(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def bluetooth_step_provisioned_device_2(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def bluetooth_step_provisioned_no_rediscovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def bluetooth_step_provisioned_no_rediscovery(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def bluetooth_step_factory_reset_rediscovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def bluetooth_step_factory_reset_rediscovery(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def bluetooth_rediscovery_after_successful_provision(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def bluetooth_rediscovery_after_successful_provision(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def bluetooth_step_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def bluetooth_step_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def bluetooth_step_success_identify(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def bluetooth_step_success_identify(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def bluetooth_step_already_in_progress(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def bluetooth_step_already_in_progress(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def ensure_connected_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def ensure_connected_fails(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def identify_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def identify_fails(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def need_authorization_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def need_authorization_fails(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def authorize_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def authorize_fails(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def provision_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def provision_fails(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def provision_not_authorized(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def provision_not_authorized(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def provision_retry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -192,7 +192,7 @@ async def provision_retry(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def provision_fails_invalid_data(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -201,7 +201,7 @@ async def provision_fails_invalid_data(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def flow_chaining_with_next_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -210,7 +210,7 @@ async def flow_chaining_with_next_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def flow_chaining_timeout(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -219,7 +219,7 @@ async def flow_chaining_timeout(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def flow_chaining_with_redirect_url(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -228,7 +228,7 @@ async def flow_chaining_with_redirect_url(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def flow_chaining_future_already_done(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -237,7 +237,7 @@ async def flow_chaining_future_already_done(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
 async def bluetooth_name_update(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

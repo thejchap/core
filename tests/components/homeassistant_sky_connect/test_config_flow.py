@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_zigbee(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def config_flow_zigbee(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_thread(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def config_flow_thread(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def options_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def options_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def options_flow_multipan_uninstall(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def options_flow_multipan_uninstall(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def firmware_callback_auto_creates_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def firmware_callback_auto_creates_entry(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def duplicate_usb_discovery_aborts_early(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def duplicate_usb_discovery_aborts_early(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def firmware_callback_updates_existing_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

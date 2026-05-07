@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def user_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def user_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def form_valid_auth(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def form_valid_auth(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def form_valid_ws_port(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def form_valid_ws_port(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def form_empty_ws_port(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def form_empty_ws_port(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def form_invalid_auth(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def form_invalid_auth(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def form_cannot_connect_http(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def form_cannot_connect_http(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def form_exception_http(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def form_exception_http(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def form_cannot_connect_ws(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def form_cannot_connect_ws(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def form_exception_ws(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def form_exception_ws(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def discovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def discovery(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def discovery_cannot_connect_http(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def discovery_cannot_connect_http(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def discovery_cannot_connect_ws(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def discovery_cannot_connect_ws(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def discovery_exception_http(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def discovery_exception_http(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def discovery_invalid_auth(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def discovery_invalid_auth(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def discovery_duplicate_data(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def discovery_duplicate_data(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def discovery_updates_unique_id(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def discovery_updates_unique_id(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyKodi mock chain (not in tryke shim)")
 async def discovery_without_unique_id(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

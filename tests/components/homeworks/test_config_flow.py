@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def user_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def user_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def user_flow_credentials(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def user_flow_credentials(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def user_flow_credentials_user_only(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def user_flow_credentials_user_only(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def user_flow_credentials_password_only(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def user_flow_credentials_password_only(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def user_flow_already_exists(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def user_flow_already_exists(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def user_flow_cannot_connect(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def user_flow_cannot_connect(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def reconfigure_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def reconfigure_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def reconfigure_flow_flow_duplicate(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def reconfigure_flow_flow_duplicate(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def reconfigure_flow_flow_no_change(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def reconfigure_flow_flow_no_change(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def reconfigure_flow_credentials_password_only(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def reconfigure_flow_credentials_password_only(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def options_add_light_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def options_add_light_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def options_add_remove_light_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def options_add_remove_light_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def options_add_remove_keypad_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def options_add_remove_keypad_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def options_add_keypad_with_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def options_add_keypad_with_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def options_edit_light_no_lights_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def options_edit_light_no_lights_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def options_edit_light_flow_empty(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def options_edit_light_flow_empty(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def options_add_button_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def options_add_button_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def options_add_button_flow_duplicate(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def options_add_button_flow_duplicate(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def options_edit_button_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def options_edit_button_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pytest_unordered (not available in tryke 0.0.27)")
 async def options_remove_button_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def user_if_no_configuration(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def user_if_no_configuration(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def user_existing_id_abort(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def user_existing_id_abort(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def user_client_errors(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def user_client_errors(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def user_confirm_cannot_connect(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def user_confirm_cannot_connect(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def user_confirm_id_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def user_confirm_id_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def user_noauth_flow_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def user_noauth_flow_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def user_auth_required(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def user_auth_required(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def auth_static_token_auth_required_fail(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def auth_static_token_auth_required_fail(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def auth_static_token_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def auth_static_token_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def auth_static_token_login_connect_fail(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def auth_static_token_login_connect_fail(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def auth_static_token_login_fail(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def auth_static_token_login_fail(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def auth_create_token_approval_declined(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def auth_create_token_approval_declined(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def auth_create_token_approval_declined_task_canceled(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def auth_create_token_approval_declined_task_canceled(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def auth_create_token_when_issued_token_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def auth_create_token_when_issued_token_fails(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def auth_create_token_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def auth_create_token_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def auth_create_token_success_but_login_fail(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def auth_create_token_success_but_login_fail(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def ssdp_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def ssdp_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def ssdp_cannot_connect(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def ssdp_cannot_connect(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def ssdp_missing_serial(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def ssdp_missing_serial(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def ssdp_failure_bad_port_json(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -192,7 +192,7 @@ async def ssdp_failure_bad_port_json(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def ssdp_failure_bad_port_ui(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -201,7 +201,7 @@ async def ssdp_failure_bad_port_ui(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def ssdp_abort_duplicates(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -210,7 +210,7 @@ async def ssdp_abort_duplicates(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def options_priority(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -219,7 +219,7 @@ async def options_priority(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def options_effect_show_list(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -228,7 +228,7 @@ async def options_effect_show_list(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def options_effect_hide_list_cannot_connect(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -237,7 +237,7 @@ async def options_effect_hide_list_cannot_connect(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def reauth_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -246,7 +246,7 @@ async def reauth_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
 async def reauth_cannot_connect(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def full_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def full_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def zeroconf_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def zeroconf_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def zeroconf_invalid_discovery_info(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def zeroconf_invalid_discovery_info(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def duplicate_user(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def duplicate_user(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def duplicate_zeroconf(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def duplicate_zeroconf(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def flow_user_server_version_invalid(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def flow_user_server_version_invalid(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def flow_zeroconf_connect_issue(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def flow_zeroconf_connect_issue(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def user_url_different_from_server_base_url(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def user_url_different_from_server_base_url(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def duplicate_user_with_different_urls(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def duplicate_user_with_different_urls(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def zeroconf_existing_entry_working_url(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def zeroconf_existing_entry_working_url(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def zeroconf_existing_entry_ignored(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def zeroconf_existing_entry_ignored(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def hassio_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def hassio_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def hassio_flow_duplicate(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def hassio_flow_duplicate(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def hassio_flow_updates_failed_entry_and_reloads(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def hassio_flow_updates_failed_entry_and_reloads(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def hassio_flow_errors(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def hassio_flow_errors(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def zeroconf_addon_server_ignored(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def zeroconf_addon_server_ignored(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def zeroconf_old_schema_addon_not_ignored(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def zeroconf_old_schema_addon_not_ignored(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def user_flow_with_auth_required(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def user_flow_with_auth_required(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def zeroconf_flow_with_auth_required(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def zeroconf_flow_with_auth_required(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def hassio_flow_with_token(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -192,7 +192,7 @@ async def hassio_flow_with_token(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def auth_flow_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -201,7 +201,7 @@ async def auth_flow_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def finish_auth_token_exchange(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -210,7 +210,7 @@ async def finish_auth_token_exchange(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def reauth_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -219,7 +219,7 @@ async def reauth_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def reauth_with_manual_token(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -228,7 +228,7 @@ async def reauth_with_manual_token(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def auth_manual_invalid_token(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -237,7 +237,7 @@ async def auth_manual_invalid_token(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def auth_manual_connection_errors(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -246,7 +246,7 @@ async def auth_manual_connection_errors(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def finish_auth_reauth_source(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -255,7 +255,7 @@ async def finish_auth_reauth_source(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def finish_auth_errors(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -264,7 +264,7 @@ async def finish_auth_errors(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def auth_step_with_oauth2_callback(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -273,7 +273,7 @@ async def auth_step_with_oauth2_callback(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def auth_step_with_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -282,7 +282,7 @@ async def auth_step_with_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def get_server_info_helper(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -291,7 +291,7 @@ async def get_server_info_helper(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def test_connection_helper(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -300,7 +300,7 @@ async def test_connection_helper(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires music_assistant_client websocket chain (not in tryke shim)")
 async def auth_with_redirect_uri(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

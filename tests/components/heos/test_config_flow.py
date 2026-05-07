@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def flow_aborts_already_setup(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def flow_aborts_already_setup(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def no_host_shows_form(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def no_host_shows_form(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def cannot_connect_shows_error_form(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def cannot_connect_shows_error_form(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def create_entry_when_host_valid(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def create_entry_when_host_valid(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def manual_setup_with_discovery_in_progress(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def manual_setup_with_discovery_in_progress(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def discovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def discovery(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def discovery_flow_aborts_already_setup(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def discovery_flow_aborts_already_setup(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def discovery_aborts_same_system(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def discovery_aborts_same_system(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def discovery_ignored_aborts(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def discovery_ignored_aborts(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def discovery_fails_to_connect_aborts(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def discovery_fails_to_connect_aborts(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def discovery_updates(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def discovery_updates(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def zeroconf_discovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def zeroconf_discovery(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def zeroconf_discovery_flow_aborts_already_setup(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def zeroconf_discovery_flow_aborts_already_setup(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def zeroconf_discovery_aborts_same_system(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def zeroconf_discovery_aborts_same_system(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def zeroconf_discovery_ignored_aborts(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def zeroconf_discovery_ignored_aborts(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def zeroconf_discovery_fails_to_connect_aborts(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def zeroconf_discovery_fails_to_connect_aborts(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def zeroconf_discovery_updates(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def zeroconf_discovery_updates(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def reconfigure_validates_and_updates_config(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def reconfigure_validates_and_updates_config(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def reconfigure_cannot_connect_recovers(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def reconfigure_cannot_connect_recovers(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def options_flow_signs_in(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -192,7 +192,7 @@ async def options_flow_signs_in(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def options_flow_signs_out(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -201,7 +201,7 @@ async def options_flow_signs_out(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def options_flow_missing_one_param_recovers(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -210,7 +210,7 @@ async def options_flow_missing_one_param_recovers(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def options_flow_sign_in_setup_error_saves(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -219,7 +219,7 @@ async def options_flow_sign_in_setup_error_saves(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def options_flow_sign_out_setup_error_saves(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -228,7 +228,7 @@ async def options_flow_sign_out_setup_error_saves(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def options_flow_sign_in_not_connected_saves(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -237,7 +237,7 @@ async def options_flow_sign_in_not_connected_saves(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def options_flow_sign_out_not_connected_saves(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -246,7 +246,7 @@ async def options_flow_sign_out_not_connected_saves(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def reauth_signs_in_aborts(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -255,7 +255,7 @@ async def reauth_signs_in_aborts(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def reauth_signs_out(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -264,7 +264,7 @@ async def reauth_signs_out(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def reauth_flow_missing_one_param_recovers(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -273,7 +273,7 @@ async def reauth_flow_missing_one_param_recovers(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def reauth_updates_when_not_connected(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -282,7 +282,7 @@ async def reauth_updates_when_not_connected(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
 async def reauth_clears_when_not_connected(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

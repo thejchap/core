@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def user_single_instance(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def user_single_instance(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def routing_setup(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def routing_setup(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def routing_setup_advanced(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def routing_setup_advanced(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def routing_secure_manual_setup(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def routing_secure_manual_setup(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def routing_secure_keyfile(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def routing_secure_keyfile(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def tunneling_setup_manual(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def tunneling_setup_manual(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def tunneling_setup_manual_request_description_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def tunneling_setup_manual_request_description_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def tunneling_setup_for_local_ip(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def tunneling_setup_for_local_ip(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def tunneling_setup_for_multiple_found_gateways(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def tunneling_setup_for_multiple_found_gateways(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def tunneling_setup_tcp_endpoint_select_skip(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def tunneling_setup_tcp_endpoint_select_skip(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def tunneling_setup_tcp_endpoint_select(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def tunneling_setup_tcp_endpoint_select(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def manual_tunnel_step_with_found_gateway(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def manual_tunnel_step_with_found_gateway(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def form_with_automatic_connection_handling(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def form_with_automatic_connection_handling(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def get_secure_menu_step_manual_tunnelling(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def get_secure_menu_step_manual_tunnelling(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def configure_secure_tunnel_manual(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def configure_secure_tunnel_manual(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def configure_secure_knxkeys(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def configure_secure_knxkeys(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def configure_secure_knxkeys_invalid_signature(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def configure_secure_knxkeys_invalid_signature(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def configure_secure_knxkeys_no_tunnel_for_host(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def configure_secure_knxkeys_no_tunnel_for_host(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def reconfigure_flow_connection_type(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def reconfigure_flow_connection_type(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def reconfigure_flow_secure_manual_to_keyfile(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -192,7 +192,7 @@ async def reconfigure_flow_secure_manual_to_keyfile(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def reconfigure_flow_routing(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -201,7 +201,7 @@ async def reconfigure_flow_routing(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def reconfigure_update_keyfile(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -210,7 +210,7 @@ async def reconfigure_update_keyfile(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def reconfigure_keyfile_upload(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -219,7 +219,7 @@ async def reconfigure_keyfile_upload(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires complex xknx tunnelling/secure flow chain (not in tryke shim)")
 async def options_communication_settings(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

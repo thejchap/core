@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def bridge_import_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def bridge_import_flow(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def bridge_cannot_connect(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def bridge_cannot_connect(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def bridge_cannot_connect_unknown_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def bridge_cannot_connect_unknown_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def bridge_invalid_ssl_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def bridge_invalid_ssl_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def duplicate_bridge_import(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def duplicate_bridge_import(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def already_configured_with_ignored(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def already_configured_with_ignored(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def form_user(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def form_user(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def form_user_pairing_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def form_user_pairing_fails(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def form_user_reuses_existing_assets_when_pairing_again(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def form_user_reuses_existing_assets_when_pairing_again(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def zeroconf_host_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def zeroconf_host_already_configured(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def zeroconf_lutron_id_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def zeroconf_lutron_id_already_configured(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def zeroconf_not_lutron_device(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def zeroconf_not_lutron_device(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
 async def zeroconf(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

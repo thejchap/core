@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_zigbee_recommended(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def config_flow_zigbee_recommended(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_zigbee_custom_zha(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def config_flow_zigbee_custom_zha(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_zigbee_custom_other(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def config_flow_zigbee_custom_other(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_firmware_index_download_fails_but_not_required(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def config_flow_firmware_index_download_fails_but_not_required(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_firmware_download_fails_but_not_required(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def config_flow_firmware_download_fails_but_not_required(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_doesnt_downgrade(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def config_flow_doesnt_downgrade(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_zigbee_skip_step_if_installed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def config_flow_zigbee_skip_step_if_installed(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_auto_confirm_if_running(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def config_flow_auto_confirm_if_running(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_thread(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def config_flow_thread(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_thread_addon_already_installed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def config_flow_thread_addon_already_installed(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def options_flow_zigbee_to_thread(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def options_flow_zigbee_to_thread(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def options_flow_thread_to_zigbee(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def options_flow_thread_to_zigbee(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_pick_firmware_shows_migrate_options_with_existing_zha(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def config_flow_pick_firmware_shows_migrate_options_with_existing_zha(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_pick_firmware_shows_migrate_options_with_existing_otbr(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def config_flow_pick_firmware_shows_migrate_options_with_existing_otbr(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_pick_firmware_shows_migrate_options_with_both_existing(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def config_flow_pick_firmware_shows_migrate_options_with_both_existing(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_pick_firmware_shows_normal_options_without_existing(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def config_flow_pick_firmware_shows_normal_options_without_existing(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_zigbee_migrate_handler(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def config_flow_zigbee_migrate_handler(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_thread_migrate_handler(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def config_flow_thread_migrate_handler(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
 async def config_flow_pick_firmware_with_ignored_entries(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

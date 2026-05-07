@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def user_connection_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def user_connection_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def user_connection_error_invalid_hostname(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def user_connection_error_invalid_hostname(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def user_timeout_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def user_timeout_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def user_not_connected_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def user_not_connected_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def user_response_error_single_device_new_ce_old_pro(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def user_response_error_single_device_new_ce_old_pro(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def user_response_error_single_device_new_ce_new_pro(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def user_response_error_single_device_new_ce_new_pro(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def user_response_error_multi_device_new_ce_new_pro(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def user_response_error_multi_device_new_ce_new_pro(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def user_response_authentication_needed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def user_response_authentication_needed(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def zeroconf_connection_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def zeroconf_connection_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def zeroconf_connection_error_invalid_hostname(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def zeroconf_connection_error_invalid_hostname(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def zeroconf_timout_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def zeroconf_timout_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def zeroconf_not_connected_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def zeroconf_not_connected_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def show_zeroconf_form_new_ce_old_pro(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def show_zeroconf_form_new_ce_old_pro(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def show_zeroconf_form_new_ce_new_pro(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def show_zeroconf_form_new_ce_new_pro(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def zeroconf_device_exists_abort(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def zeroconf_device_exists_abort(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def zeroconf_authentication_needed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def zeroconf_authentication_needed(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def authentication_incorrect_then_correct_pin(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def authentication_incorrect_then_correct_pin(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def authentication_first_incorrect_pin_to_backoff(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def authentication_first_incorrect_pin_to_backoff(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def authentication_multiple_incorrect_pins(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def authentication_multiple_incorrect_pins(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def authentication_show_backoff_when_still_running(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -192,7 +192,7 @@ async def authentication_show_backoff_when_still_running(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def authentication_correct_pin(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -201,7 +201,7 @@ async def authentication_correct_pin(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def full_user_flow_implementation(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -210,7 +210,7 @@ async def full_user_flow_implementation(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def full_zeroconf_flow_implementation(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -219,7 +219,7 @@ async def full_zeroconf_flow_implementation(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires motionmount bluetooth + freeze_time + dataclass dispatch chain (not in tryke shim)")
 async def full_reauth_flow_implementation(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
