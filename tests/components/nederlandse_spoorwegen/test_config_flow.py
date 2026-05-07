@@ -1,38 +1,296 @@
-"""Tryke skip-stubs for nederlandse_spoorwegen config flow tests.
+"""Test config flow for Nederlandse Spoorwegen integration."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from unittest.mock import AsyncMock
 
-from tryke import test
+from requests import ConnectionError as RequestsConnectionError, HTTPError, Timeout
+from tryke import Depends, expect, fixture, test
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def full_flow() -> None:
-    """Stub for test_full_flow (port deferred)."""
+from homeassistant.components.nederlandse_spoorwegen.const import (
+    CONF_FROM,
+    CONF_TIME,
+    CONF_TO,
+    CONF_VIA,
+    DOMAIN,
+)
+from homeassistant.config_entries import SOURCE_RECONFIGURE, SOURCE_USER
+from homeassistant.const import CONF_API_KEY, CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def creating_route() -> None:
-    """Stub for test_creating_route (port deferred)."""
+from ._fixtures import mock_config_entry, mock_nsapi, mock_setup_entry
+from .const import API_KEY
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def flow_exceptions() -> None:
-    """Stub for test_flow_exceptions (port deferred)."""
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def fetching_stations_failed() -> None:
-    """Stub for test_fetching_stations_failed (port deferred)."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def already_configured() -> None:
-    """Stub for test_already_configured (port deferred)."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Present so tryke builds a fixture executor for this module."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def reconfigure_success() -> None:
-    """Stub for test_reconfigure_success (port deferred)."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def reconfigure_errors() -> None:
-    """Stub for test_reconfigure_errors (port deferred)."""
+@test
+async def full_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_nsapi: AsyncMock = Depends(mock_nsapi),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Test successful user config flow."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def reconfigure_already_configured() -> None:
-    """Stub for test_reconfigure_already_configured (port deferred)."""
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_API_KEY: API_KEY}
+    )
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Nederlandse Spoorwegen")
+    expect(result["data"]).to_equal({CONF_API_KEY: API_KEY})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
+@test
+async def creating_route(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_nsapi: AsyncMock = Depends(mock_nsapi),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+) -> None:
+    """Test creating a route after setting up the main config entry."""
+    mock_config_entry.add_to_hass(hass)
+    expect(len(mock_config_entry.subentries)).to_equal(2)
+    result = await hass.config_entries.subentries.async_init(
+        (mock_config_entry.entry_id, "route"), context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
+
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_FROM: "ASD",
+            CONF_TO: "RTD",
+            CONF_VIA: "HT",
+            CONF_NAME: "Home to Work",
+            CONF_TIME: "08:30",
+        },
+    )
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Home to Work")
+    expect(result["data"]).to_equal({
+        CONF_FROM: "ASD",
+        CONF_TO: "RTD",
+        CONF_VIA: "HT",
+        CONF_NAME: "Home to Work",
+        CONF_TIME: "08:30",
+    })
+    expect(len(mock_config_entry.subentries)).to_equal(3)
+
+
+@test.cases(
+    test.case("invalid_auth", exception=HTTPError("Invalid API key"), expected_error="invalid_auth"),
+    test.case("timeout", exception=Timeout("Cannot connect"), expected_error="cannot_connect"),
+    test.case("connection_error", exception=RequestsConnectionError("Cannot connect"), expected_error="cannot_connect"),
+    test.case("unknown", exception=Exception("Unexpected error"), expected_error="unknown"),
+)
+async def flow_exceptions(
+    exception: Exception,
+    expected_error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_nsapi: AsyncMock = Depends(mock_nsapi),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Test config flow handling different exceptions."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
+
+    mock_nsapi.get_stations.side_effect = exception
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_API_KEY: API_KEY}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": expected_error})
+
+    mock_nsapi.get_stations.side_effect = None
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_API_KEY: API_KEY}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Nederlandse Spoorwegen")
+    expect(result["data"]).to_equal({CONF_API_KEY: API_KEY})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
+@test
+async def fetching_stations_failed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_nsapi: AsyncMock = Depends(mock_nsapi),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+) -> None:
+    """Test creating a route after setting up the main config entry."""
+    mock_config_entry.add_to_hass(hass)
+    expect(len(mock_config_entry.subentries)).to_equal(2)
+    mock_nsapi.get_stations.side_effect = RequestsConnectionError("Unexpected error")
+    result = await hass.config_entries.subentries.async_init(
+        (mock_config_entry.entry_id, "route"), context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("cannot_connect")
+
+
+@test
+async def already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+) -> None:
+    """Test config flow aborts if already configured."""
+    mock_config_entry.add_to_hass(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(bool(result["errors"])).to_be(False)
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_API_KEY: API_KEY}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+
+
+@test
+async def reconfigure_success(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_nsapi: AsyncMock = Depends(mock_nsapi),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+) -> None:
+    """Test successfully reconfiguring (updating) the API key."""
+    new_key = "new_api_key_123456"
+
+    mock_config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_RECONFIGURE, "entry_id": mock_config_entry.entry_id},
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_API_KEY: new_key}
+    )
+
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("reconfigure_successful")
+
+    expect(mock_config_entry.data[CONF_API_KEY]).to_equal(new_key)
+
+
+@test.cases(
+    test.case("invalid_auth", exception=HTTPError("Invalid API key"), expected_error="invalid_auth"),
+    test.case("timeout", exception=Timeout("Cannot connect"), expected_error="cannot_connect"),
+    test.case("connection_error", exception=RequestsConnectionError("Cannot connect"), expected_error="cannot_connect"),
+    test.case("unknown", exception=Exception("Unexpected error"), expected_error="unknown"),
+)
+async def reconfigure_errors(
+    exception: Exception,
+    expected_error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_nsapi: AsyncMock = Depends(mock_nsapi),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+) -> None:
+    """Test reconfigure flow error handling (invalid auth and cannot connect)."""
+    mock_config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_RECONFIGURE, "entry_id": mock_config_entry.entry_id},
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
+
+    mock_nsapi.get_stations.side_effect = exception
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_API_KEY: "bad_key"}
+    )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": expected_error})
+
+    mock_nsapi.get_stations.side_effect = None
+
+    result3 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_API_KEY: "new_valid_key"}
+    )
+
+    expect(result3["type"]).to_be(FlowResultType.ABORT)
+    expect(result3["reason"]).to_equal("reconfigure_successful")
+    expect(mock_config_entry.data[CONF_API_KEY]).to_equal("new_valid_key")
+
+
+@test
+async def reconfigure_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_nsapi: AsyncMock = Depends(mock_nsapi),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+) -> None:
+    """Test reconfiguring with an API key that's already used by another entry."""
+    mock_config_entry.add_to_hass(hass)
+
+    second_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="NS Integration 2",
+        data={CONF_API_KEY: "another_api_key_456"},
+        unique_id="second_entry",
+    )
+    second_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_RECONFIGURE, "entry_id": mock_config_entry.entry_id},
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("reconfigure")
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_API_KEY: "another_api_key_456"}
+    )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "already_configured"})
+
+    expect(mock_config_entry.data[CONF_API_KEY]).to_equal(API_KEY)
+
+    result3 = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_API_KEY: "new_unique_key_789"}
+    )
+
+    expect(result3["type"]).to_be(FlowResultType.ABORT)
+    expect(result3["reason"]).to_equal("reconfigure_successful")
+    expect(mock_config_entry.data[CONF_API_KEY]).to_equal("new_unique_key_789")
