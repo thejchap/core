@@ -117,6 +117,33 @@ Built-in. `@test` + `async def`. No marker.
 
 Labels must be string literals. Case kwargs must match function signature exactly. No indirect parametrization.
 
+**Form:** `@test.cases(test.case("label", **kwargs), ...)` — and `@test.cases` *replaces* `@test`; do NOT stack both. The positional shorthand `@test.cases(("a", val), ...)` only takes ONE positional list — not multiple tuples — so always use `test.case(...)` for each row.
+
+```python
+# Wrong — TypeError: test.cases() positional form takes exactly one list argument
+@test.cases(
+    ("case_a", val1, val2),
+    ("case_b", val3, val4),
+)
+@test
+async def my_test(...): ...
+
+# Correct
+@test.cases(
+    test.case("case_a", val1=val1, val2=val2),
+    test.case("case_b", val1=val3, val2=val4),
+)
+async def my_test(*, val1, val2, ...): ...
+```
+
+### Local fixture overrides in pytest test files
+
+Pytest tests sometimes redefine a fixture at module scope to override the `conftest.py` version (eg. `fritzbox`'s test_config_flow defines its own `fritz` that also patches `async_setup_entry`). Under tryke port: stash the **test-file-local** version in `_fixtures.py` and import it from the test module — that is what the test author intended.
+
+### `bool(value)` for truthy-checks
+
+`assert not result["errors"]` → `expect(bool(result["errors"])).to_be(False)` (not `expect(result["errors"]).to_be({})` — the original may have produced `None` or `{}`).
+
 ### `with describe(...)` blocks
 
 Use sparingly. They prepend a `group::` to test IDs which then need normalization in Phase 3 / 4 diffs. Default: don't group; tests already live in module files.
