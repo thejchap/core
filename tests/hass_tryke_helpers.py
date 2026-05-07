@@ -176,13 +176,26 @@ def _stub_test_location(caller_frame: Any) -> PyTestLocation:
     file_path = Path(caller_frame.f_code.co_filename).resolve()
     module = inspect.getmodule(caller_frame)
 
-    # Synthesize an object the function belongs to. Syrupy uses
-    # `obj.__module__` and `obj.__name__` to derive snapshot keys.
+    # Tryke's @test convention strips the `test_` prefix from function
+    # names, but existing .ambr files (generated under pytest) key on
+    # the `test_<name>` form. Add the prefix here so shim'd tests can
+    # match snapshots produced by pytest without regenerating them.
+    pytest_compatible_name = (
+        func_name if func_name.startswith("test_") else f"test_{func_name}"
+    )
+
     obj = SimpleNamespace(
         __module__=module.__name__ if module else "tests",
-        __name__=func_name,
+        __name__=pytest_compatible_name,
     )
-    item = SimpleNamespace(path=file_path, obj=obj, name=func_name)
+    nodeid = f"{file_path}::{pytest_compatible_name}"
+    item = SimpleNamespace(
+        path=file_path,
+        obj=obj,
+        name=pytest_compatible_name,
+        nodeid=nodeid,
+        originalname=pytest_compatible_name,
+    )
     return PyTestLocation(item=item)  # type: ignore[arg-type]
 
 
