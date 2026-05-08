@@ -1,6 +1,37 @@
 """Tests for Samsung TV config flow."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
+
+from homeassistant import config_entries
+from homeassistant.components.samsungtv.const import DOMAIN
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from ._fixtures import fake_host, silent_ssdp_scanner
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _ssdp: None = Depends(silent_ssdp_scanner),
+    _host: None = Depends(fake_host),
+) -> None:
+    """Anchor fixture for tryke Depends() resolution."""
+
+
+@test
+async def user_form_show(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the user form is shown when starting a flow."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
 
 @test.skip("complex SSDP/zeroconf/SmartThings fixtures")

@@ -1,6 +1,32 @@
 """Test the Z-Wave JS config flow."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
+
+from homeassistant import config_entries
+from homeassistant.components.zwave_js.const import DOMAIN
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture for tryke Depends() resolution."""
+
+
+@test
+async def user_form_show(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the initial user form is shown for a new flow."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
 
 @test.skip("complex driver mock + add-on fixtures (1515-line conftest)")

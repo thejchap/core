@@ -1,6 +1,35 @@
 """Tests for ZHA config flow."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.zha.const import DOMAIN
+from homeassistant.config_entries import SOURCE_USER
+from homeassistant.const import CONF_SOURCE
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture for tryke Depends() resolution."""
+
+
+@test
+async def user_flow_show_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test user step form."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={CONF_SOURCE: SOURCE_USER},
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("choose_serial_port")
 
 
 @test.skip("complex zigpy + radio fixtures")
@@ -91,9 +120,7 @@ async def user_flow() -> None:
 async def user_flow_not_detected() -> None:
     """Skipped pending fixture port."""
 
-@test.skip("complex zigpy + radio fixtures")
-async def user_flow_show_form() -> None:
-    """Skipped pending fixture port."""
+# NOTE: user_flow_show_form ported above as a real test.
 
 @test.skip("complex zigpy + radio fixtures")
 async def pick_radio_flow() -> None:
