@@ -17,7 +17,27 @@ from mozart_api.models import (
 )
 from tryke import fixture
 
-from .const import TEST_FRIENDLY_NAME, TEST_JID_1
+from homeassistant.components.bang_olufsen import DOMAIN
+
+from .const import (
+    TEST_DATA_CREATE_ENTRY,
+    TEST_FRIENDLY_NAME,
+    TEST_JID_1,
+    TEST_SERIAL_NUMBER,
+)
+
+from tests.common import MockConfigEntry
+
+
+@fixture
+def mock_config_entry() -> MockConfigEntry:
+    """Mock config entry for Beosound Balance."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=TEST_SERIAL_NUMBER,
+        data=TEST_DATA_CREATE_ENTRY,
+        title=TEST_FRIENDLY_NAME,
+    )
 
 
 @fixture
