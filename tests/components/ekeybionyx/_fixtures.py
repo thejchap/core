@@ -15,11 +15,34 @@ from homeassistant.components.ekeybionyx.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
+from tests.common import MockConfigEntry
 from tests.hass_fixtures import aioclient_mock, hass as hass_fixture
 from tests.test_util.aiohttp import AiohttpClientMocker
 
 CLIENT_ID = "1234"
 CLIENT_SECRET = "5678"
+
+
+@fixture
+def config_entry() -> MockConfigEntry:
+    """Create mocked config entry."""
+    return MockConfigEntry(
+        title="test@test.com",
+        domain=DOMAIN,
+        data={
+            "webhooks": [
+                {
+                    "webhook_id": "a2156edca7fb6671e13845314f6fc68622e5dd7c58f17663a487bd28cac247e7",
+                    "name": "Test1",
+                    "auth": "f2156edca7fc6871e13845314a6fc68622e5ad7c58f17663a487ed28cac247f7",
+                    "ekey_id": "946DA01F-9ABD-4D9D-80C7-02AF85C822A8",
+                }
+            ]
+        },
+        unique_id="946DA01F-9ABD-4D9D-80C7-02AF85C822A8",
+        version=1,
+        minor_version=1,
+    )
 
 
 def dummy_systems(
