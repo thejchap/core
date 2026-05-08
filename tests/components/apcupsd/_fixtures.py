@@ -8,10 +8,12 @@ from tryke import Depends, fixture
 from homeassistant.components.apcupsd.const import DOMAIN
 from homeassistant.components.apcupsd.coordinator import APCUPSdData
 from homeassistant.config_entries import SOURCE_USER
+from homeassistant.core import HomeAssistant
 
 from . import CONF_DATA, MOCK_STATUS
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
 
 
 @fixture
@@ -44,3 +46,18 @@ def mock_config_entry(
         unique_id=APCUPSdData(mock_request_status.return_value).serial_no,
         source=SOURCE_USER,
     )
+
+
+@fixture
+async def init_integration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_request_status: AsyncMock = Depends(mock_request_status),
+) -> MockConfigEntry:
+    """Set up APC UPS Daemon integration for testing."""
+    mock_config_entry.add_to_hass(hass)
+
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    return mock_config_entry
