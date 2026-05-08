@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
-from tryke import fixture
+from tryke import Depends, fixture
 from vehicle import Vehicle
 
 from homeassistant.components.rdw.const import CONF_LICENSE_PLATE, DOMAIN
+from homeassistant.core import HomeAssistant
 
 from tests.common import MockConfigEntry, load_fixture
+from tests.hass_fixtures import hass as hass_fixture
 
 
 @fixture
@@ -54,3 +56,16 @@ def mock_rdw() -> Generator[MagicMock]:
         rdw = rdw_mock.return_value
         rdw.vehicle.return_value = Vehicle.from_json(load_fixture("rdw/11ZKZ3.json"))
         yield rdw
+
+
+@fixture
+async def init_integration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _rdw: MagicMock = Depends(mock_rdw),
+) -> MockConfigEntry:
+    """Set up the RDW integration for testing."""
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    return config_entry
