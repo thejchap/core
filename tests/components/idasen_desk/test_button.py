@@ -2,10 +2,12 @@
 
 from tryke import test
 
-@test.skip("sibling port deferred (34 LOC, 0 parametrize)")
+
+@test.skip("requires bluetooth/idasen-desk integration setup beyond shim slice")
 async def connect_button() -> None:
     """Stub for test_connect_button."""
 
-@test.skip("sibling port deferred (34 LOC, 0 parametrize)")
+
+@test.skip("requires bluetooth/idasen-desk integration setup beyond shim slice")
 async def disconnect_button() -> None:
     """Stub for test_disconnect_button."""

@@ -27,6 +27,12 @@ def mock_setup_entry() -> Generator[AsyncMock]:
 
 
 @fixture
+def get_config() -> dict[str, str]:
+    """Return default config dict for the local_file entry options."""
+    return {CONF_NAME: DEFAULT_NAME, CONF_FILE_PATH: "mock.file"}
+
+
+@fixture
 async def loaded_entry(
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> MockConfigEntry:

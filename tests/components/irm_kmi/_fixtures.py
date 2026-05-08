@@ -1,7 +1,8 @@
 """Tryke fixtures for the irm_kmi integration."""
 
 from collections.abc import Generator
-from unittest.mock import patch
+import json
+from unittest.mock import MagicMock, patch
 
 from irm_kmi_api import IrmKmiApiError
 from tryke import fixture
@@ -14,7 +15,7 @@ from homeassistant.const import (
     CONF_UNIQUE_ID,
 )
 
-from tests.common import MockConfigEntry
+from tests.common import MockConfigEntry, load_fixture
 
 
 @fixture
@@ -69,3 +70,26 @@ def mock_get_forecast_api_error() -> Generator[None]:
         side_effect=IrmKmiApiError,
     ):
         yield
+
+
+@fixture
+def mock_irm_kmi_api() -> Generator[MagicMock]:
+    """Return a mocked IrmKmi api client."""
+    forecast = json.loads(load_fixture("forecast.json", "irm_kmi"))
+    with patch(
+        "homeassistant.components.irm_kmi.IrmKmiApiClientHa", autospec=True
+    ) as irm_kmi_api_mock:
+        irm_kmi = irm_kmi_api_mock.return_value
+        irm_kmi.get_forecasts_coord.return_value = forecast
+        yield irm_kmi
+
+
+@fixture
+def mock_exception_irm_kmi_api() -> Generator[MagicMock]:
+    """Return a mocked IrmKmi api client that raises an error on refresh."""
+    with patch(
+        "homeassistant.components.irm_kmi.IrmKmiApiClientHa", autospec=True
+    ) as irm_kmi_api_mock:
+        irm_kmi = irm_kmi_api_mock.return_value
+        irm_kmi.refresh_forecasts_coord.side_effect = IrmKmiApiError
+        yield irm_kmi

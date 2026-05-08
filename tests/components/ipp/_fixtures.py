@@ -65,3 +65,16 @@ def mock_ipp_config_flow(
         client = ipp_mock.return_value
         client.printer.return_value = mock_printer
         yield client
+
+
+@fixture
+def mock_ipp(
+    mock_printer: Printer = Depends(mock_printer),
+) -> Generator[MagicMock]:
+    """Return a mocked IPP client used by the coordinator."""
+    with patch(
+        "homeassistant.components.ipp.coordinator.IPP", autospec=True
+    ) as ipp_mock:
+        client = ipp_mock.return_value
+        client.printer.return_value = mock_printer
+        yield client

@@ -13,12 +13,14 @@ from homeassistant.components.infrared import (
     DOMAIN as INFRARED_DOMAIN,
     InfraredEntity,
 )
+from homeassistant.components.lg_infrared import PLATFORMS
 from homeassistant.components.lg_infrared.const import (
     CONF_DEVICE_TYPE,
     CONF_INFRARED_ENTITY_ID,
     DOMAIN,
     LGDeviceType,
 )
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
@@ -87,3 +89,33 @@ def mock_make_lg_tv_command() -> Generator[None]:
         side_effect=lambda code, **kwargs: code,
     ):
         yield
+
+
+@fixture
+def platforms() -> list[Platform]:
+    """Return platforms to set up."""
+    return PLATFORMS
+
+
+@fixture
+async def init_integration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_infrared_entity: MockInfraredEntity = Depends(mock_infrared_entity),
+    _make_lg_tv: None = Depends(mock_make_lg_tv_command),
+    platforms: list[Platform] = Depends(platforms),
+) -> MockConfigEntry:
+    """Set up the LG Infrared integration for testing."""
+    assert await async_setup_component(hass, INFRARED_DOMAIN, {})
+    await hass.async_block_till_done()
+
+    infrared_component = hass.data[INFRARED_DATA_COMPONENT]
+    await infrared_component.async_add_entities([mock_infrared_entity])
+
+    mock_config_entry.add_to_hass(hass)
+
+    with patch("homeassistant.components.lg_infrared.PLATFORMS", platforms):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    return mock_config_entry

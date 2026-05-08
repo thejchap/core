@@ -1,7 +1,34 @@
-"""Tryke skip-stubs for test_init.py - sibling port deferred (19 LOC, 0 parametrize)."""
+"""Tests for the LG Infrared integration setup."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("sibling port deferred (19 LOC, 0 parametrize)")
-async def setup_and_unload_entry() -> None:
-    """Stub for test_setup_and_unload_entry."""
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+
+from ._fixtures import init_integration
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
+
+
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    """Module-local anchor fixture."""
+    return hass
+
+
+@test
+async def setup_and_unload_entry(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    init_integration: MockConfigEntry = Depends(init_integration),
+) -> None:
+    """Test setting up and unloading a config entry."""
+    entry = init_integration
+    expect(entry.state).to_be(ConfigEntryState.LOADED)
+
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    expect(entry.state).to_be(ConfigEntryState.NOT_LOADED)
