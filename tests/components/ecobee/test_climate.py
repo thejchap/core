@@ -1,11 +1,78 @@
-"""Tryke skip stub for test_climate.py."""
+"""The test for the Ecobee thermostat module."""
 
-from tryke import test
+from unittest import mock
+
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.ecobee.climate import Thermostat
+from homeassistant.core import HomeAssistant
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
-async def name() -> None:
-    """Stub for test_name."""
+def _make_ecobee_fixture() -> mock.Mock:
+    """Build a mock thermostat data dict."""
+    vals = {
+        "name": "Ecobee",
+        "modelNumber": "athenaSmart",
+        "identifier": "abc",
+        "program": {
+            "climates": [
+                {
+                    "name": "Climate1",
+                    "climateRef": "c1",
+                    "sensors": [{"name": "Ecobee"}],
+                },
+                {"name": "Away", "climateRef": "away", "sensors": [{"name": "Ecobee"}]},
+                {"name": "Home", "climateRef": "home", "sensors": [{"name": "Ecobee"}]},
+            ],
+            "currentClimateRef": "c1",
+        },
+        "runtime": {
+            "connected": True,
+            "actualTemperature": 300,
+            "actualHumidity": 15,
+            "desiredHeat": 400,
+            "desiredCool": 200,
+            "desiredFanMode": "on",
+        },
+        "settings": {
+            "hvacMode": "auto",
+            "heatStages": 1,
+            "coolStages": 1,
+            "fanMinOnTime": 10,
+            "heatCoolMinDelta": 50,
+            "holdAction": "nextTransition",
+        },
+        "equipmentStatus": "fan",
+        "events": [],
+        "remoteSensors": [{"id": "ei:0", "name": "Ecobee"}],
+    }
+    mock_ecobee = mock.Mock()
+    mock_ecobee.get = mock.Mock(side_effect=vals.get)
+    mock_ecobee.__getitem__ = mock.Mock(side_effect=vals.__getitem__)
+    mock_ecobee.__setitem__ = mock.Mock(side_effect=vals.__setitem__)
+    return mock_ecobee
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture for tryke fixture-injection."""
+
+
+@test
+async def name(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test name property."""
+    ecobee_fixture = _make_ecobee_fixture()
+    data = mock.Mock()
+    data.ecobee.get_thermostat.return_value = ecobee_fixture
+    thermostat = Thermostat(data, 1, ecobee_fixture, hass)
+    expect(thermostat.device_info["name"]).to_equal("Ecobee")
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

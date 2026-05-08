@@ -110,6 +110,64 @@ def mock_light() -> Mock:
     return light
 
 
+@fixture
+def mock_thermostat() -> Mock:
+    """Fixture for a thermostat."""
+    climate = Mock()
+    climate.fibaro_id = 13
+    climate.parent_fibaro_id = 0
+    climate.name = "Test climate"
+    climate.room_id = 1
+    climate.dead = False
+    climate.visible = True
+    climate.enabled = True
+    climate.type = "com.fibaro.thermostatDanfoss"
+    climate.base_type = "com.fibaro.device"
+    climate.properties = {"manufacturer": ""}
+    climate.actions = {"setThermostatMode": 1}
+    climate.supported_features = {}
+    climate.has_supported_thermostat_modes = True
+    climate.supported_thermostat_modes = ["Off", "Heat", "CustomerSpecific"]
+    climate.has_operating_mode = False
+    climate.has_thermostat_mode = True
+    climate.thermostat_mode = "CustomerSpecific"
+    value_mock = Mock()
+    value_mock.has_value = True
+    value_mock.int_value.return_value = 20
+    climate.value = value_mock
+    return climate
+
+
+@fixture
+def mock_positionable_cover() -> Mock:
+    """Fixture for a positionable cover."""
+    cover = Mock()
+    cover.fibaro_id = 2
+    cover.parent_fibaro_id = 0
+    cover.name = "Test cover"
+    cover.room_id = 1
+    cover.dead = False
+    cover.visible = True
+    cover.enabled = True
+    cover.type = "com.fibaro.FGR"
+    cover.base_type = "com.fibaro.device"
+    cover.properties = {"manufacturer": ""}
+    cover.actions = {"open": 0, "close": 0}
+    cover.supported_features = {}
+    value_mock = Mock()
+    value_mock.has_value = True
+    value_mock.int_value.return_value = 20
+    cover.value = value_mock
+    value2_mock = Mock()
+    value2_mock.has_value = False
+    cover.value_2 = value2_mock
+    state_mock = Mock()
+    state_mock.has_value = True
+    state_mock.str_value.return_value = "opening"
+    cover.state = state_mock
+    return cover
+
+
 async def init_integration(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry
 ) -> None:

@@ -1,11 +1,47 @@
-"""Tryke skip stub for test_energyid_sensor_mapping_flow.py."""
+"""Test EnergyID sensor mapping subentry flow (direct handler tests)."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.energyid.const import DOMAIN
+from homeassistant.core import HomeAssistant
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
-async def user_step_form() -> None:
-    """Stub for test_user_step_form."""
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture for tryke fixture-injection."""
+
+
+@test
+async def user_step_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the user step form is shown."""
+    parent_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Mock Title",
+        data={
+            "provisioning_key": "test_key",
+            "provisioning_secret": "test_secret",
+            "device_id": "test_device",
+            "device_name": "Test Device",
+        },
+        entry_id="parent_entry_id",
+    )
+    parent_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.subentries.async_init(
+        (parent_entry.entry_id, "sensor_mapping"),
+        context={"source": "user"},
+    )
+    expect(result["type"]).to_equal("form")
+    expect(result["step_id"]).to_equal("user")
+    expect("ha_entity_id" in result["data_schema"].schema).to_be(True)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

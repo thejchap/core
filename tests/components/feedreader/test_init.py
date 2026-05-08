@@ -1,16 +1,50 @@
-"""Tryke skip stub for test_init.py."""
+"""The tests for the feedreader component."""
 
-from tryke import test
+from unittest.mock import patch
+import urllib
+import urllib.error
+
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+
+from . import create_mock_entry
+from ._fixtures import feed_one_event
+from .const import VALID_CONFIG_DEFAULT
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture for tryke fixture-injection."""
+
+
+@test
+async def setup_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    feed_one_event_data: bytes = Depends(feed_one_event),
+) -> None:
+    """Test setup error."""
+    entry = create_mock_entry(VALID_CONFIG_DEFAULT)
+    entry.add_to_hass(hass)
+    with patch(
+        "homeassistant.components.feedreader.coordinator.feedparser.http.get"
+    ) as feedreader:
+        feedreader.side_effect = urllib.error.URLError("Test")
+        feedreader.return_value = feed_one_event_data
+        await hass.config_entries.async_setup(entry.entry_id)
+
+    expect(entry.state).to_be(ConfigEntryState.SETUP_RETRY)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
 async def setup() -> None:
     """Stub for test_setup."""
-
-
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
-async def setup_error() -> None:
-    """Stub for test_setup_error."""
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
