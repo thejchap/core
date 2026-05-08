@@ -1,55 +1,109 @@
-"""Tryke skip-stubs for test_init.py - snapshot fixture coupling - needs pytest --snapshot-update."""
+"""Tests for husqvarna_automower init module."""
 
-from tryke import test
+from unittest.mock import AsyncMock
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
-async def load_unload_entry() -> None:
-    """Stub for test_load_unload_entry."""
+from tryke import Depends, expect, fixture, test
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+from homeassistant.components.husqvarna_automower.const import DOMAIN
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+
+from . import setup_integration
+from ._fixtures import (
+    expires_at,
+    jwt,
+    mock_automower_client,
+    mock_config_entry,
+    mower_time_zone,
+    scope,
+    setup_credentials,
+    values,
+)
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Module-level fixture anchor."""
+
+
+@test
+async def load_unload_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _credentials: None = Depends(setup_credentials),
+    _client: AsyncMock = Depends(mock_automower_client),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+) -> None:
+    """Test load and unload entry."""
+    await setup_integration(hass, mock_config_entry)
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+
+    expect(entry.state is ConfigEntryState.LOADED).to_be(True)
+
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    expect(entry.state is ConfigEntryState.NOT_LOADED).to_be(True)
+
+
+@test.skip("port deferred - sibling tests")
 async def load_missing_scope() -> None:
-    """Stub for test_load_missing_scope."""
+    """Stub."""
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+
+@test.skip("port deferred - sibling tests")
 async def expired_token_refresh_failure() -> None:
-    """Stub for test_expired_token_refresh_failure."""
+    """Stub."""
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+
+@test.skip("port deferred - sibling tests")
 async def update_failed() -> None:
-    """Stub for test_update_failed."""
+    """Stub."""
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+
+@test.skip("port deferred - sibling tests")
 async def websocket_not_available() -> None:
-    """Stub for test_websocket_not_available."""
+    """Stub."""
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+
+@test.skip("port deferred - sibling tests")
 async def model_id_information() -> None:
-    """Stub for test_model_id_information."""
+    """Stub."""
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+
+@test.skip("port deferred - sibling tests")
 async def device_info() -> None:
-    """Stub for test_device_info."""
+    """Stub."""
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+
+@test.skip("port deferred - sibling tests")
 async def constant_polling() -> None:
-    """Stub for test_constant_polling."""
+    """Stub."""
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+
+@test.skip("port deferred - sibling tests")
 async def coordinator_automatic_registry_cleanup() -> None:
-    """Stub for test_coordinator_automatic_registry_cleanup."""
+    """Stub."""
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+
+@test.skip("port deferred - sibling tests")
 async def add_and_remove_work_area() -> None:
-    """Stub for test_add_and_remove_work_area."""
+    """Stub."""
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+
+@test.skip("port deferred - sibling tests")
 async def dynamic_polling() -> None:
-    """Stub for test_dynamic_polling."""
+    """Stub."""
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+
+@test.skip("port deferred - sibling tests")
 async def websocket_watchdog() -> None:
-    """Stub for test_websocket_watchdog."""
+    """Stub."""
 
-@test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
+
+@test.skip("port deferred - sibling tests")
 async def oauth_implementation_not_available() -> None:
-    """Stub for test_oauth_implementation_not_available."""
+    """Stub."""
