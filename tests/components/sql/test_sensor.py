@@ -1,16 +1,58 @@
-"""Tryke skip-stubs for SQL test_sensor."""
+"""The test for the sql sensor platform."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.sql.const import CONF_COLUMN_NAME, CONF_QUERY
+from homeassistant.core import HomeAssistant
+
+from . import init_integration
+from ._fixtures import recorder_mock
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@test.skip("requires recorder + sensor — port deferred")
-async def query_basic() -> None:
-    """Stub for test_query_basic."""
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _recorder: object = Depends(recorder_mock),
+) -> None:
+    """Force tryke fixture resolution before each test."""
 
 
-@test.skip("requires recorder + CTE query — port deferred")
-async def query_cte() -> None:
-    """Stub for test_query_cte."""
+@test
+async def query_basic(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the SQL sensor."""
+    options = {
+        CONF_QUERY: "SELECT 5 as value",
+        CONF_COLUMN_NAME: "value",
+    }
+    await init_integration(hass, title="Select value SQL query", options=options)
+
+    state = hass.states.get("sensor.select_value_sql_query")
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal("5")
+    expect(state.attributes["value"]).to_equal(5)
+
+
+@test
+async def query_cte(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the SQL sensor with CTE."""
+    options = {
+        CONF_QUERY: "WITH test AS (SELECT 1 AS row_num, 10 AS state) SELECT state FROM test WHERE row_num = 1 LIMIT 1;",
+        CONF_COLUMN_NAME: "state",
+    }
+    await init_integration(hass, title="Select value SQL query CTE", options=options)
+
+    state = hass.states.get("sensor.select_value_sql_query_cte")
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal("10")
+    expect(state.attributes["state"]).to_equal(10)
 
 
 @test.skip("requires recorder + value template — port deferred")
