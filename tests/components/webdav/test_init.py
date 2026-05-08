@@ -1,4 +1,4 @@
-"""Tryke skip stub for test_init.py - sibling test pending tryke port."""
+"""Test WebDAV component setup."""
 
 from tryke import fixture, test
 
@@ -8,6 +8,6 @@ def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
 
 
-@test.skip("webdav: sibling test pending tryke port — needs: complex parametrize")
-async def init() -> None:
-    """Placeholder skipped sibling tests."""
+@test.skip("webdav: caplog text matching diverges between pytest/tryke runtime")
+async def error_during_setup() -> None:
+    """Stub for test_error_during_setup (port deferred)."""
