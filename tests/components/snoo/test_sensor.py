@@ -8,6 +8,6 @@ def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
 
 
-@test.skip("conftest fixtures need migration to _fixtures.py")
+@test.skip("translation_key not applied; entity ids differ from pytest fixture run")
 async def sensors() -> None:
     """Stub for test_sensors (port deferred)."""
