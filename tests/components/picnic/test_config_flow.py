@@ -1,62 +1,546 @@
-"""Tryke skip-stubs for picnic config flow tests.
+"""Test the Picnic config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from unittest.mock import MagicMock, patch
 
-from tryke import test
+from python_picnic_api2.session import (
+    Picnic2FAError,
+    Picnic2FARequired,
+    PicnicAuthError,
+)
+import requests
+from tryke import Depends, expect, fixture, test
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def form() -> None:
-    """Stub for test_form (port deferred)."""
+from homeassistant import config_entries
+from homeassistant.components.picnic.const import DOMAIN
+from homeassistant.const import CONF_ACCESS_TOKEN, CONF_COUNTRY_CODE
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def form_2fa_required() -> None:
-    """Stub for test_form_2fa_required (port deferred)."""
+from ._fixtures import picnic_api
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def form_2fa_channel_cannot_connect() -> None:
-    """Stub for test_form_2fa_channel_cannot_connect (port deferred)."""
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def form_2fa_channel_exception() -> None:
-    """Stub for test_form_2fa_channel_exception (port deferred)."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def form_2fa_wrong_code() -> None:
-    """Stub for test_form_2fa_wrong_code (port deferred)."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Module-local fixture executor anchor."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def form_2fa_cannot_connect() -> None:
-    """Stub for test_form_2fa_cannot_connect (port deferred)."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def form_2fa_exception() -> None:
-    """Stub for test_form_2fa_exception (port deferred)."""
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test we get the form and a config entry is created."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"] is None).to_be(True)
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def form_invalid_auth() -> None:
-    """Stub for test_form_invalid_auth (port deferred)."""
+    with patch(
+        "homeassistant.components.picnic.async_setup_entry",
+        return_value=True,
+    ) as mock_setup_entry:
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+                "country_code": "NL",
+            },
+        )
+        await hass.async_block_till_done()
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def form_cannot_connect() -> None:
-    """Stub for test_form_cannot_connect (port deferred)."""
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Picnic")
+    expect(result2["data"]).to_equal(
+        {
+            CONF_ACCESS_TOKEN: api().session.auth_token,
+            CONF_COUNTRY_CODE: "NL",
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def form_exception() -> None:
-    """Stub for test_form_exception (port deferred)."""
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def form_already_configured() -> None:
-    """Stub for test_form_already_configured (port deferred)."""
+@test
+async def form_2fa_required(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test the full 2FA flow."""
+    api.return_value.login.side_effect = Picnic2FARequired
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def step_reauth() -> None:
-    """Stub for test_step_reauth (port deferred)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def step_reauth_failed() -> None:
-    """Stub for test_step_reauth_failed (port deferred)."""
+    with patch(
+        "homeassistant.components.picnic.async_setup_entry",
+        return_value=True,
+    ):
+        result_step_user = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+                "country_code": "NL",
+            },
+        )
+        expect(result_step_user["type"]).to_be(FlowResultType.FORM)
+        expect(result_step_user["step_id"]).to_equal("2fa_channel")
 
-@test.skip("complex fixture chain not yet ported to tryke shim")
-async def step_reauth_different_account() -> None:
-    """Stub for test_step_reauth_different_account (port deferred)."""
+        result_step_2fa_channel = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"two_fa_channel": "sms"},
+        )
+        expect(result_step_2fa_channel["type"]).to_be(FlowResultType.FORM)
+        expect(result_step_2fa_channel["step_id"]).to_equal("2fa")
+
+        result_step_2fa_verify = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"two_fa_code": "123456"},
+        )
+        await hass.async_block_till_done()
+
+    expect(result_step_2fa_verify["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result_step_2fa_verify["title"]).to_equal("Picnic")
+    expect(api.return_value.generate_2fa_code.call_count).to_equal(1)
+    expect(api.return_value.generate_2fa_code.call_args[0]).to_equal(("SMS",))
+    expect(api.return_value.verify_2fa_code.call_count).to_equal(1)
+    expect(api.return_value.verify_2fa_code.call_args[0]).to_equal(("123456",))
+
+
+@test
+async def form_2fa_channel_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test we handle connection errors in the first 2fa step."""
+    api.return_value.login.side_effect = Picnic2FARequired
+    api.return_value.generate_2fa_code.side_effect = (
+        requests.exceptions.ConnectionError
+    )
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "homeassistant.components.picnic.async_setup_entry",
+        return_value=True,
+    ):
+        result_step_user = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+                "country_code": "NL",
+            },
+        )
+        expect(result_step_user["type"]).to_be(FlowResultType.FORM)
+        expect(result_step_user["step_id"]).to_equal("2fa_channel")
+
+        result_step_2fa_channel = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"two_fa_channel": "sms"},
+        )
+        await hass.async_block_till_done()
+
+    expect(result_step_2fa_channel["type"]).to_be(FlowResultType.FORM)
+    expect(result_step_2fa_channel["errors"]).to_equal({"base": "cannot_connect"})
+
+
+@test
+async def form_2fa_channel_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test we handle random exceptions in the first 2fa step."""
+    api.return_value.login.side_effect = Picnic2FARequired
+    api.return_value.generate_2fa_code.side_effect = Exception
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "homeassistant.components.picnic.async_setup_entry",
+        return_value=True,
+    ):
+        result_step_user = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+                "country_code": "NL",
+            },
+        )
+        expect(result_step_user["type"]).to_be(FlowResultType.FORM)
+        expect(result_step_user["step_id"]).to_equal("2fa_channel")
+
+        result_step_2fa_channel = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"two_fa_channel": "sms"},
+        )
+        await hass.async_block_till_done()
+
+    expect(result_step_2fa_channel["type"]).to_be(FlowResultType.FORM)
+    expect(result_step_2fa_channel["errors"]).to_equal({"base": "unknown"})
+
+
+@test
+async def form_2fa_wrong_code(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test the full 2FA flow with incorrect code."""
+    api.return_value.login.side_effect = Picnic2FARequired
+    api.return_value.verify_2fa_code.side_effect = Picnic2FAError
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "homeassistant.components.picnic.async_setup_entry",
+        return_value=True,
+    ):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+                "country_code": "NL",
+            },
+        )
+
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"two_fa_channel": "sms"},
+        )
+
+        result_step_2fa_verify = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"two_fa_code": "654321"},
+        )
+        await hass.async_block_till_done()
+
+    expect(result_step_2fa_verify["type"]).to_be(FlowResultType.FORM)
+    expect(result_step_2fa_verify["errors"]).to_equal({"base": "invalid_2fa_code"})
+
+
+@test
+async def form_2fa_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test we handle connection errors in the last 2fa step."""
+    api.return_value.login.side_effect = Picnic2FARequired
+    api.return_value.verify_2fa_code.side_effect = (
+        requests.exceptions.ConnectionError
+    )
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "homeassistant.components.picnic.async_setup_entry",
+        return_value=True,
+    ):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+                "country_code": "NL",
+            },
+        )
+
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"two_fa_channel": "sms"},
+        )
+
+        result_step_2fa_verify = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"two_fa_code": "123456"},
+        )
+        await hass.async_block_till_done()
+
+    expect(result_step_2fa_verify["type"]).to_be(FlowResultType.FORM)
+    expect(result_step_2fa_verify["errors"]).to_equal({"base": "cannot_connect"})
+
+
+@test
+async def form_2fa_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test we handle random exceptions in the last 2fa step."""
+    api.return_value.login.side_effect = Picnic2FARequired
+    api.return_value.verify_2fa_code.side_effect = Exception
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "homeassistant.components.picnic.async_setup_entry",
+        return_value=True,
+    ):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+                "country_code": "NL",
+            },
+        )
+
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"two_fa_channel": "sms"},
+        )
+
+        result_step_2fa_verify = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"two_fa_code": "123456"},
+        )
+        await hass.async_block_till_done()
+
+    expect(result_step_2fa_verify["type"]).to_be(FlowResultType.FORM)
+    expect(result_step_2fa_verify["errors"]).to_equal({"base": "unknown"})
+
+
+@test
+async def form_invalid_auth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test we handle invalid authentication."""
+    api.return_value.login.side_effect = PicnicAuthError
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            "username": "test-username",
+            "password": "test-password",
+            "country_code": "NL",
+        },
+    )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
+
+
+@test
+async def form_cannot_connect(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test we handle connection errors."""
+    api.return_value.login.side_effect = requests.exceptions.ConnectionError
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            "username": "test-username",
+            "password": "test-password",
+            "country_code": "NL",
+        },
+    )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
+
+
+@test
+async def form_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test we handle random exceptions."""
+    api.return_value.login.side_effect = Exception
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            "username": "test-username",
+            "password": "test-password",
+            "country_code": "NL",
+        },
+    )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
+
+
+@test
+async def form_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test that an entry with unique id can only be added once."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=api().get_user()["user_id"],
+        data={CONF_ACCESS_TOKEN: "a3p98fsen.a39p3fap", CONF_COUNTRY_CODE: "NL"},
+    ).add_to_hass(hass)
+
+    result_init = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result_configure = await hass.config_entries.flow.async_configure(
+        result_init["flow_id"],
+        {
+            "username": "test-username",
+            "password": "test-password",
+            "country_code": "NL",
+        },
+    )
+    await hass.async_block_till_done()
+
+    expect(result_configure["type"]).to_be(FlowResultType.ABORT)
+    expect(result_configure["reason"]).to_equal("already_configured")
+
+
+@test
+async def step_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test the re-auth flow."""
+    conf = {CONF_ACCESS_TOKEN: "a3p98fsen.a39p3fap", CONF_COUNTRY_CODE: "NL"}
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=api().get_user()["user_id"],
+        data=conf,
+    )
+    entry.add_to_hass(hass)
+
+    result_init = await entry.start_reauth_flow(hass)
+    expect(result_init["type"]).to_be(FlowResultType.FORM)
+    expect(result_init["step_id"]).to_equal("user")
+
+    with patch(
+        "homeassistant.components.picnic.async_setup_entry",
+        return_value=True,
+    ):
+        result_configure = await hass.config_entries.flow.async_configure(
+            result_init["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+                "country_code": "NL",
+            },
+        )
+        await hass.async_block_till_done()
+
+    expect(result_configure["type"]).to_be(FlowResultType.ABORT)
+    expect(result_configure["reason"]).to_equal("reauth_successful")
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+
+
+@test
+async def step_reauth_failed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test the re-auth flow when authentication fails."""
+    api.return_value.login.side_effect = PicnicAuthError
+
+    user_id = "f29-2a6-o32n"
+    conf = {CONF_ACCESS_TOKEN: "a3p98fsen.a39p3fap", CONF_COUNTRY_CODE: "NL"}
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=user_id,
+        data=conf,
+    )
+    entry.add_to_hass(hass)
+
+    result_init = await entry.start_reauth_flow(hass)
+    expect(result_init["type"]).to_be(FlowResultType.FORM)
+    expect(result_init["step_id"]).to_equal("user")
+
+    result_configure = await hass.config_entries.flow.async_configure(
+        result_init["flow_id"],
+        {
+            "username": "test-username",
+            "password": "test-password",
+            "country_code": "NL",
+        },
+    )
+    await hass.async_block_till_done()
+
+    expect(result_configure["type"]).to_be(FlowResultType.FORM)
+    expect(result_configure["errors"]).to_equal({"base": "invalid_auth"})
+    expect(len(hass.config_entries.async_entries())).to_equal(1)
+
+
+@test
+async def step_reauth_different_account(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: MagicMock = Depends(picnic_api),
+) -> None:
+    """Test the re-auth flow when authentication is done with a different account."""
+    conf = {CONF_ACCESS_TOKEN: "a3p98fsen.a39p3fap", CONF_COUNTRY_CODE: "NL"}
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="3fpawh-ues-af3ho",
+        data=conf,
+    )
+    entry.add_to_hass(hass)
+
+    result_init = await entry.start_reauth_flow(hass)
+    expect(result_init["type"]).to_be(FlowResultType.FORM)
+    expect(result_init["step_id"]).to_equal("user")
+
+    with patch(
+        "homeassistant.components.picnic.async_setup_entry",
+        return_value=True,
+    ):
+        result_configure = await hass.config_entries.flow.async_configure(
+            result_init["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+                "country_code": "NL",
+            },
+        )
+        await hass.async_block_till_done()
+
+    expect(result_configure["type"]).to_be(FlowResultType.FORM)
