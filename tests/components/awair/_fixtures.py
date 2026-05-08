@@ -41,6 +41,12 @@ def local_devices() -> Any:
 
 
 @fixture
+def local_data() -> Any:
+    """Fixture representing data returned from Awair local device."""
+    return json.loads(load_fixture("awair/awair-local.json"))
+
+
+@fixture
 def no_devices() -> Any:
     """Fixture representing when no devices are found in Awair's cloud API."""
     return json.loads(load_fixture("awair/no_devices.json"))
