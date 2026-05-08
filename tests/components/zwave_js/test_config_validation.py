@@ -2,30 +2,32 @@
 
 from typing import Any
 
-import pytest
 import voluptuous as vol
+from tryke import expect, test
 
 from homeassistant.components.zwave_js.config_validation import VALUE_SCHEMA, boolean
 
 
-@pytest.mark.parametrize(
-    ("test_cases", "expected_value"),
-    [
-        ([True, "true", "yes", "on", "ON", "enable"], True),
-        ([False, "false", "no", "off", "NO", "disable"], False),
-        ([1.1, "1.1"], 1.1),
-        ([1.0, "1.0"], 1.0),
-        ([1, "1"], 1),
-    ],
+@test.cases(
+    test.case("truthy", test_cases=[True, "true", "yes", "on", "ON", "enable"], expected_value=True),
+    test.case("falsy", test_cases=[False, "false", "no", "off", "NO", "disable"], expected_value=False),
+    test.case("float_1_1", test_cases=[1.1, "1.1"], expected_value=1.1),
+    test.case("float_1_0", test_cases=[1.0, "1.0"], expected_value=1.0),
+    test.case("int_1", test_cases=[1, "1"], expected_value=1),
 )
-def test_validation(test_cases: list[Any], expected_value: Any) -> None:
+def validation(*, test_cases: list[Any], expected_value: Any) -> None:
     """Test config validation."""
     for case in test_cases:
-        assert VALUE_SCHEMA(case) == expected_value
+        expect(VALUE_SCHEMA(case)).to_equal(expected_value)
 
 
-@pytest.mark.parametrize("value", ["invalid", "1", "0", 1, 0])
-def test_invalid_boolean_validation(value: str | int) -> None:
+@test.cases(
+    test.case("invalid_string", value="invalid"),
+    test.case("string_one", value="1"),
+    test.case("string_zero", value="0"),
+    test.case("int_one", value=1),
+    test.case("int_zero", value=0),
+)
+def invalid_boolean_validation(*, value: str | int) -> None:
     """Test invalid cases for boolean config validator."""
-    with pytest.raises(vol.Invalid):
-        boolean(value)
+    expect(lambda: boolean(value)).to_raise(vol.Invalid)
