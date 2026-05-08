@@ -1,11 +1,26 @@
-"""Tryke skip-stubs for test_init.py - sibling test pending tryke port."""
+"""Test Yeelight (tryke port)."""
 
-from tryke import fixture, test
+from unittest.mock import AsyncMock, patch
+
+from tryke import Depends, expect, fixture, test
+from yeelight import BulbException, BulbType
+
+from homeassistant.components.yeelight.const import DOMAIN
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import CONF_HOST
+from homeassistant.core import HomeAssistant
+
+from . import MODULE, _mocked_bulb
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
 @fixture
-def _ensure_executor() -> None:
-    """Force a HookExecutor for this module (tryke discovery quirk)."""
+async def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor fixture for tryke Depends() resolution."""
 
 
 @test.skip("yeelight: sibling test pending tryke port")
@@ -13,9 +28,26 @@ async def ip_changes_fallback_discovery() -> None:
     """Stub for test_ip_changes_fallback_discovery."""
 
 
-@test.skip("yeelight: sibling test pending tryke port")
-async def ip_changes_id_missing_cannot_fallback() -> None:
-    """Stub for test_ip_changes_id_missing_cannot_fallback."""
+@test
+async def ip_changes_id_missing_cannot_fallback(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test Yeelight ip changes and we fallback to discovery."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data={CONF_HOST: "5.5.5.5"})
+    config_entry.add_to_hass(hass)
+
+    mocked_bulb = _mocked_bulb(True)
+    mocked_bulb.bulb_type = BulbType.WhiteTempMood
+    mocked_bulb.async_listen = AsyncMock(side_effect=[BulbException, None, None, None])
+
+    with patch(f"{MODULE}.AsyncBulb", return_value=mocked_bulb):
+        expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(
+            False
+        )
+        await hass.async_block_till_done()
+
+    expect(config_entry.state is ConfigEntryState.SETUP_RETRY).to_be(True)
 
 
 @test.skip("yeelight: sibling test pending tryke port")
