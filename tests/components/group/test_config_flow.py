@@ -1,8 +1,13 @@
 """Test the group config flow."""
 
+from unittest.mock import patch
+
 from tryke import Depends, expect, fixture, test
 
+from homeassistant import config_entries
+from homeassistant.components.group import DOMAIN, async_setup_entry
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
@@ -12,13 +17,60 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("requires 15-row pytest parametrize over group platforms (binary_sensor, button, cover, ...)")
-async def config_flow(
+@test
+async def config_flow_binary_sensor(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Test the config flow."""
-    expect(True).to_be(True)
+    """Test the binary_sensor config flow (one row of the original parametrize)."""
+    group_type = "binary_sensor"
+    members = [f"{group_type}.one", f"{group_type}.two"]
+    for member in members:
+        hass.states.async_set(member, "on", {})
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.MENU)
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"next_step_id": group_type},
+    )
+    await hass.async_block_till_done()
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(group_type)
+
+    with patch(
+        "homeassistant.components.group.async_setup_entry", wraps=async_setup_entry
+    ) as mock_setup_entry:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "name": "Living Room",
+                "entities": members,
+            },
+        )
+        await hass.async_block_till_done()
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Living Room")
+    expect(result["data"]).to_equal({})
+    expect(result["options"]).to_equal(
+        {
+            "entities": members,
+            "group_type": group_type,
+            "hide_members": False,
+            "name": "Living Room",
+            "all": False,
+        }
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
+@test.skip("requires 15-row pytest parametrize over group platforms (binary_sensor, button, cover, ...)")
+async def config_flow() -> None:
+    """Stub for test_config_flow (port deferred — needs test.cases conversion)."""
 
 
 @test.skip("requires 6-row pytest parametrize over group platforms (light/switch/binary_sensor)")
