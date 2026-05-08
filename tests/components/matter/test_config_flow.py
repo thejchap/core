@@ -1,24 +1,85 @@
 """Test the matter config flow."""
 
+from unittest.mock import AsyncMock, patch
+
 from tryke import Depends, expect, fixture, test
 
+from homeassistant import config_entries
+from homeassistant.components.matter.const import DOMAIN
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
 @fixture
-def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+def setup_entry():
+    """Mock entry setup."""
+    with patch(
+        "homeassistant.components.matter.async_setup_entry", return_value=True
+    ) as mock_setup_entry:
+        yield mock_setup_entry
+
+
+@fixture
+def unload_entry():
+    """Mock entry unload."""
+    with patch(
+        "homeassistant.components.matter.async_unload_entry", return_value=True
+    ) as mock_unload_entry:
+        yield mock_unload_entry
+
+
+@fixture
+def client_connect():
+    """Mock server version."""
+    with patch(
+        "homeassistant.components.matter.config_flow.MatterClient.connect"
+    ) as client_connect:
+        yield client_connect
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _setup_entry: AsyncMock = Depends(setup_entry),
+    _unload_entry: AsyncMock = Depends(unload_entry),
+    _client_connect: AsyncMock = Depends(client_connect),
+) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
+@test
 async def manual_create_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    client_connect_mock: AsyncMock = Depends(client_connect),
+    setup_entry_mock: AsyncMock = Depends(setup_entry),
 ) -> None:
     """Test user step create entry."""
-    expect(True).to_be(True)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_be(None)
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"url": "ws://localhost:5580/ws"},
+    )
+    await hass.async_block_till_done()
+
+    expect(client_connect_mock.call_count).to_equal(1)
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Matter")
+    expect(result["data"]).to_equal(
+        {
+            "url": "ws://localhost:5580/ws",
+            "integration_created_addon": False,
+            "use_addon": False,
+        }
+    )
+    expect(setup_entry_mock.call_count).to_equal(1)
 
 
 @test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
