@@ -2,6 +2,15 @@
 
 from tryke import test
 
+# Re-exported for test_config_flow.py compatibility (legacy import).
+MOCK_CONFIG_DATA = {
+    "name": "IP Webcam",
+    "host": "1.1.1.1",
+    "port": 8080,
+    "username": "user",
+    "password": "pass",
+}
+
 
 @test.skip("sibling test pending fixture migration to _fixtures.py")
 async def successful_config_entry() -> None:
