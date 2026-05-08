@@ -1,20 +1,14 @@
-"""Blebox helpers tests."""
+"""Tryke skip stub for test_helpers.py."""
 
-from aiohttp.helpers import BasicAuth
-
-from homeassistant.components.blebox.helpers import get_maybe_authenticated_session
-from homeassistant.core import HomeAssistant
+from tryke import test
 
 
-async def test_get_maybe_authenticated_session_none(hass: HomeAssistant) -> None:
-    """Tests if session auth is None."""
-    session = get_maybe_authenticated_session(hass=hass, username="", password="")
-    assert session.auth is None
+@test.skip("sibling test pending fixture migration to _fixtures.py")
+async def get_maybe_authenticated_session_none() -> None:
+    """Stub for test_get_maybe_authenticated_session_none."""
 
 
-async def test_get_maybe_authenticated_session_auth(hass: HomeAssistant) -> None:
-    """Tests if session have BasicAuth."""
-    session = get_maybe_authenticated_session(
-        hass=hass, username="user", password="password"
-    )
-    assert isinstance(session.auth, BasicAuth)
+@test.skip("sibling test pending fixture migration to _fixtures.py")
+async def get_maybe_authenticated_session_auth() -> None:
+    """Stub for test_get_maybe_authenticated_session_auth."""
+

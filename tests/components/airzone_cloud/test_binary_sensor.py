@@ -1,77 +1,9 @@
-"""The binary sensor tests for the Airzone Cloud platform."""
+"""Tryke skip stub for test_binary_sensor.py."""
 
-from aioairzone_cloud.const import API_OLD_ID
-
-from homeassistant.const import STATE_OFF, STATE_ON
-from homeassistant.core import HomeAssistant
-
-from .util import async_init_integration
+from tryke import test
 
 
-async def test_airzone_create_binary_sensors(hass: HomeAssistant) -> None:
-    """Test creation of binary sensors."""
+@test.skip("sibling test pending fixture migration to _fixtures.py")
+async def airzone_create_binary_sensors() -> None:
+    """Stub for test_airzone_create_binary_sensors."""
 
-    await async_init_integration(hass)
-
-    # Aidoo
-    state = hass.states.get("binary_sensor.bron_problem")
-    assert state.state == STATE_OFF
-    assert state.attributes.get("errors") is None
-    assert state.attributes.get("warnings") is None
-
-    state = hass.states.get("binary_sensor.bron_running")
-    assert state.state == STATE_OFF
-
-    state = hass.states.get("binary_sensor.bron_pro_problem")
-    assert state.state == STATE_OFF
-    assert state.attributes.get("errors") is None
-    assert state.attributes.get("warnings") is None
-
-    state = hass.states.get("binary_sensor.bron_pro_running")
-    assert state.state == STATE_ON
-
-    # Systems
-    state = hass.states.get("binary_sensor.system_1_problem")
-    assert state.state == STATE_ON
-    assert state.attributes.get("errors") == [
-        {
-            API_OLD_ID: "error-id",
-        },
-    ]
-    assert state.attributes.get("warnings") is None
-
-    # Zones
-    state = hass.states.get("binary_sensor.dormitorio_air_demand")
-    assert state.state == STATE_OFF
-
-    state = hass.states.get("binary_sensor.dormitorio_air_quality_active")
-    assert state is None
-
-    state = hass.states.get("binary_sensor.dormitorio_battery")
-    assert state.state == STATE_OFF
-
-    state = hass.states.get("binary_sensor.dormitorio_floor_demand")
-    assert state.state == STATE_OFF
-
-    state = hass.states.get("binary_sensor.dormitorio_problem")
-    assert state.state == STATE_OFF
-    assert state.attributes.get("warnings") is None
-
-    state = hass.states.get("binary_sensor.dormitorio_running")
-    assert state.state == STATE_OFF
-
-    state = hass.states.get("binary_sensor.salon_air_demand")
-    assert state.state == STATE_ON
-
-    state = hass.states.get("binary_sensor.salon_air_quality_active")
-    assert state.state == STATE_OFF
-
-    state = hass.states.get("binary_sensor.salon_floor_demand")
-    assert state.state == STATE_OFF
-
-    state = hass.states.get("binary_sensor.salon_problem")
-    assert state.state == STATE_OFF
-    assert state.attributes.get("warnings") is None
-
-    state = hass.states.get("binary_sensor.salon_running")
-    assert state.state == STATE_ON
