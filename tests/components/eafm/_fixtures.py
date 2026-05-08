@@ -45,3 +45,26 @@ def mock_get_station(
     with patch("homeassistant.components.eafm.coordinator.get_station") as patched:
         patched.return_value = initial_value
         yield patched
+
+
+from homeassistant.components.eafm.const import DOMAIN
+from homeassistant.core import HomeAssistant
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
+
+
+@fixture
+def mock_config_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> MockConfigEntry:
+    """Create a dummy config entry for testing."""
+    entry = MockConfigEntry(
+        version=1,
+        domain=DOMAIN,
+        entry_id="VikingRecorder1234",
+        data={"station": "L1234"},
+        title="Viking Recorder",
+    )
+    entry.add_to_hass(hass)
+    return entry
