@@ -107,3 +107,49 @@ def mock_receiver() -> MockReceiver:
 def mock_usb_component(hass: HomeAssistant = Depends(hass_fixture)) -> None:
     """Mock the USB component to prevent setup failures."""
     hass.config.components.add("usb")
+
+
+@fixture
+def mock_config_entry(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> MockConfigEntry:
+    """Create a mock config entry."""
+    from unittest.mock import patch  # noqa: PLC0415
+
+    from homeassistant.components.denon_rs232.config_flow import CONF_MODEL_NAME  # noqa: PLC0415
+    from homeassistant.components.denon_rs232.const import DOMAIN  # noqa: PLC0415
+    from homeassistant.const import CONF_DEVICE, CONF_MODEL  # noqa: PLC0415
+
+    from tests.common import MockConfigEntry  # noqa: PLC0415
+
+    del patch  # imported only for completeness in module-level fixtures
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_DEVICE: MOCK_DEVICE,
+            CONF_MODEL: MOCK_MODEL,
+            CONF_MODEL_NAME: "AVR-3805",
+        },
+        title="AVR-3805",
+        entry_id="01KPBBPM6WCQ8148EFR0TCG1WW",
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+@fixture
+async def init_components(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _usb: None = Depends(mock_usb_component),
+    mock_receiver: MockReceiver = Depends(mock_receiver),
+    mock_config_entry=Depends(mock_config_entry),
+) -> None:
+    """Initialize the Denon component."""
+    from unittest.mock import patch  # noqa: PLC0415
+
+    with patch(
+        "homeassistant.components.denon_rs232.DenonReceiver",
+        return_value=mock_receiver,
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
