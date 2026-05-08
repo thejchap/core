@@ -1,43 +1,76 @@
-"""Tryke skip-stubs for test_init.py - large file (948 LOC) - port deferred."""
+"""Test Konnected setup process."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("large file (948 LOC) - port deferred")
+from homeassistant.components import konnected
+from homeassistant.core import HomeAssistant
+from homeassistant.setup import async_setup_component
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Module-level fixture anchor."""
+
+
+@test.skip("requires konnected.Client mock chain - port deferred")
 async def config_schema() -> None:
     """Stub for test_config_schema."""
 
-@test.skip("large file (948 LOC) - port deferred")
-async def setup_with_no_config() -> None:
-    """Stub for test_setup_with_no_config."""
 
-@test.skip("large file (948 LOC) - port deferred")
+@test
+async def setup_with_no_config(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test that we do not discover or set up a Konnected panel without config."""
+    expect(await async_setup_component(hass, konnected.DOMAIN, {})).to_be(True)
+
+    # No flows started
+    expect(len(hass.config_entries.flow.async_progress())).to_equal(0)
+
+    # Nothing saved from configuration.yaml
+    expect(hass.data[konnected.DOMAIN][konnected.CONF_ACCESS_TOKEN]).to_be(None)
+    expect(hass.data[konnected.DOMAIN][konnected.CONF_API_HOST]).to_be(None)
+    expect(konnected.YAML_CONFIGS not in hass.data[konnected.DOMAIN]).to_be(True)
+
+
+@test.skip("requires konnected.Client mock chain - port deferred")
 async def setup_defined_hosts_known_auth() -> None:
-    """Stub for test_setup_defined_hosts_known_auth."""
+    """Stub."""
 
-@test.skip("large file (948 LOC) - port deferred")
+
+@test.skip("requires konnected.Client mock chain - port deferred")
 async def setup_defined_hosts_no_known_auth() -> None:
-    """Stub for test_setup_defined_hosts_no_known_auth."""
+    """Stub."""
 
-@test.skip("large file (948 LOC) - port deferred")
+
+@test.skip("requires konnected.Client mock chain - port deferred")
 async def setup_multiple() -> None:
-    """Stub for test_setup_multiple."""
+    """Stub."""
 
-@test.skip("large file (948 LOC) - port deferred")
+
+@test.skip("requires konnected.Client mock chain - port deferred")
 async def config_passed_to_config_entry() -> None:
-    """Stub for test_config_passed_to_config_entry."""
+    """Stub."""
 
-@test.skip("large file (948 LOC) - port deferred")
+
+@test.skip("requires konnected.Client mock chain - port deferred")
 async def unload_entry() -> None:
-    """Stub for test_unload_entry."""
+    """Stub."""
 
-@test.skip("large file (948 LOC) - port deferred")
+
+@test.skip("requires konnected.Client mock chain - port deferred")
 async def api() -> None:
-    """Stub for test_api."""
+    """Stub."""
 
-@test.skip("large file (948 LOC) - port deferred")
+
+@test.skip("requires konnected.Client mock chain - port deferred")
 async def state_updates_zone() -> None:
-    """Stub for test_state_updates_zone."""
+    """Stub."""
 
-@test.skip("large file (948 LOC) - port deferred")
+
+@test.skip("requires konnected.Client mock chain - port deferred")
 async def state_updates_pin() -> None:
-    """Stub for test_state_updates_pin."""
+    """Stub."""
