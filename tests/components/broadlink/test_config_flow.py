@@ -1,170 +1,131 @@
-"""Tryke skip-stubs for broadlink config flow tests.
+"""Test the Broadlink config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from unittest.mock import patch
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_user_works() -> None:
-    """Stub for test_flow_user_works (port deferred)."""
+from homeassistant import config_entries
+from homeassistant.components.broadlink.const import DOMAIN
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_user_already_in_progress() -> None:
-    """Stub for test_flow_user_already_in_progress (port deferred)."""
+from . import get_device
+from ._fixtures import broadlink_setup, mock_heartbeat
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_user_mac_already_configured() -> None:
-    """Stub for test_flow_user_mac_already_configured (port deferred)."""
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_user_invalid_ip_address() -> None:
-    """Stub for test_flow_user_invalid_ip_address (port deferred)."""
+DEVICE_HELLO = "homeassistant.components.broadlink.config_flow.blk.hello"
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_user_invalid_hostname() -> None:
-    """Stub for test_flow_user_invalid_hostname (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_user_device_not_found() -> None:
-    """Stub for test_flow_user_device_not_found (port deferred)."""
+@fixture
+def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+    _heartbeat: None = Depends(mock_heartbeat),
+    _setup: None = Depends(broadlink_setup),
+) -> HomeAssistant:
+    """Anchor fixture so tryke fully resolves hass."""
+    return hass
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_user_device_not_supported() -> None:
-    """Stub for test_flow_user_device_not_supported (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_user_network_unreachable() -> None:
-    """Stub for test_flow_user_network_unreachable (port deferred)."""
+@test
+async def flow_user_works(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test a config flow initiated by the user."""
+    device = get_device("Living Room")
+    mock_api = device.get_mock_api()
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_user_os_error() -> None:
-    """Stub for test_flow_user_os_error (port deferred)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_auth_authentication_error() -> None:
-    """Stub for test_flow_auth_authentication_error (port deferred)."""
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_auth_network_timeout() -> None:
-    """Stub for test_flow_auth_network_timeout (port deferred)."""
+    with patch(DEVICE_HELLO, return_value=mock_api) as mock_hello:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"host": device.host, "timeout": device.timeout},
+        )
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_auth_firmware_error() -> None:
-    """Stub for test_flow_auth_firmware_error (port deferred)."""
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("finish")
+    expect(result["errors"]).to_equal({})
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_auth_network_unreachable() -> None:
-    """Stub for test_flow_auth_network_unreachable (port deferred)."""
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"name": device.name},
+    )
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_auth_os_error() -> None:
-    """Stub for test_flow_auth_os_error (port deferred)."""
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal(device.name)
+    expect(result["data"]).to_equal(device.get_entry_data())
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_reset_works() -> None:
-    """Stub for test_flow_reset_works (port deferred)."""
+    expect(mock_hello.call_count).to_equal(1)
+    expect(mock_api.auth.call_count).to_equal(1)
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_unlock_works() -> None:
-    """Stub for test_flow_unlock_works (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_unlock_network_timeout() -> None:
-    """Stub for test_flow_unlock_network_timeout (port deferred)."""
+@test.skip("multiple-flow-progress test not yet ported")
+async def flow_user_already_in_progress(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test we do not accept more than one config flow per device."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_unlock_firmware_error() -> None:
-    """Stub for test_flow_unlock_firmware_error (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_unlock_network_unreachable() -> None:
-    """Stub for test_flow_unlock_network_unreachable (port deferred)."""
+@test.skip("invalid_host_test not yet ported")
+async def flow_user_invalid_host(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test invalid host handling."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_unlock_os_error() -> None:
-    """Stub for test_flow_unlock_os_error (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_do_not_unlock() -> None:
-    """Stub for test_flow_do_not_unlock (port deferred)."""
+@test.skip("auth flow tests not yet ported")
+async def flow_user_authentication(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test auth-related flow."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_import_works() -> None:
-    """Stub for test_flow_import_works (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_import_already_in_progress() -> None:
-    """Stub for test_flow_import_already_in_progress (port deferred)."""
+@test.skip("device_offline_test not yet ported")
+async def flow_user_device_offline(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test device offline handling."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_import_host_already_configured() -> None:
-    """Stub for test_flow_import_host_already_configured (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_import_mac_already_configured() -> None:
-    """Stub for test_flow_import_mac_already_configured (port deferred)."""
+@test.skip("flow tests with multiple parametrize not yet ported")
+async def flow_user_already_configured(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test already configured."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_import_device_not_found() -> None:
-    """Stub for test_flow_import_device_not_found (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_import_device_not_supported() -> None:
-    """Stub for test_flow_import_device_not_supported (port deferred)."""
+@test.skip("dhcp flow tests not yet ported")
+async def flow_dhcp_can_finish(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test dhcp flow can finish."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_import_invalid_ip_address() -> None:
-    """Stub for test_flow_import_invalid_ip_address (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_import_invalid_hostname() -> None:
-    """Stub for test_flow_import_invalid_hostname (port deferred)."""
+@test.skip("dhcp flow tests not yet ported")
+async def flow_dhcp_already_configured(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test dhcp flow already configured."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_import_network_unreachable() -> None:
-    """Stub for test_flow_import_network_unreachable (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_import_os_error() -> None:
-    """Stub for test_flow_import_os_error (port deferred)."""
+@test.skip("dhcp flow tests not yet ported")
+async def flow_dhcp_unsupported_device(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test dhcp flow unsupported device."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_reauth_works() -> None:
-    """Stub for test_flow_reauth_works (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_reauth_invalid_host() -> None:
-    """Stub for test_flow_reauth_invalid_host (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def flow_reauth_valid_host() -> None:
-    """Stub for test_flow_reauth_valid_host (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_can_finish() -> None:
-    """Stub for test_dhcp_can_finish (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_fails_to_connect() -> None:
-    """Stub for test_dhcp_fails_to_connect (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_unreachable() -> None:
-    """Stub for test_dhcp_unreachable (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_connect_unknown_error() -> None:
-    """Stub for test_dhcp_connect_unknown_error (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_device_not_supported() -> None:
-    """Stub for test_dhcp_device_not_supported (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_already_exists() -> None:
-    """Stub for test_dhcp_already_exists (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_updates_host() -> None:
-    """Stub for test_dhcp_updates_host (port deferred)."""
+@test.skip("reauth flow tests not yet ported")
+async def flow_reauth(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test reauth flow."""
