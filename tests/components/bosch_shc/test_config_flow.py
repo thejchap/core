@@ -1,13 +1,36 @@
-"""Tryke skip-stubs for bosch_shc config flow tests.
+"""Test the bosch_shc config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from tryke import Depends, expect, fixture, test
 
-from tryke import test
+from homeassistant import config_entries
+from homeassistant.components.bosch_shc.const import DOMAIN
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def form_user() -> None:
-    """Stub for test_form_user (port deferred)."""
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+from tests.hass_tryke_helpers import mock_async_zeroconf
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _zeroconf=Depends(mock_async_zeroconf),
+) -> None:
+    """Anchor fixture for tryke fixture-injection."""
+
+
+@test
+async def form_user(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the form."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def form_get_info_connection_error() -> None:
