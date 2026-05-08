@@ -1,24 +1,273 @@
-"""Tryke skip stub for test_sensor.py."""
+"""The test for the DNS IP sensor platform."""
 
-from tryke import test
+from datetime import timedelta
+from unittest.mock import patch
+
+from aiodns.error import DNSError
+from freezegun.api import FrozenDateTimeFactory
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.dnsip.const import (
+    CONF_HOSTNAME,
+    CONF_IPV4,
+    CONF_IPV6,
+    CONF_PORT_IPV6,
+    CONF_RESOLVER,
+    CONF_RESOLVER_IPV6,
+    DOMAIN,
+)
+from homeassistant.components.dnsip.sensor import SCAN_INTERVAL
+from homeassistant.config_entries import SOURCE_USER
+from homeassistant.const import CONF_NAME, CONF_PORT, STATE_UNAVAILABLE
+from homeassistant.core import HomeAssistant
+
+from . import RetrieveDNS
+
+from tests.common import MockConfigEntry, async_fire_time_changed
+from tests.hass_fixtures import freezer as freezer_fixture, hass as hass_fixture, mock_network
 
 
-@test.skip("sibling test pending fixture migration to _fixtures.py")
-async def sensor() -> None:
-    """Stub for test_sensor."""
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    """Force tryke to fully resolve hass."""
+    return hass
 
 
-@test.skip("sibling test pending fixture migration to _fixtures.py")
-async def legacy_sensor() -> None:
-    """Stub for test_legacy_sensor."""
+@test
+async def sensor(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the DNS IP sensor."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        source=SOURCE_USER,
+        data={
+            CONF_HOSTNAME: "home-assistant.io",
+            CONF_NAME: "home-assistant.io",
+            CONF_IPV4: True,
+            CONF_IPV6: True,
+        },
+        options={
+            CONF_RESOLVER: "208.67.222.222",
+            CONF_RESOLVER_IPV6: "2620:119:53::53",
+            CONF_PORT: 53,
+            CONF_PORT_IPV6: 53,
+        },
+        entry_id="1",
+        unique_id="home-assistant.io",
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "homeassistant.components.dnsip.sensor.aiodns.DNSResolver",
+        return_value=RetrieveDNS(),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    state1 = hass.states.get("sensor.home_assistant_io")
+    state2 = hass.states.get("sensor.home_assistant_io_ipv6")
+
+    expect(state1).not_.to_be(None)
+    expect(state1.state).to_equal("1.1.1.1")
+    expect(state1.attributes["ip_addresses"]).to_equal(["1.1.1.1", "1.2.3.4"])
+    expect(state2).not_.to_be(None)
+    expect(state2.state).to_equal("2001:db8::77:dead:beef")
+    expect(state2.attributes["ip_addresses"]).to_equal(
+        [
+            "2001:db8::77:dead:beef",
+            "2001:db8:66::dead:beef",
+            "2001:db8:77::dead:beef",
+            "2001:db8:77::face:b00c",
+        ]
+    )
 
 
-@test.skip("sibling test pending fixture migration to _fixtures.py")
-async def sensor_no_response() -> None:
-    """Stub for test_sensor_no_response."""
+@test
+async def legacy_sensor(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the DNS IP sensor configured before the addition of ports."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        source=SOURCE_USER,
+        data={
+            CONF_HOSTNAME: "home-assistant.io",
+            CONF_NAME: "home-assistant.io",
+            CONF_IPV4: True,
+            CONF_IPV6: True,
+        },
+        options={
+            CONF_RESOLVER: "208.67.222.222",
+            CONF_RESOLVER_IPV6: "2620:119:53::53",
+        },
+        entry_id="1",
+        unique_id="home-assistant.io",
+        version=1,
+        minor_version=1,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "homeassistant.components.dnsip.sensor.aiodns.DNSResolver",
+        return_value=RetrieveDNS(),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    state1 = hass.states.get("sensor.home_assistant_io")
+    state2 = hass.states.get("sensor.home_assistant_io_ipv6")
+
+    expect(state1).not_.to_be(None)
+    expect(state1.state).to_equal("1.1.1.1")
+    expect(state1.attributes["ip_addresses"]).to_equal(["1.1.1.1", "1.2.3.4"])
+    expect(state2).not_.to_be(None)
+    expect(state2.state).to_equal("2001:db8::77:dead:beef")
+    expect(state2.attributes["ip_addresses"]).to_equal(
+        [
+            "2001:db8::77:dead:beef",
+            "2001:db8:66::dead:beef",
+            "2001:db8:77::dead:beef",
+            "2001:db8:77::face:b00c",
+        ]
+    )
 
 
-@test.skip("sibling test pending fixture migration to _fixtures.py")
-async def sensor_timeout() -> None:
-    """Stub for test_sensor_timeout."""
+@test
+async def sensor_no_response(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    freezer: FrozenDateTimeFactory = Depends(freezer_fixture),
+) -> None:
+    """Test the DNS IP sensor with DNS error."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        source=SOURCE_USER,
+        data={
+            CONF_HOSTNAME: "home-assistant.io",
+            CONF_NAME: "home-assistant.io",
+            CONF_IPV4: True,
+            CONF_IPV6: False,
+        },
+        options={
+            CONF_RESOLVER: "208.67.222.222",
+            CONF_RESOLVER_IPV6: "2620:119:53::53",
+            CONF_PORT: 53,
+            CONF_PORT_IPV6: 53,
+        },
+        entry_id="1",
+        unique_id="home-assistant.io",
+    )
+    entry.add_to_hass(hass)
 
+    dns_mock = RetrieveDNS()
+    with patch(
+        "homeassistant.components.dnsip.sensor.aiodns.DNSResolver",
+        return_value=dns_mock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.home_assistant_io")
+
+    expect(state).not_.to_be(None)
+    expect(state.state).to_equal("1.1.1.1")
+
+    dns_mock.error = DNSError()
+    with patch(
+        "homeassistant.components.dnsip.sensor.aiodns.DNSResolver",
+        return_value=dns_mock,
+    ):
+        freezer.tick(timedelta(seconds=SCAN_INTERVAL.seconds))
+        async_fire_time_changed(hass)
+        freezer.tick(timedelta(seconds=SCAN_INTERVAL.seconds))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+
+        # Allows 2 retries before going unavailable
+        state = hass.states.get("sensor.home_assistant_io")
+        expect(state.state).to_equal("1.1.1.1")
+        expect(state.attributes["ip_addresses"]).to_equal(["1.1.1.1", "1.2.3.4"])
+
+        freezer.tick(timedelta(seconds=SCAN_INTERVAL.seconds))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.home_assistant_io")
+    expect(state.state).to_equal(STATE_UNAVAILABLE)
+
+
+@test
+async def sensor_timeout(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    freezer: FrozenDateTimeFactory = Depends(freezer_fixture),
+) -> None:
+    """Test the DNS IP sensor with timeout."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        source=SOURCE_USER,
+        data={
+            CONF_HOSTNAME: "home-assistant.io",
+            CONF_NAME: "home-assistant.io",
+            CONF_IPV4: True,
+            CONF_IPV6: False,
+        },
+        options={
+            CONF_RESOLVER: "208.67.222.222",
+            CONF_RESOLVER_IPV6: "2620:119:53::53",
+            CONF_PORT: 53,
+            CONF_PORT_IPV6: 53,
+        },
+        entry_id="1",
+        unique_id="home-assistant.io",
+    )
+    entry.add_to_hass(hass)
+
+    dns_mock = RetrieveDNS()
+    with patch(
+        "homeassistant.components.dnsip.sensor.aiodns.DNSResolver",
+        return_value=dns_mock,
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.home_assistant_io")
+
+    expect(state).not_.to_be(None)
+    expect(state.state).to_equal("1.1.1.1")
+
+    with (
+        patch(
+            "homeassistant.components.dnsip.sensor.aiodns.DNSResolver",
+            return_value=dns_mock,
+        ),
+        patch(
+            "homeassistant.components.dnsip.sensor.asyncio.timeout",
+            side_effect=TimeoutError(),
+        ),
+    ):
+        freezer.tick(timedelta(seconds=SCAN_INTERVAL.seconds))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+
+        # Allows 2 retries before going unavailable
+        state = hass.states.get("sensor.home_assistant_io")
+        expect(state.state).to_equal("1.1.1.1")
+        expect(state.attributes["ip_addresses"]).to_equal(["1.1.1.1", "1.2.3.4"])
+
+        freezer.tick(timedelta(seconds=SCAN_INTERVAL.seconds))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+
+        freezer.tick(timedelta(seconds=SCAN_INTERVAL.seconds))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.home_assistant_io")
+    expect(state.state).to_equal(STATE_UNAVAILABLE)
