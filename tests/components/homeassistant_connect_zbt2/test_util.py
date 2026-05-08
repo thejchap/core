@@ -1,7 +1,41 @@
-"""Tryke skip-stubs for test_util.py - sibling port deferred (36 LOC, 0 parametrize)."""
+"""Test Connect ZBT-2 utilities."""
 
-from tryke import test
+from tryke import expect, test
 
-@test.skip("sibling port deferred (36 LOC, 0 parametrize)")
-async def get_usb_service_info() -> None:
-    """Stub for test_get_usb_service_info."""
+from homeassistant.components.homeassistant_connect_zbt2.const import DOMAIN
+from homeassistant.components.homeassistant_connect_zbt2.util import (
+    get_usb_service_info,
+)
+from homeassistant.helpers.service_info.usb import UsbServiceInfo
+
+from tests.common import MockConfigEntry
+
+CONNECT_ZBT2_CONFIG_ENTRY = MockConfigEntry(
+    domain=DOMAIN,
+    unique_id="some_unique_id",
+    data={
+        "device": "/dev/serial/by-id/usb-Nabu_Casa_ZBT-2_80B54EEFAE18-if01-port0",
+        "vid": "303A",
+        "pid": "4001",
+        "serial_number": "80B54EEFAE18",
+        "manufacturer": "Nabu Casa",
+        "product": "ZBT-2",
+        "firmware": "ezsp",
+    },
+    version=2,
+)
+
+
+@test
+def get_usb_service_info_test() -> None:
+    """Test `get_usb_service_info` conversion."""
+    expect(get_usb_service_info(CONNECT_ZBT2_CONFIG_ENTRY)).to_equal(
+        UsbServiceInfo(
+            device=CONNECT_ZBT2_CONFIG_ENTRY.data["device"],
+            vid=CONNECT_ZBT2_CONFIG_ENTRY.data["vid"],
+            pid=CONNECT_ZBT2_CONFIG_ENTRY.data["pid"],
+            serial_number=CONNECT_ZBT2_CONFIG_ENTRY.data["serial_number"],
+            manufacturer=CONNECT_ZBT2_CONFIG_ENTRY.data["manufacturer"],
+            description=CONNECT_ZBT2_CONFIG_ENTRY.data["product"],
+        )
+    )
