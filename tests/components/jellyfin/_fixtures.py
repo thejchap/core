@@ -1,6 +1,6 @@
 """Tryke fixtures for the Jellyfin integration."""
 
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 from jellyfin_apiclient_python import JellyfinClient
@@ -11,11 +11,13 @@ from tryke import Depends, fixture
 
 from homeassistant.components.jellyfin.const import DOMAIN
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
+from homeassistant.core import HomeAssistant
 
 from . import load_json_fixture
 from .const import TEST_PASSWORD, TEST_URL, TEST_USERNAME
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fx
 
 
 @fixture
@@ -106,3 +108,16 @@ def mock_jellyfin(
         jf = jellyfin_mock.return_value
         jf.get_client.return_value = mock_client_obj
         yield jf
+
+
+@fixture
+async def init_integration(
+    hass: HomeAssistant = Depends(hass_fx),
+    mock_config_entry_obj: MockConfigEntry = Depends(mock_config_entry),
+    mock_jellyfin_obj: MagicMock = Depends(mock_jellyfin),
+) -> AsyncGenerator[MockConfigEntry]:
+    """Set up the Jellyfin integration for testing."""
+    mock_config_entry_obj.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry_obj.entry_id)
+    await hass.async_block_till_done()
+    yield mock_config_entry_obj

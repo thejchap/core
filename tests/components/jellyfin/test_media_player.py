@@ -1,47 +1,91 @@
-"""Tryke skip-stubs for test_media_player.py - large file (643 LOC) - port deferred."""
+"""Tests for the Jellyfin media_player platform."""
 
-from tryke import test
+from unittest.mock import MagicMock
 
-@test.skip("large file (643 LOC) - port deferred")
-async def media_player() -> None:
-    """Stub for test_media_player."""
+from tryke import Depends, expect, fixture, test
 
-@test.skip("large file (643 LOC) - port deferred")
+from homeassistant.components.media_player import MediaPlayerState
+from homeassistant.core import HomeAssistant
+
+from ._fixtures import (
+    init_integration,
+    mock_api,
+    mock_auth,
+    mock_client,
+    mock_config,
+    mock_config_entry,
+    mock_jellyfin,
+)
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Module-level fixture anchor."""
+
+
+@test
+async def media_player(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _init: MockConfigEntry = Depends(init_integration),
+    _jellyfin: MagicMock = Depends(mock_jellyfin),
+    _api: MagicMock = Depends(mock_api),
+) -> None:
+    """Test the Jellyfin media player initial state."""
+    state = hass.states.get("media_player.jellyfin_device")
+
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal(MediaPlayerState.PAUSED)
+
+
+@test.skip("port deferred - sibling tests")
 async def media_player_music() -> None:
-    """Stub for test_media_player_music."""
+    """Stub."""
 
-@test.skip("large file (643 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def services() -> None:
-    """Stub for test_services."""
+    """Stub."""
 
-@test.skip("large file (643 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def services_enqueue() -> None:
-    """Stub for test_services_enqueue."""
+    """Stub."""
 
-@test.skip("large file (643 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def services_shuffle() -> None:
-    """Stub for test_services_shuffle."""
+    """Stub."""
 
-@test.skip("large file (643 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def browse_media() -> None:
-    """Stub for test_browse_media."""
+    """Stub."""
 
-@test.skip("large file (643 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def search_media() -> None:
-    """Stub for test_search_media."""
+    """Stub."""
 
-@test.skip("large file (643 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def new_client_connected() -> None:
-    """Stub for test_new_client_connected."""
+    """Stub."""
 
-@test.skip("large file (643 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def supports_media_control_fallback() -> None:
-    """Stub for test_supports_media_control_fallback."""
+    """Stub."""
 
-@test.skip("large file (643 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def set_volume_command_alternative() -> None:
-    """Stub for test_set_volume_command_alternative."""
+    """Stub."""
 
-@test.skip("large file (643 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def mute_requires_both_commands() -> None:
-    """Stub for test_mute_requires_both_commands."""
+    """Stub."""
