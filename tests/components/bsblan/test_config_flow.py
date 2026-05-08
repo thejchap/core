@@ -1,122 +1,225 @@
-"""Tryke skip-stubs for bsblan config flow tests.
+"""Tests for the BSBLan device config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from unittest.mock import AsyncMock, MagicMock
 
-from tryke import test
+from bsblan import BSBLANAuthError, BSBLANConnectionError, BSBLANError
+from tryke import Depends, expect, fixture, test
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def full_user_flow_implementation() -> None:
-    """Stub for test_full_user_flow_implementation (port deferred)."""
+from homeassistant.components.bsblan.const import (
+    CONF_HEATING_CIRCUITS,
+    CONF_PASSKEY,
+    DOMAIN,
+)
+from homeassistant.config_entries import SOURCE_USER
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers.device_registry import format_mac
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def show_user_form() -> None:
-    """Stub for test_show_user_form (port deferred)."""
+from ._fixtures import mock_bsblan, mock_config_entry, mock_setup_entry
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def circuit_discovery_failure_falls_back_to_default() -> None:
-    """Stub for test_circuit_discovery_failure_falls_back_to_default (port deferred)."""
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def connection_error() -> None:
-    """Stub for test_connection_error (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def authentication_error() -> None:
-    """Stub for test_authentication_error (port deferred)."""
+@fixture
+def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+) -> HomeAssistant:
+    """Anchor fixture so tryke fully resolves hass."""
+    return hass
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def authentication_error_vs_connection_error() -> None:
-    """Stub for test_authentication_error_vs_connection_error (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def user_device_exists_abort() -> None:
-    """Stub for test_user_device_exists_abort (port deferred)."""
+@test
+async def full_user_flow_implementation(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    bsblan_mock: MagicMock = Depends(mock_bsblan),
+    setup_mock: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Test the full manual user flow from start to finish."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_USER},
+    )
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_discovery() -> None:
-    """Stub for test_zeroconf_discovery (port deferred)."""
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_HOST: "127.0.0.1",
+            CONF_PORT: 80,
+            CONF_PASSKEY: "1234",
+            CONF_USERNAME: "admin",
+            CONF_PASSWORD: "admin1234",
+        },
+    )
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def abort_if_existing_entry_for_zeroconf() -> None:
-    """Stub for test_abort_if_existing_entry_for_zeroconf (port deferred)."""
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("title")).to_equal("BSB-LAN")
+    expect(result.get("data")).to_equal(
+        {
+            CONF_HOST: "127.0.0.1",
+            CONF_PORT: 80,
+            CONF_PASSKEY: "1234",
+            CONF_USERNAME: "admin",
+            CONF_PASSWORD: "admin1234",
+            CONF_HEATING_CIRCUITS: [1],
+        }
+    )
+    expect(result["result"].unique_id).to_equal(format_mac("00:80:41:19:69:90"))
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_discovery_no_mac_requires_auth() -> None:
-    """Stub for test_zeroconf_discovery_no_mac_requires_auth (port deferred)."""
+    expect(len(setup_mock.mock_calls)).to_equal(1)
+    expect(len(bsblan_mock.device.mock_calls)).to_equal(1)
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_discovery_no_mac_no_auth_required() -> None:
-    """Stub for test_zeroconf_discovery_no_mac_no_auth_required (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_discovery_connection_error() -> None:
-    """Stub for test_zeroconf_discovery_connection_error (port deferred)."""
+@test
+async def show_user_form(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test that the user set up form is served."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_USER},
+    )
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_discovery_updates_host_port_on_existing_entry() -> None:
-    """Stub for test_zeroconf_discovery_updates_host_port_on_existing_entry (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def user_flow_can_update_existing_host_port() -> None:
-    """Stub for test_user_flow_can_update_existing_host_port (port deferred)."""
+@test.cases(
+    test.case("bsblan_error", side_effect=BSBLANError),
+    test.case("timeout", side_effect=TimeoutError),
+)
+async def circuit_discovery_failure_falls_back_to_default(
+    *,
+    side_effect: type[Exception],
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    bsblan_mock: MagicMock = Depends(mock_bsblan),
+    _setup: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Test that circuit discovery failure falls back to single circuit."""
+    bsblan_mock.initialize.side_effect = side_effect
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_discovery_connection_error_recovery() -> None:
-    """Stub for test_zeroconf_discovery_connection_error_recovery (port deferred)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result.get("type")).to_be(FlowResultType.FORM)
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def connection_error_recovery() -> None:
-    """Stub for test_connection_error_recovery (port deferred)."""
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_HOST: "127.0.0.1",
+            CONF_PORT: 80,
+            CONF_PASSKEY: "1234",
+            CONF_USERNAME: "admin",
+            CONF_PASSWORD: "admin1234",
+        },
+    )
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_discovery_no_mac_duplicate_host_port() -> None:
-    """Stub for test_zeroconf_discovery_no_mac_duplicate_host_port (port deferred)."""
+    expect(result.get("type")).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result.get("data")[CONF_HEATING_CIRCUITS]).to_equal([1])
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reauth_flow_success() -> None:
-    """Stub for test_reauth_flow_success (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reauth_flow_auth_error() -> None:
-    """Stub for test_reauth_flow_auth_error (port deferred)."""
+@test
+async def connection_error(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    bsblan_mock: MagicMock = Depends(mock_bsblan),
+) -> None:
+    """Test we show user form on BSBLan connection error."""
+    bsblan_mock.device.side_effect = BSBLANConnectionError
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reauth_flow_connection_error() -> None:
-    """Stub for test_reauth_flow_connection_error (port deferred)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_USER},
+        data={
+            CONF_HOST: "127.0.0.1",
+            CONF_PORT: 80,
+            CONF_PASSKEY: "1234",
+            CONF_USERNAME: "admin",
+            CONF_PASSWORD: "admin1234",
+        },
+    )
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reauth_flow_preserves_existing_values() -> None:
-    """Stub for test_reauth_flow_preserves_existing_values (port deferred)."""
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("step_id")).to_equal("user")
+    expect(result.get("errors")).to_equal({"base": "cannot_connect"})
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reauth_flow_partial_credentials_update() -> None:
-    """Stub for test_reauth_flow_partial_credentials_update (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reauth_flow_preserves_non_credential_fields() -> None:
-    """Stub for test_reauth_flow_preserves_non_credential_fields (port deferred)."""
+@test
+async def authentication_error(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    bsblan_mock: MagicMock = Depends(mock_bsblan),
+) -> None:
+    """Test we show user form on BSBLan auth error."""
+    bsblan_mock.device.side_effect = BSBLANAuthError
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reauth_flow_clears_credentials_with_empty_strings() -> None:
-    """Stub for test_reauth_flow_clears_credentials_with_empty_strings (port deferred)."""
+    user_input = {
+        CONF_HOST: "192.168.1.100",
+        CONF_PORT: 8080,
+        CONF_PASSKEY: "secret",
+        CONF_USERNAME: "testuser",
+        CONF_PASSWORD: "wrongpassword",
+    }
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reauth_flow_partial_clear_credentials() -> None:
-    """Stub for test_reauth_flow_partial_clear_credentials (port deferred)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_USER},
+        data=user_input,
+    )
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_discovery_auth_error_during_confirm() -> None:
-    """Stub for test_zeroconf_discovery_auth_error_during_confirm (port deferred)."""
+    expect(result.get("type")).to_be(FlowResultType.FORM)
+    expect(result.get("errors")).to_equal({"base": "invalid_auth"})
+    expect(result.get("step_id")).to_equal("user")
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reconfigure_flow_success() -> None:
-    """Stub for test_reconfigure_flow_success (port deferred)."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reconfigure_flow_error_recovery() -> None:
-    """Stub for test_reconfigure_flow_error_recovery (port deferred)."""
+@test
+async def user_device_exists_abort(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _bsblan: MagicMock = Depends(mock_bsblan),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+) -> None:
+    """Test that we abort if entry already exists."""
+    config_entry.add_to_hass(hass)
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reconfigure_flow_unique_id_mismatch() -> None:
-    """Stub for test_reconfigure_flow_unique_id_mismatch (port deferred)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_USER},
+        data={
+            CONF_HOST: "127.0.0.1",
+            CONF_PORT: 80,
+            CONF_PASSKEY: "1234",
+            CONF_USERNAME: "admin",
+            CONF_PASSWORD: "admin1234",
+        },
+    )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+
+
+@test.skip("zeroconf flow tests need additional fixtures and discovery info")
+async def zeroconf_discovery(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test zeroconf discovery flow."""
+
+
+@test.skip("zeroconf flow tests need additional fixtures")
+async def abort_if_existing_entry_for_zeroconf(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test abort if existing entry for zeroconf."""
+
+
+@test.skip("reauth flow tests not yet ported")
+async def reauth_flow_success(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test reauth flow success."""
