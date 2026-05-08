@@ -1,5 +1,7 @@
 """Test the bluetooth config flow."""
 
+from unittest.mock import patch
+
 from bluetooth_adapters import DEFAULT_ADDRESS
 from tryke import Depends, expect, fixture, test
 
@@ -39,13 +41,38 @@ async def async_step_user_only_allows_one(
     expect(result["reason"]).to_equal("no_adapters")
 
 
+@test
+async def async_step_user_macos(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setting up manually with one adapter on MacOS."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_USER},
+        data={},
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("single_adapter")
+    with (
+        patch("homeassistant.components.bluetooth.async_setup", return_value=True),
+        patch(
+            "homeassistant.components.bluetooth.async_setup_entry",
+            return_value=True,
+        ) as mock_setup_entry,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={}
+        )
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("Apple Unknown MacOS Model (Core Bluetooth)")
+    expect(result2["data"]).to_equal({})
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def options_flow_disabled_not_setup() -> None:
     """Stub for test_options_flow_disabled_not_setup (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def async_step_user_macos() -> None:
-    """Stub for test_async_step_user_macos (port deferred)."""
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def async_step_user_linux_one_adapter() -> None:

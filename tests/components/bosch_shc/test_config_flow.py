@@ -1,11 +1,14 @@
 """Test the bosch_shc config flow."""
 
+from ipaddress import ip_address
+
 from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
 from homeassistant.components.bosch_shc.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 from tests.hass_tryke_helpers import mock_async_zeroconf
@@ -31,6 +34,29 @@ async def form_user(
     expect(result["type"]).to_be(FlowResultType.FORM)
     expect(result["step_id"]).to_equal("user")
     expect(result["errors"]).to_equal({})
+
+
+@test
+async def zeroconf_not_bosch_shc(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we filter out non-bosch_shc devices from zeroconf discovery."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        data=ZeroconfServiceInfo(
+            ip_address=ip_address("1.1.1.1"),
+            ip_addresses=[ip_address("1.1.1.1")],
+            hostname="mock_hostname",
+            name="notboschshc",
+            port=None,
+            properties={},
+            type="mock_type",
+        ),
+        context={"source": config_entries.SOURCE_ZEROCONF},
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("not_bosch_shc")
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def form_get_info_connection_error() -> None:
@@ -75,10 +101,6 @@ async def zeroconf_already_configured() -> None:
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def zeroconf_cannot_connect() -> None:
     """Stub for test_zeroconf_cannot_connect (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_not_bosch_shc() -> None:
-    """Stub for test_zeroconf_not_bosch_shc (port deferred)."""
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def reauth() -> None:
