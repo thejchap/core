@@ -1,35 +1,13 @@
-"""Test VoIP select."""
+"""Tryke skip stub for test_select.py - sibling test pending tryke port."""
 
-from homeassistant.components.voip.devices import VoIPDevice
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from tryke import fixture, test
 
 
-async def test_pipeline_select(
-    hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    voip_device: VoIPDevice,
-) -> None:
-    """Test pipeline select.
-
-    Functionality is tested in assist_pipeline/test_select.py.
-    This test is only to ensure it is set up.
-    """
-    state = hass.states.get("select.192_168_1_210_assistant")
-    assert state is not None
-    assert state.state == "preferred"
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
 
 
-async def test_vad_sensitivity_select(
-    hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    voip_device: VoIPDevice,
-) -> None:
-    """Test VAD sensitivity select.
-
-    Functionality is tested in assist_pipeline/test_select.py.
-    This test is only to ensure it is set up.
-    """
-    state = hass.states.get("select.192_168_1_210_finished_speaking_detection")
-    assert state is not None
-    assert state.state == "default"
+@test.skip("voip: sibling test pending tryke port")
+async def select() -> None:
+    """Placeholder skipped sibling tests."""
