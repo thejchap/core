@@ -40,3 +40,17 @@ def mock_rdw_config_flow() -> Generator[MagicMock]:
         rdw = rdw_mock.return_value
         rdw.vehicle.return_value = Vehicle.from_json(load_fixture("rdw/11ZKZ3.json"))
         yield rdw
+
+
+@fixture
+def mock_rdw() -> Generator[MagicMock]:
+    """Return a mocked RDW client patched on coordinator + config_flow sites."""
+    with (
+        patch(
+            "homeassistant.components.rdw.coordinator.RDW", autospec=True
+        ) as rdw_mock,
+        patch("homeassistant.components.rdw.config_flow.RDW", new=rdw_mock),
+    ):
+        rdw = rdw_mock.return_value
+        rdw.vehicle.return_value = Vehicle.from_json(load_fixture("rdw/11ZKZ3.json"))
+        yield rdw
