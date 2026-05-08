@@ -1,5 +1,6 @@
 """Test the Bond config flow."""
 
+from ipaddress import ip_address
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -11,6 +12,7 @@ from homeassistant.components.bond.const import DOMAIN
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .common import (
     patch_bond_bridge,
@@ -247,11 +249,82 @@ async def user_form_one_entry_per_device_allowed(
     expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
-@test.skip("zeroconf flow not yet ported")
+@test
 async def zeroconf_form(
     _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Test we get the zeroconf initiated form."""
+    """Test we get the zeroconf initiated discovery form."""
+    with patch_bond_version(), patch_bond_token():
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_ZEROCONF},
+            data=ZeroconfServiceInfo(
+                ip_address=ip_address("127.0.0.1"),
+                ip_addresses=[ip_address("127.0.0.1")],
+                hostname="mock_hostname",
+                name="ZXXX12345.some-other-tail-info",
+                port=None,
+                properties={},
+                type="mock_type",
+            ),
+        )
+        expect(result["type"]).to_be(FlowResultType.FORM)
+        expect(result["errors"]).to_equal({})
+
+    with (
+        patch_bond_version(return_value={"bondid": "ZXXX12345"}),
+        patch_bond_bridge(),
+        patch_bond_device_ids(),
+        _patch_async_setup_entry() as mock_setup_entry,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_ACCESS_TOKEN: "test-token"},
+        )
+        await hass.async_block_till_done()
+
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["title"]).to_equal("bond-name")
+    expect(result2["data"]).to_equal(
+        {CONF_HOST: "127.0.0.1", CONF_ACCESS_TOKEN: "test-token"}
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
+@test
+async def zeroconf_already_configured(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test starting a zeroconf flow when already configured aborts and updates host."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="already-registered-bond-id",
+        data={CONF_HOST: "stored-host", CONF_ACCESS_TOKEN: "test-token"},
+    )
+    entry.add_to_hass(hass)
+
+    with _patch_async_setup_entry() as mock_setup_entry:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_ZEROCONF},
+            data=ZeroconfServiceInfo(
+                ip_address=ip_address("127.0.0.2"),
+                ip_addresses=[ip_address("127.0.0.2")],
+                hostname="mock_hostname",
+                name="already-registered-bond-id.some-other-tail-info",
+                port=None,
+                properties={},
+                type="mock_type",
+            ),
+        )
+        await hass.async_block_till_done()
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(entry.data["host"]).to_equal("127.0.0.2")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
 @test.skip("zeroconf flow not yet ported")
@@ -280,13 +353,6 @@ async def zeroconf_form_with_token_available_name_unavailable(
     _trigger: HomeAssistant = Depends(_trigger_executor),
 ) -> None:
     """Test zeroconf form with token available, name unavailable."""
-
-
-@test.skip("zeroconf flow not yet ported")
-async def zeroconf_already_configured(
-    _trigger: HomeAssistant = Depends(_trigger_executor),
-) -> None:
-    """Test starting a flow from discovery when already configured."""
 
 
 @test.skip("zeroconf flow not yet ported")
