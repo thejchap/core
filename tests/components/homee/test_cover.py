@@ -1,6 +1,14 @@
-"""Tryke skip-stubs for test_cover.py - sibling port deferred (416 LOC, 0 parametrize)."""
+"""Tryke skip stub for test_cover.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def domain_const_importable() -> None:
+    """Smoke test: the homee integration's DOMAIN constant imports cleanly."""
+    from homeassistant.components.homee.const import DOMAIN  # noqa: PLC0415
+    expect(DOMAIN).to_equal("homee")
+
 
 @test.skip("sibling port deferred (416 LOC, 0 parametrize)")
 async def open_close_stop_cover() -> None:
