@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 
+from pyyardian import OperationInfo, YardianDeviceState
 from tryke import fixture
 
 from homeassistant.components.yardian.const import DOMAIN
@@ -38,3 +39,33 @@ def mock_config_entry() -> MockConfigEntry:
         },
         title="Yardian Smart Sprinkler",
     )
+
+
+@fixture
+def mock_yardian_client() -> Generator[AsyncMock]:
+    """Mock the Yardian client used by the integration and config flow."""
+    with (
+        patch(
+            "homeassistant.components.yardian.AsyncYardianClient", autospec=True
+        ) as client_cls,
+        patch(
+            "homeassistant.components.yardian.config_flow.AsyncYardianClient",
+            autospec=True,
+        ) as flow_client_cls,
+    ):
+        client = client_cls.return_value
+        flow_client_cls.return_value = client
+
+        client.fetch_device_state.return_value = YardianDeviceState(
+            zones=[["Zone 1", 1], ["Zone 2", 0]],
+            active_zones={0},
+        )
+        client.fetch_oper_info.return_value = OperationInfo(
+            iRainDelay=3600,
+            iSensorDelay=5,
+            iWaterHammerDuration=2,
+            iStandby=1,
+            fFreezePrevent=1,
+        )
+
+        yield client
