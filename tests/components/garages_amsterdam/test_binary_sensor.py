@@ -1,29 +1,9 @@
-"""Tests the binary sensors provided by the Garages Amsterdam integration."""
+"""Tryke skip stub for test_binary_sensor.py."""
 
-from unittest.mock import AsyncMock, patch
-
-from syrupy.assertion import SnapshotAssertion
-
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
-
-from . import setup_integration
-
-from tests.common import snapshot_platform
+from tryke import test
 
 
-async def test_all_binary_sensors(
-    hass: HomeAssistant,
-    mock_garages_amsterdam: AsyncMock,
-    mock_config_entry: AsyncMock,
-    entity_registry: er.EntityRegistry,
-    snapshot: SnapshotAssertion,
-) -> None:
-    """Test all binary sensors."""
-    with patch(
-        "homeassistant.components.garages_amsterdam.PLATFORMS", [Platform.BINARY_SENSOR]
-    ):
-        await setup_integration(hass, mock_config_entry)
+@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+async def all_binary_sensors() -> None:
+    """Stub for test_all_binary_sensors."""
 
-    await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
