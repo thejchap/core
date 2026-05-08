@@ -3,7 +3,7 @@
 from tryke import test
 
 
-@test.skip("requires recorder_mock fixture")
+@test.skip("recorder_mock not in shim; solaredge depends on recorder integration")
 async def user_api_key() -> None:
     """Skipped pending fixture port."""
 

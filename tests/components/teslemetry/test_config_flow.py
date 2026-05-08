@@ -1,6 +1,38 @@
 """Test the Teslemetry config flow."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.teslemetry.const import AUTHORIZE_URL, DOMAIN
+from homeassistant.config_entries import SOURCE_USER
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from tests.hass_fixtures import (
+    current_request_with_host,
+    hass as hass_fixture,
+    mock_network,
+)
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _request: None = Depends(current_request_with_host),
+) -> None:
+    """Anchor fixture for tryke Depends() resolution."""
+
+
+@test
+async def oauth_external_step(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the user flow shows the OAuth external step (no app creds needed)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.EXTERNAL_STEP)
+    expect(result["url"].startswith(AUTHORIZE_URL)).to_be(True)
 
 
 @test.skip("requires aioclient_mock + hass_client fixtures")
