@@ -24,7 +24,12 @@ from .common import (
 )
 from .const import BAD_CURRENCY, BAD_EXCHANGE_RATE, GOOD_CURRENCY, GOOD_EXCHANGE_RATE
 
-from tests.hass_fixtures import hass as hass_fixture, mock_network
+from tests.hass_fixtures import (
+    LogCapture,
+    caplog as _caplog_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
 
 
 @fixture
@@ -73,12 +78,62 @@ async def form(
     expect(len(mock_setup_entry.mock_calls)).to_equal(1)
 
 
-@test.skip("uses caplog text inspection")
+@test
 async def form_invalid_auth(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    caplog: LogCapture = Depends(_caplog_fixture),
 ) -> None:
     """Test we handle invalid auth."""
+    import logging  # noqa: PLC0415
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    caplog.set_level(logging.DEBUG)
+
+    api_auth_error_unknown = HTTPError("unknown error")
+    with patch(
+        "coinbase.rest.RESTClient.get_portfolios",
+        side_effect=api_auth_error_unknown,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_API_KEY: "123456", CONF_API_TOKEN: "AbCDeF"},
+        )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
+    expect("Coinbase rejected API credentials due to an unknown error" in caplog.text).to_be(True)
+
+    api_auth_error_key = HTTPError("invalid api key")
+    with patch(
+        "coinbase.rest.RESTClient.get_portfolios",
+        side_effect=api_auth_error_key,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_API_KEY: "123456", CONF_API_TOKEN: "AbCDeF"},
+        )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth_key"})
+    expect("Coinbase rejected API credentials due to an invalid API key" in caplog.text).to_be(True)
+
+    api_auth_error_secret = HTTPError("invalid signature")
+    with patch(
+        "coinbase.rest.RESTClient.get_portfolios",
+        side_effect=api_auth_error_secret,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_API_KEY: "123456", CONF_API_TOKEN: "AbCDeF"},
+        )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth_secret"})
+    expect("Coinbase rejected API credentials due to an invalid API secret" in caplog.text).to_be(True)
 
 
 @test
