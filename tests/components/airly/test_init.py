@@ -1,6 +1,7 @@
 """Test init of Airly integration."""
 
 from typing import Any
+from unittest.mock import patch
 
 from tryke import Depends, expect, fixture, test
 
@@ -26,6 +27,44 @@ from tests.hass_fixtures import (
 from tests.test_util.aiohttp import AiohttpClientMocker
 
 
+_FAKE_TRANSLATIONS = {
+    "component.sensor.entity_component.pm25.name": "PM2.5",
+    "component.sensor.entity_component.pm10.name": "PM10",
+    "component.sensor.entity_component.pm1.name": "PM1",
+    "component.sensor.entity_component.humidity.name": "Humidity",
+    "component.sensor.entity_component.temperature.name": "Temperature",
+    "component.sensor.entity_component.pressure.name": "Pressure",
+    "component.sensor.entity_component.so2.name": "SO2",
+    "component.sensor.entity_component.no2.name": "NO2",
+    "component.sensor.entity_component.co.name": "CO",
+    "component.sensor.entity_component.o3.name": "O3",
+    "component.airly.entity.sensor.caqi.name": "Common air quality index",
+}
+
+
+async def _fake_get_translations(
+    hass, language, category, integrations=None, config_flow=None
+):
+    return _FAKE_TRANSLATIONS
+
+
+def _fake_get_cached_translations(hass, language, category, integration=None):
+    return _FAKE_TRANSLATIONS
+
+
+def _patch_translations():
+    return (
+        patch(
+            "homeassistant.helpers.entity_platform.translation.async_get_translations",
+            side_effect=_fake_get_translations,
+        ),
+        patch(
+            "homeassistant.helpers.translation.async_get_cached_translations",
+            side_effect=_fake_get_cached_translations,
+        ),
+    )
+
+
 @fixture
 def _trigger_executor(
     _network: None = Depends(mock_network),
@@ -35,9 +74,21 @@ def _trigger_executor(
     return hass
 
 
-@test.skip("sensor.home_pm2_5 not registered after init_integration in tryke env — needs investigation")
-async def async_setup_entry() -> None:
-    """Stub for test_async_setup_entry."""
+@test
+async def async_setup_entry(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fixture),
+) -> None:
+    """Test a successful setup entry."""
+    p1, p2 = _patch_translations()
+    with p1, p2:
+        await init_integration(hass, aioclient_mock)
+
+        state = hass.states.get("sensor.home_pm2_5")
+        expect(state).not_.to_be(None)
+        expect(state.state).not_.to_equal(STATE_UNAVAILABLE)
+        expect(state.state).to_equal("4.37")
 
 
 @test
