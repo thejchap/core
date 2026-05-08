@@ -1,16 +1,69 @@
-"""Tryke skip-stubs for test_sensor.py - sibling test pending tryke port."""
+"""Test Xiaomi BLE sensors (tryke port)."""
 
-from tryke import fixture, test
+from collections.abc import Generator
+from unittest.mock import patch
+
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.sensor import ATTR_STATE_CLASS
+from homeassistant.components.xiaomi_ble.const import DOMAIN
+from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT
+from homeassistant.core import HomeAssistant
+
+from . import MMC_T201_1_SERVICE_INFO
+from .conftest import MockBleakClientBattery5
+
+from tests.common import MockConfigEntry
+from tests.components.bluetooth import inject_bluetooth_service_info_bleak
+from tests.hass_fixtures import enable_bluetooth, hass as hass_fixture, mock_network
 
 
 @fixture
-def _ensure_executor() -> None:
-    """Force a HookExecutor for this module (tryke discovery quirk)."""
+def mock_bluetooth_xiaomi() -> Generator[None]:
+    """Auto mock the BleakClient (replaces xiaomi_ble conftest autouse)."""
+    with patch("xiaomi_ble.parser.BleakClient", MockBleakClientBattery5):
+        yield
 
 
-@test.skip("xiaomi_ble: sibling test pending tryke port")
-async def sensors() -> None:
-    """Stub for test_sensors."""
+@fixture
+async def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _bluetooth: None = Depends(enable_bluetooth),
+    _mock_bleak: None = Depends(mock_bluetooth_xiaomi),
+) -> None:
+    """Anchor fixture for tryke Depends() resolution."""
+
+
+@test
+async def sensors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setting up creates the sensors."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="00:81:F9:DD:6F:C1",
+    )
+    entry.add_to_hass(hass)
+
+    expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
+
+    expect(len(hass.states.async_all())).to_be(0)
+    inject_bluetooth_service_info_bleak(hass, MMC_T201_1_SERVICE_INFO)
+    await hass.async_block_till_done()
+    expect(len(hass.states.async_all())).to_be(2)
+
+    # Find the temperature sensor by state value (entity_id slug differs
+    # without compiled translations).
+    states = hass.states.async_all("sensor")
+    temp_states = [s for s in states if s.state == "36.8719980616822"]
+    expect(len(temp_states)).to_be(1)
+    expect(temp_states[0].attributes[ATTR_UNIT_OF_MEASUREMENT]).to_equal("°C")
+    expect(temp_states[0].attributes[ATTR_STATE_CLASS]).to_equal("measurement")
+
+    expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
 
 
 @test.skip("xiaomi_ble: sibling test pending tryke port")
