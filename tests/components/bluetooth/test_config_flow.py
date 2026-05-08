@@ -1,9 +1,43 @@
-"""Tryke skip-stubs for bluetooth config flow tests.
+"""Test the bluetooth config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from bluetooth_adapters import DEFAULT_ADDRESS
+from tryke import Depends, expect, fixture, test
 
-from tryke import test
+from homeassistant import config_entries
+from homeassistant.components.bluetooth.const import DOMAIN
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from ._fixtures import macos_adapter
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _macos: None = Depends(macos_adapter),
+) -> None:
+    """Anchor fixture for tryke fixture-injection."""
+
+
+@test
+async def async_step_user_only_allows_one(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setting up manually with an existing entry aborts."""
+    entry = MockConfigEntry(domain=DOMAIN, unique_id=DEFAULT_ADDRESS)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_USER},
+        data={},
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("no_adapters")
+
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def options_flow_disabled_not_setup() -> None:
@@ -24,10 +58,6 @@ async def async_step_user_linux_crashed_adapter() -> None:
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def async_step_user_linux_two_adapters() -> None:
     """Stub for test_async_step_user_linux_two_adapters (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def async_step_user_only_allows_one() -> None:
-    """Stub for test_async_step_user_only_allows_one (port deferred)."""
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def async_step_integration_discovery() -> None:
