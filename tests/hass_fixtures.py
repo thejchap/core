@@ -804,12 +804,12 @@ def hass_ws_client(
     hass_access_token: str = Depends(hass_access_token),
 ):
     """Return a WebSocket client connected to the hass websocket API."""
-    from homeassistant.components.websocket_api.const import (  # noqa: PLC0415
+    from homeassistant.components.websocket_api.auth import (  # noqa: PLC0415
         TYPE_AUTH,
         TYPE_AUTH_OK,
         TYPE_AUTH_REQUIRED,
-        URL,
     )
+    from homeassistant.components.websocket_api.const import URL  # noqa: PLC0415
     from homeassistant.setup import async_setup_component  # noqa: PLC0415
 
     async def create_client(
