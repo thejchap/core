@@ -1,9 +1,51 @@
-"""Tryke skip-stubs for deconz config flow tests.
+"""Test the deconz config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+import pydeconz
+from tryke import Depends, expect, fixture, test
 
-from tryke import test
+from homeassistant.components.deconz.const import DOMAIN
+from homeassistant.config_entries import SOURCE_USER
+from homeassistant.const import CONTENT_TYPE_JSON
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from tests.hass_fixtures import (
+    aioclient_mock,
+    hass as hass_fixture,
+    mock_network,
+)
+from tests.test_util.aiohttp import AiohttpClientMocker
+
+BRIDGE_ID = "01234E56789A"
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Anchor fixture for tryke fixture-injection."""
+
+
+@test
+async def flow_discovered_bridges_show_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
+) -> None:
+    """Test that the user form is rendered when bridges are discovered."""
+    aioclient.get(
+        pydeconz.utils.URL_DISCOVER,
+        json=[
+            {"id": BRIDGE_ID, "internalipaddress": "1.2.3.4", "internalport": 80},
+        ],
+        headers={"content-type": CONTENT_TYPE_JSON},
+    )
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def flow_discovered_bridges() -> None:
