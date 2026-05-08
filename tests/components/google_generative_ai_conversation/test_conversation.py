@@ -1,6 +1,13 @@
-"""Tryke skip stub for test_conversation.py."""
+"""Tryke skip stub for test_conversation.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the google_generative_ai_conversation.conversation module imports cleanly."""
+    from homeassistant.components.google_generative_ai_conversation import conversation  # noqa: PLC0415
+    expect(conversation).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

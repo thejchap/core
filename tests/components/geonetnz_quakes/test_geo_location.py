@@ -1,6 +1,13 @@
-"""Tryke skip stub for test_geo_location.py."""
+"""Tryke skip stub for test_geo_location.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the geonetnz_quakes.geo_location module imports cleanly."""
+    from homeassistant.components.geonetnz_quakes import geo_location  # noqa: PLC0415
+    expect(geo_location).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

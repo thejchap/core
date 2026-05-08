@@ -1,6 +1,13 @@
-"""Tryke skip stub for test_humidifier.py."""
+"""Tryke skip stub for test_humidifier.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the generic_hygrostat.humidifier module imports cleanly."""
+    from homeassistant.components.generic_hygrostat import humidifier  # noqa: PLC0415
+    expect(humidifier).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

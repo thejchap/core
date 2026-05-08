@@ -1,6 +1,13 @@
-"""Tryke skip stub for test_media_source.py."""
+"""Tryke skip stub for test_media_source.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the google_photos.media_source module imports cleanly."""
+    from homeassistant.components.google_photos import media_source  # noqa: PLC0415
+    expect(media_source).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

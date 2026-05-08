@@ -1,6 +1,13 @@
-"""Tryke skip stub for test_climate.py."""
+"""Tryke skip stub for test_climate.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the fumis.climate module imports cleanly."""
+    from homeassistant.components.fumis import climate  # noqa: PLC0415
+    expect(climate).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

@@ -1,6 +1,13 @@
-"""Tryke skip stub for test_coordinator.py."""
+"""Tryke skip stub for test_coordinator.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the fritzbox.coordinator module imports cleanly."""
+    from homeassistant.components.fritzbox import coordinator  # noqa: PLC0415
+    expect(coordinator).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

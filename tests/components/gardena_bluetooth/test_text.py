@@ -1,6 +1,13 @@
-"""Tryke skip stub for test_text.py."""
+"""Tryke skip stub for test_text.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the gardena_bluetooth.text module imports cleanly."""
+    from homeassistant.components.gardena_bluetooth import text  # noqa: PLC0415
+    expect(text).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

@@ -1,6 +1,13 @@
-"""Tryke skip stubs for test_light - sibling test pending port."""
+"""Tryke skip stub for test_light.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the govee_light_local.light module imports cleanly."""
+    from homeassistant.components.govee_light_local import light  # noqa: PLC0415
+    expect(light).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

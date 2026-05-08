@@ -1,6 +1,13 @@
-"""Tryke skip stub for test_calendar.py."""
+"""Tryke skip stub for test_calendar.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the google.calendar module imports cleanly."""
+    from homeassistant.components.google import calendar  # noqa: PLC0415
+    expect(calendar).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
