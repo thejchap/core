@@ -1,7 +1,9 @@
 """Test the Bond config flow."""
 
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import Mock, patch
 
+from aiohttp import ClientConnectionError, ClientResponseError
 from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
@@ -16,9 +18,11 @@ from .common import (
     patch_bond_device_ids,
     patch_bond_device_properties,
     patch_bond_device_state,
+    patch_bond_token,
     patch_bond_version,
 )
 
+from tests.common import MockConfigEntry
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
@@ -83,46 +87,164 @@ async def user_form_can_create_when_already_discovered(
     """Test we get the user initiated form can create when already discovered."""
 
 
-@test.skip("zeroconf flow not yet ported")
+@test
 async def user_form_invalid_auth(
     _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we handle invalid auth."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with (
+        patch_bond_version(return_value={"bond_id": "ZXXX12345"}),
+        patch_bond_bridge(),
+        patch_bond_device_ids(
+            side_effect=ClientResponseError(Mock(), Mock(), status=401),
+        ),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "some host", CONF_ACCESS_TOKEN: "test-token"},
+        )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "invalid_auth"})
 
 
-@test.skip("zeroconf flow not yet ported")
+@test
 async def user_form_cannot_connect(
     _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we handle cannot connect."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with (
+        patch_bond_version(side_effect=ClientConnectionError()),
+        patch_bond_bridge(),
+        patch_bond_device_ids(),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "some host", CONF_ACCESS_TOKEN: "test-token"},
+        )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "cannot_connect"})
 
 
-@test.skip("zeroconf flow not yet ported")
+@test
 async def user_form_old_firmware(
     _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we handle old firmware."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with (
+        patch_bond_version(return_value={"no_bond_id": "present"}),
+        patch_bond_bridge(),
+        patch_bond_device_ids(),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "some host", CONF_ACCESS_TOKEN: "test-token"},
+        )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "old_firmware"})
 
 
-@test.skip("zeroconf flow not yet ported")
+async def _help_test_form_unexpected_error(
+    hass: HomeAssistant,
+    *,
+    source: str,
+    initial_input: dict[str, Any] | None = None,
+    user_input: dict[str, Any],
+    error: Exception,
+) -> None:
+    with patch_bond_token():
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": source}, data=initial_input
+        )
+
+    with (
+        patch_bond_version(return_value={"bond_id": "ZXXX12345"}),
+        patch_bond_device_ids(side_effect=error),
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input
+        )
+
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["errors"]).to_equal({"base": "unknown"})
+
+
+@test
 async def user_form_unexpected_client_error(
     _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we handle unexpected client error."""
+    await _help_test_form_unexpected_error(
+        hass,
+        source=config_entries.SOURCE_USER,
+        user_input={CONF_HOST: "some host", CONF_ACCESS_TOKEN: "test-token"},
+        error=ClientResponseError(Mock(), Mock(), status=500),
+    )
 
 
-@test.skip("zeroconf flow not yet ported")
+@test
 async def user_form_unexpected_error(
     _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we handle unexpected error."""
+    await _help_test_form_unexpected_error(
+        hass,
+        source=config_entries.SOURCE_USER,
+        user_input={CONF_HOST: "some host", CONF_ACCESS_TOKEN: "test-token"},
+        error=Exception(),
+    )
 
 
-@test.skip("zeroconf flow not yet ported")
+@test
 async def user_form_one_entry_per_device_allowed(
     _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test that we abort if there is already an entry for a device."""
+    MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="already-registered-bond-id",
+        data={CONF_HOST: "some host", CONF_ACCESS_TOKEN: "test-token"},
+    ).add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with (
+        patch_bond_version(return_value={"bondid": "already-registered-bond-id"}),
+        patch_bond_bridge(),
+        patch_bond_device_ids(),
+        _patch_async_setup_entry() as mock_setup_entry,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "some host", CONF_ACCESS_TOKEN: "test-token"},
+        )
+        await hass.async_block_till_done()
+
+    expect(result2["type"]).to_be(FlowResultType.ABORT)
+    expect(result2["reason"]).to_equal("already_configured")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(0)
 
 
 @test.skip("zeroconf flow not yet ported")
