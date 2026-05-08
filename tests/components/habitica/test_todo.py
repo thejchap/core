@@ -1,9 +1,16 @@
-"""Tryke skip stub for test_todo.py."""
+"""Tryke skip stub for test_todo.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+@test
+def domain_const_importable() -> None:
+    """Smoke test: the habitica integration's DOMAIN constant imports cleanly."""
+    from homeassistant.components.habitica.const import DOMAIN  # noqa: PLC0415
+    expect(DOMAIN).to_equal("habitica")
+
+
+@test.skip("requires habiticalib mock chain + snapshot")
 async def todos() -> None:
     """Stub for test_todos."""
 

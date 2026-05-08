@@ -1,6 +1,16 @@
 """Tryke skip-stubs for test_sensor.py - large file (872 LOC) - port deferred."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def domain_const_importable() -> None:
+    """Smoke test: the here_travel_time integration's DOMAIN constant imports cleanly."""
+    from homeassistant.components.here_travel_time.const import (  # noqa: PLC0415
+        DOMAIN,
+    )
+    expect(DOMAIN).to_equal("here_travel_time")
+
 
 @test.skip("large file (872 LOC) - port deferred")
 async def sensor() -> None:

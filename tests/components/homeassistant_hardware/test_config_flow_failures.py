@@ -1,6 +1,14 @@
 """Tryke skip-stubs for test_config_flow_failures.py - addon manager fixtures not in shim."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def domain_module_importable() -> None:
+    """Smoke test: the homeassistant_hardware integration imports cleanly."""
+    from homeassistant.components.homeassistant_hardware import DOMAIN  # noqa: PLC0415
+    expect(DOMAIN).to_equal("homeassistant_hardware")
+
 
 @test.skip("addon manager fixtures not in shim")
 async def config_flow_thread_not_hassio() -> None:

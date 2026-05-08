@@ -1,6 +1,14 @@
 """Tryke skip-stubs for test_util.py - supervisor_client beyond shim slice."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def domain_module_importable() -> None:
+    """Smoke test: the homeassistant_hardware integration imports cleanly."""
+    from homeassistant.components.homeassistant_hardware import DOMAIN  # noqa: PLC0415
+    expect(DOMAIN).to_equal("homeassistant_hardware")
+
 
 @test.skip("supervisor_client beyond shim slice")
 async def guess_firmware_info_unknown() -> None:
