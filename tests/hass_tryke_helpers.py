@@ -188,6 +188,74 @@ def make_oauth_token(
     return token
 
 
+# --- recorder_mock helper -------------------------------------------------
+
+
+async def setup_recorder_mock(
+    hass: Any,
+    add_config: dict[str, Any] | None = None,
+    *,
+    db_url: str = "sqlite://",
+) -> Any:
+    """Set up an in-memory recorder instance for tests.
+
+    Replacement for the ``recorder_mock`` fixture in
+    ``tests/conftest.py``. Initialises the recorder component with an
+    in-memory SQLite database (default), waits for setup, and returns the
+    `Recorder` instance.
+
+    Usage in a per-integration ``_fixtures.py``::
+
+        from tryke import Depends, fixture
+        from tests.hass_fixtures import hass as hass_fixture
+        from tests.hass_tryke_helpers import setup_recorder_mock
+
+        @fixture
+        async def recorder_mock(
+            hass: HomeAssistant = Depends(hass_fixture),
+        ):
+            return await setup_recorder_mock(hass)
+
+    Then have ``_trigger_executor`` (or each test) ``Depends(recorder_mock)``.
+
+    Notes:
+    - Skips heavy diagnostic wrapping (no debug session scope, no nightly
+      purge tracking). For tests that need those, extend in `_fixtures.py`.
+    - `commit_interval` defaults to 0 so writes flush immediately, matching
+      the conftest fixture.
+    """
+    from unittest.mock import patch as _patch  # noqa: PLC0415
+
+    from homeassistant.components import recorder  # noqa: PLC0415
+    from homeassistant.helpers import recorder as recorder_helper  # noqa: PLC0415
+    from homeassistant.setup import async_setup_component  # noqa: PLC0415
+
+    config = dict(add_config) if add_config else {}
+    if recorder.CONF_DB_URL not in config:
+        config[recorder.CONF_DB_URL] = db_url
+        if recorder.CONF_COMMIT_INTERVAL not in config:
+            config[recorder.CONF_COMMIT_INTERVAL] = 0
+
+    with _patch(
+        "homeassistant.components.recorder.ALLOW_IN_MEMORY_DB", True
+    ):
+        if recorder.DOMAIN not in hass.data:
+            recorder_helper.async_initialize_recorder(hass)
+        setup_result = await async_setup_component(
+            hass, recorder.DOMAIN, {recorder.DOMAIN: config}
+        )
+        assert setup_result is True
+        assert recorder.DOMAIN in hass.config.components
+
+    instance = hass.data[recorder.DATA_INSTANCE]
+    # Block until the recorder thread has settled (mirrors
+    # async_recorder_block_till_done in tests/components/recorder/common.py).
+    await hass.async_block_till_done()
+    if hasattr(instance, "async_block_till_done"):
+        await instance.async_block_till_done()
+    return instance
+
+
 # --- syrupy snapshot fixture ----------------------------------------------
 #
 # Syrupy's pytest plugin builds a SnapshotAssertion from
