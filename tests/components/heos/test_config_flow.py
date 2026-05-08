@@ -2,7 +2,10 @@
 
 from tryke import Depends, expect, fixture, test
 
+from homeassistant.components.heos.const import DOMAIN
+from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
@@ -13,21 +16,22 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
 
 
 @test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
-async def flow_aborts_already_setup(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test flow aborts when entry already setup."""
-    expect(True).to_be(True)
+async def flow_aborts_already_setup() -> None:
+    """Stub for test_flow_aborts_already_setup (port deferred)."""
 
 
-@test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
+@test
 async def no_host_shows_form(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test form is shown when host not provided."""
-    expect(True).to_be(True)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({})
 
 
 @test.skip("requires complex pyheos coordinator setup (not in tryke shim)")
