@@ -1,8 +1,27 @@
 """Test the lutron_caseta config flow."""
 
+from unittest.mock import patch
+
+from pylutron_caseta.smartbridge import Smartbridge
 from tryke import Depends, expect, fixture, test
 
+from homeassistant import config_entries
+from homeassistant.components.lutron_caseta import (
+    DOMAIN,
+    config_flow as CasetaConfigFlow,
+)
+from homeassistant.components.lutron_caseta.const import (
+    CONF_CA_CERTS,
+    CONF_CERTFILE,
+    CONF_KEYFILE,
+    ERROR_CANNOT_CONNECT,
+    STEP_IMPORT_FAILED,
+)
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from . import MockBridge
 
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
@@ -21,13 +40,36 @@ async def bridge_import_flow(
     expect(True).to_be(True)
 
 
-@test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
+@test
 async def bridge_cannot_connect(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test checking for connection and cannot_connect error."""
-    expect(True).to_be(True)
+    entry_mock_data = {
+        CONF_HOST: "not.a.valid.host",
+        CONF_KEYFILE: "",
+        CONF_CERTFILE: "",
+        CONF_CA_CERTS: "",
+    }
+
+    with patch.object(Smartbridge, "create_tls") as create_tls:
+        create_tls.return_value = MockBridge(can_connect=False)
+
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_IMPORT},
+            data=entry_mock_data,
+        )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal(STEP_IMPORT_FAILED)
+    expect(result["errors"]).to_equal({"base": ERROR_CANNOT_CONNECT})
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal(CasetaConfigFlow.ABORT_REASON_CANNOT_CONNECT)
 
 
 @test.skip("requires pylutron_caseta pairing+ssl certificate chain (not in tryke shim)")
