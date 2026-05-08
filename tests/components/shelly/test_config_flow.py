@@ -1,26 +1,64 @@
 """Test the Shelly config flow."""
 
+from typing import Any
+from unittest.mock import AsyncMock, Mock, patch
+
+from aioshelly.const import DEFAULT_HTTP_PORT, MODEL_1
+from aioshelly.exceptions import (
+    CustomPortNotSupported,
+    DeviceConnectionError,
+    InvalidHostError,
+)
 from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
-from homeassistant.components.shelly.const import DOMAIN
+from homeassistant.components.shelly import MacAddressMismatchError
+from homeassistant.components.shelly.const import (
+    CONF_GEN,
+    CONF_SLEEP_PERIOD,
+    DOMAIN,
+)
+from homeassistant.const import (
+    CONF_HOST,
+    CONF_MODEL,
+    CONF_PASSWORD,
+    CONF_PORT,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.common import MockConfigEntry
+from tests.components.shelly._fixtures import (
+    mock_block_device as mock_block_device_fixture,
+    mock_blu_trv as mock_blu_trv_fixture,
+    mock_bluetooth as mock_bluetooth_fixture,
+    mock_coap as mock_coap_fixture,
+    mock_rpc_device as mock_rpc_device_fixture,
+    mock_setup as mock_setup_fixture,
+    mock_setup_entry as mock_setup_entry_fixture,
+    mock_ws_server as mock_ws_server_fixture,
+)
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
 @fixture
-def _trigger_executor(
+async def _trigger_executor(
     _network: None = Depends(mock_network),
-) -> None:
-    """Anchor fixture for tryke Depends() resolution."""
+    _coap: None = Depends(mock_coap_fixture),
+    _ws: None = Depends(mock_ws_server_fixture),
+    _bt: None = Depends(mock_bluetooth_fixture),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    """Anchor fixture for tryke Depends() resolution.
+
+    Includes the autouse-style mocks from the original conftest.
+    """
+    return hass
 
 
 @test
 async def user_form_show(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
+    hass: HomeAssistant = Depends(_trigger_executor),
 ) -> None:
     """Test the initial user form is shown."""
     result = await hass.config_entries.flow.async_init(
@@ -28,6 +66,314 @@ async def user_form_show(
     )
     expect(result["type"]).to_be(FlowResultType.FORM)
     expect(bool(result["errors"])).to_be(False)
+
+
+@test
+async def form_already_configured(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    _blu_trv: Any = Depends(mock_blu_trv_fixture),
+) -> None:
+    """Test we get the form when device is already configured."""
+    entry = MockConfigEntry(
+        domain="shelly", unique_id="test-mac", data={CONF_HOST: "0.0.0.0"}
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "homeassistant.components.shelly.config_flow.get_info",
+        return_value={"mac": "test-mac", "type": MODEL_1, "auth": False},
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "1.1.1.1"},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(entry.data[CONF_HOST]).to_equal("1.1.1.1")
+
+
+@test
+async def user_setup_ignored_device(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    mock_block_device: Mock = Depends(mock_block_device_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fixture),
+    mock_setup: AsyncMock = Depends(mock_setup_fixture),
+) -> None:
+    """Test user can successfully setup an ignored device."""
+    entry = MockConfigEntry(
+        domain="shelly",
+        unique_id="test-mac",
+        data={CONF_HOST: "0.0.0.0"},
+        source=config_entries.SOURCE_IGNORE,
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "homeassistant.components.shelly.config_flow.get_info",
+        return_value={"mac": "test-mac", "type": MODEL_1, "auth": False},
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "1.1.1.1"},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(entry.data[CONF_HOST]).to_equal("1.1.1.1")
+    expect(len(mock_setup.mock_calls)).to_be(1)
+    expect(len(mock_setup_entry.mock_calls)).to_be(1)
+
+
+@test
+async def form_gen1_custom_port(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    mock_block_device: Mock = Depends(mock_block_device_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fixture),
+    mock_setup: AsyncMock = Depends(mock_setup_fixture),
+) -> None:
+    """Test we can't configure custom port for Gen1 devices."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+
+    with (
+        patch(
+            "homeassistant.components.shelly.config_flow.get_info",
+            return_value={"mac": "test-mac", "type": MODEL_1, "gen": 1},
+        ),
+        patch(
+            "aioshelly.block_device.BlockDevice.create",
+            side_effect=CustomPortNotSupported,
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "1.1.1.1", CONF_PORT: "1100"},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]["base"]).to_equal("custom_port_not_supported")
+
+    with patch(
+        "homeassistant.components.shelly.config_flow.get_info",
+        return_value={"mac": "test-mac", "type": MODEL_1, "gen": 1},
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "1.1.1.1", CONF_PORT: DEFAULT_HTTP_PORT},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Test name")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_PORT: DEFAULT_HTTP_PORT,
+            CONF_MODEL: MODEL_1,
+            CONF_SLEEP_PERIOD: 0,
+            CONF_GEN: 1,
+        }
+    )
+    expect(result["context"]["unique_id"]).to_equal("test-mac")
+    expect(len(mock_setup.mock_calls)).to_be(1)
+    expect(len(mock_setup_entry.mock_calls)).to_be(1)
+
+
+@test.cases(
+    test.case(
+        "device_connection_error",
+        exc=DeviceConnectionError,
+        base_error="cannot_connect",
+    ),
+    test.case("invalid_host_error", exc=InvalidHostError, base_error="invalid_host"),
+    test.case("value_error", exc=ValueError, base_error="unknown"),
+)
+async def form_errors_get_info(
+    *,
+    exc: type[Exception],
+    base_error: str,
+    hass: HomeAssistant = Depends(_trigger_executor),
+    mock_block_device: Mock = Depends(mock_block_device_fixture),
+    mock_setup: AsyncMock = Depends(mock_setup_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fixture),
+) -> None:
+    """Test we handle errors during get_info."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "homeassistant.components.shelly.config_flow.get_info", side_effect=exc
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "1.1.1.1"},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": base_error})
+
+    with patch(
+        "homeassistant.components.shelly.config_flow.get_info",
+        return_value={"mac": "test-mac", "type": MODEL_1, "gen": 1},
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "1.1.1.1"},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Test name")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_PORT: DEFAULT_HTTP_PORT,
+            CONF_MODEL: MODEL_1,
+            CONF_SLEEP_PERIOD: 0,
+            CONF_GEN: 1,
+        }
+    )
+    expect(result["context"]["unique_id"]).to_equal("test-mac")
+    expect(len(mock_setup.mock_calls)).to_be(1)
+    expect(len(mock_setup_entry.mock_calls)).to_be(1)
+
+
+@test.cases(
+    test.case(
+        "device_connection_error",
+        exc=DeviceConnectionError,
+        base_error="cannot_connect",
+    ),
+    test.case(
+        "mac_mismatch_error",
+        exc=MacAddressMismatchError,
+        base_error="mac_address_mismatch",
+    ),
+    test.case("value_error", exc=ValueError, base_error="unknown"),
+)
+async def form_errors_test_connection(
+    *,
+    exc: type[Exception],
+    base_error: str,
+    hass: HomeAssistant = Depends(_trigger_executor),
+    mock_block_device: Mock = Depends(mock_block_device_fixture),
+    mock_setup_entry: AsyncMock = Depends(mock_setup_entry_fixture),
+    mock_setup: AsyncMock = Depends(mock_setup_fixture),
+) -> None:
+    """Test we handle errors during test_connection."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with (
+        patch(
+            "homeassistant.components.shelly.config_flow.get_info",
+            return_value={"mac": "test-mac", "auth": False},
+        ),
+        patch(
+            "aioshelly.block_device.BlockDevice.create",
+            new=AsyncMock(side_effect=exc),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "1.1.1.1"},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": base_error})
+
+    with patch(
+        "homeassistant.components.shelly.config_flow.get_info",
+        return_value={"mac": "test-mac", "auth": False},
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "1.1.1.1"},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result["title"]).to_equal("Test name")
+    expect(result["data"]).to_equal(
+        {
+            CONF_HOST: "1.1.1.1",
+            CONF_PORT: DEFAULT_HTTP_PORT,
+            CONF_MODEL: MODEL_1,
+            CONF_SLEEP_PERIOD: 0,
+            CONF_GEN: 1,
+        }
+    )
+    expect(result["context"]["unique_id"]).to_equal("test-mac")
+    expect(len(mock_setup.mock_calls)).to_be(1)
+    expect(len(mock_setup_entry.mock_calls)).to_be(1)
+
+
+@test
+async def form_missing_model_key(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    mock_rpc_device: Mock = Depends(mock_rpc_device_fixture),
+) -> None:
+    """Test we handle missing Shelly model key."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    mock_rpc_device.shelly = {"gen": 2}
+    with patch(
+        "homeassistant.components.shelly.config_flow.get_info",
+        return_value={"mac": "test-mac", "auth": False, "gen": "2"},
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "1.1.1.1"},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("firmware_not_fully_provisioned")
+
+
+@test
+async def form_missing_model_key_auth_enabled(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    mock_rpc_device: Mock = Depends(mock_rpc_device_fixture),
+) -> None:
+    """Test we handle missing Shelly model key when auth enabled."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
+
+    with patch(
+        "homeassistant.components.shelly.config_flow.get_info",
+        return_value={"mac": "test-mac", "auth": True, "gen": 2},
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_HOST: "1.1.1.1"},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
+
+    mock_rpc_device.shelly = {"gen": 2}
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_PASSWORD: "1234"}
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("firmware_not_fully_provisioned")
+
+
+# --- Remaining tests pending shelly_mock + websocket fixture port ---
 
 
 @test.skip("requires shelly_mock + websocket fixtures")
@@ -39,39 +385,11 @@ async def user_flow_overrides_existing_discovery() -> None:
     """Skipped pending fixture port."""
 
 @test.skip("requires shelly_mock + websocket fixtures")
-async def form_gen1_custom_port() -> None:
-    """Skipped pending fixture port."""
-
-@test.skip("requires shelly_mock + websocket fixtures")
 async def form_auth() -> None:
     """Skipped pending fixture port."""
 
 @test.skip("requires shelly_mock + websocket fixtures")
-async def form_errors_get_info() -> None:
-    """Skipped pending fixture port."""
-
-@test.skip("requires shelly_mock + websocket fixtures")
-async def form_missing_model_key() -> None:
-    """Skipped pending fixture port."""
-
-@test.skip("requires shelly_mock + websocket fixtures")
-async def form_missing_model_key_auth_enabled() -> None:
-    """Skipped pending fixture port."""
-
-@test.skip("requires shelly_mock + websocket fixtures")
 async def form_missing_model_key_zeroconf() -> None:
-    """Skipped pending fixture port."""
-
-@test.skip("requires shelly_mock + websocket fixtures")
-async def form_errors_test_connection() -> None:
-    """Skipped pending fixture port."""
-
-@test.skip("requires shelly_mock + websocket fixtures")
-async def form_already_configured() -> None:
-    """Skipped pending fixture port."""
-
-@test.skip("requires shelly_mock + websocket fixtures")
-async def user_setup_ignored_device() -> None:
     """Skipped pending fixture port."""
 
 @test.skip("requires shelly_mock + websocket fixtures")
