@@ -108,6 +108,86 @@ def patch_requests_mock(*registrations: tuple[str, str, dict[str, Any]]) -> Gene
         yield m
 
 
+# --- OAuth2 application credentials helper --------------------------------
+
+
+async def setup_application_credentials(
+    hass: Any,
+    domain: str,
+    client_id: str = "client_id",
+    client_secret: str = "client_secret",
+    auth_implementation: str | None = None,
+) -> None:
+    """Set up the OAuth2 application_credentials chain for an integration's tests.
+
+    Replacement for the ``setup_credentials`` autouse fixture in pytest
+    integration conftests (e.g. ``tests/components/google_mail/conftest.py``,
+    ``tests/components/fitbit/conftest.py``). Initialises the
+    ``application_credentials`` component and imports a client credential
+    so OAuth2 flows can complete.
+
+    Usage in a per-integration ``_fixtures.py``::
+
+        from tryke import Depends, fixture
+        from tests.hass_fixtures import hass as hass_fixture
+        from tests.hass_tryke_helpers import setup_application_credentials
+        from homeassistant.components.<int>.const import DOMAIN
+
+        @fixture
+        async def setup_credentials(
+            hass: HomeAssistant = Depends(hass_fixture),
+        ) -> None:
+            await setup_application_credentials(
+                hass, DOMAIN, "client_id", "client_secret", "auth_impl_name"
+            )
+
+    Then have ``_trigger_executor`` (or each test) ``Depends(setup_credentials)``.
+    """
+    from homeassistant.components.application_credentials import (  # noqa: PLC0415
+        DOMAIN as APPLICATION_CREDENTIALS_DOMAIN,
+        ClientCredential,
+        async_import_client_credential,
+    )
+    from homeassistant.setup import async_setup_component  # noqa: PLC0415
+
+    if APPLICATION_CREDENTIALS_DOMAIN not in hass.config.components:
+        assert await async_setup_component(hass, APPLICATION_CREDENTIALS_DOMAIN, {})
+    await async_import_client_credential(
+        hass,
+        domain,
+        ClientCredential(client_id, client_secret),
+        auth_implementation,
+    )
+
+
+def make_oauth_token(
+    *,
+    access_token: str = "mock-access-token",
+    refresh_token: str = "mock-refresh-token",
+    scopes: list[str] | None = None,
+    expires_in: int = 3600,
+    token_type: str = "Bearer",
+) -> dict[str, Any]:
+    """Construct an OAuth2 token dict for a MockConfigEntry's ``data['token']``.
+
+    Mirrors the ``token_entry`` / ``server_access_token`` fixtures across HA's
+    OAuth2 integration tests. ``expires_at`` is computed from ``expires_in``
+    relative to the current time so the token doesn't appear pre-expired.
+    """
+    import time as _time  # noqa: PLC0415
+
+    token: dict[str, Any] = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": token_type,
+        "expires_at": _time.time() + expires_in,
+        "expires_in": expires_in,
+    }
+    if scopes is not None:
+        token["scope"] = " ".join(scopes)
+    return token
+
+
 # --- syrupy snapshot fixture ----------------------------------------------
 #
 # Syrupy's pytest plugin builds a SnapshotAssertion from
