@@ -94,3 +94,10 @@ def mock_config_entry() -> MockConfigEntry:
         },
         unique_id="IOTTY00001",
     )
+
+
+@fixture
+def mock_get_devices_nodevices() -> Generator[AsyncMock]:
+    """Mock get_devices, returning no devices."""
+    with patch("iottycloud.cloudapi.CloudApi.get_devices") as mock_fn:
+        yield mock_fn
