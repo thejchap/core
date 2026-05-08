@@ -1,67 +1,132 @@
-"""Tryke skip-stubs for test_light.py - large file (1348 LOC) - port deferred."""
+"""Test KNX light."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("large file (1348 LOC) - port deferred")
-async def light_simple() -> None:
-    """Stub for test_light_simple."""
+from homeassistant.components.knx.const import KNX_ADDRESS
+from homeassistant.components.knx.schema import LightSchema
+from homeassistant.components.light import ColorMode
+from homeassistant.const import CONF_NAME, STATE_OFF, STATE_ON
+from homeassistant.core import HomeAssistant
 
-@test.skip("large file (1348 LOC) - port deferred")
+from .conftest import KNXTestKit
+from ._fixtures import knx, mock_config_entry
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Module-level fixture anchor."""
+
+
+@test
+async def light_simple(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    knx: KNXTestKit = Depends(knx),
+) -> None:
+    """Test simple KNX light."""
+    test_address = "1/1/1"
+    await knx.setup_integration(
+        {
+            LightSchema.PLATFORM: {
+                CONF_NAME: "test",
+                KNX_ADDRESS: test_address,
+            }
+        }
+    )
+
+    knx.assert_state(
+        "light.test",
+        STATE_OFF,
+        supported_color_modes=[ColorMode.ONOFF],
+    )
+    # turn on light
+    await hass.services.async_call(
+        "light",
+        "turn_on",
+        {"entity_id": "light.test"},
+        blocking=True,
+    )
+    await knx.assert_write(test_address, True)
+    knx.assert_state(
+        "light.test",
+        STATE_ON,
+        color_mode=ColorMode.ONOFF,
+    )
+    expect(True).to_be(True)
+
+
+@test.skip("port deferred - sibling test")
 async def light_brightness() -> None:
-    """Stub for test_light_brightness."""
+    """Stub."""
 
-@test.skip("large file (1348 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def light_color_temp_absolute() -> None:
-    """Stub for test_light_color_temp_absolute."""
+    """Stub."""
 
-@test.skip("large file (1348 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def light_color_temp_relative() -> None:
-    """Stub for test_light_color_temp_relative."""
+    """Stub."""
 
-@test.skip("large file (1348 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def light_hs_color() -> None:
-    """Stub for test_light_hs_color."""
+    """Stub."""
 
-@test.skip("large file (1348 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def light_xyy_color() -> None:
-    """Stub for test_light_xyy_color."""
+    """Stub."""
 
-@test.skip("large file (1348 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def light_xyy_color_with_brightness() -> None:
-    """Stub for test_light_xyy_color_with_brightness."""
+    """Stub."""
 
-@test.skip("large file (1348 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def light_rgb_individual() -> None:
-    """Stub for test_light_rgb_individual."""
+    """Stub."""
 
-@test.skip("large file (1348 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def light_rgbw_individual() -> None:
-    """Stub for test_light_rgbw_individual."""
+    """Stub."""
 
-@test.skip("large file (1348 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def light_rgb() -> None:
-    """Stub for test_light_rgb."""
+    """Stub."""
 
-@test.skip("large file (1348 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def light_rgbw() -> None:
-    """Stub for test_light_rgbw."""
+    """Stub."""
 
-@test.skip("large file (1348 LOC) - port deferred")
-async def light_rgbw_brightness() -> None:
-    """Stub for test_light_rgbw_brightness."""
 
-@test.skip("large file (1348 LOC) - port deferred")
+@test.skip("port deferred - sibling test")
 async def light_ui_create() -> None:
-    """Stub for test_light_ui_create."""
+    """Stub."""
 
-@test.skip("large file (1348 LOC) - port deferred")
-async def light_ui_color_temp() -> None:
-    """Stub for test_light_ui_color_temp."""
 
-@test.skip("large file (1348 LOC) - port deferred")
-async def light_ui_multi_mode() -> None:
-    """Stub for test_light_ui_multi_mode."""
-
-@test.skip("large file (1348 LOC) - port deferred")
+@test.skip("port deferred - sibling test")
 async def light_ui_load() -> None:
-    """Stub for test_light_ui_load."""
+    """Stub."""
+
+
+@test.skip("port deferred - sibling test")
+async def light_ui_color_only() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling test")
+async def light_ui_color_temp() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling test")
+async def remove_ui_light() -> None:
+    """Stub."""

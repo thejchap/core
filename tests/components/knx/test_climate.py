@@ -1,83 +1,152 @@
-"""Tryke skip-stubs for test_climate.py - large file (1043 LOC) - port deferred."""
+"""Test KNX climate."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("large file (1043 LOC) - port deferred")
-async def climate_basic_temperature_set() -> None:
-    """Stub for test_climate_basic_temperature_set."""
+from homeassistant.components.knx.schema import ClimateSchema
+from homeassistant.const import CONF_NAME
+from homeassistant.core import HomeAssistant
 
-@test.skip("large file (1043 LOC) - port deferred")
+from .conftest import KNXTestKit
+from ._fixtures import knx, mock_config_entry
+
+from tests.common import async_capture_events
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+RAW_FLOAT_20_0 = (0x07, 0xD0)
+RAW_FLOAT_21_0 = (0x0C, 0x1A)
+RAW_FLOAT_22_0 = (0x0C, 0x4C)
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Module-level fixture anchor."""
+
+
+@test
+async def climate_basic_temperature_set(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    knx: KNXTestKit = Depends(knx),
+) -> None:
+    """Test KNX climate basic temperature set."""
+    await knx.setup_integration(
+        {
+            ClimateSchema.PLATFORM: {
+                CONF_NAME: "test",
+                ClimateSchema.CONF_TEMPERATURE_ADDRESS: "1/2/3",
+                ClimateSchema.CONF_TARGET_TEMPERATURE_ADDRESS: "1/2/4",
+                ClimateSchema.CONF_TARGET_TEMPERATURE_STATE_ADDRESS: "1/2/5",
+            }
+        }
+    )
+    events = async_capture_events(hass, "state_changed")
+
+    await knx.assert_read("1/2/3")
+    await knx.assert_read("1/2/5")
+    await knx.receive_response("1/2/3", RAW_FLOAT_21_0)
+    await knx.receive_response("1/2/5", RAW_FLOAT_22_0)
+    events.clear()
+
+    await hass.services.async_call(
+        "climate",
+        "set_temperature",
+        {"entity_id": "climate.test", "temperature": 20},
+        blocking=True,
+    )
+    await knx.assert_write("1/2/4", RAW_FLOAT_20_0)
+    expect(len(events)).to_equal(1)
+
+
+@test.skip("port deferred - sibling test")
 async def climate_on_off() -> None:
-    """Stub for test_climate_on_off."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def climate_hvac_mode() -> None:
-    """Stub for test_climate_hvac_mode."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def climate_heat_cool_read_only() -> None:
-    """Stub for test_climate_heat_cool_read_only."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def climate_heat_cool_read_only_on_off() -> None:
-    """Stub for test_climate_heat_cool_read_only_on_off."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def climate_preset_mode() -> None:
-    """Stub for test_climate_preset_mode."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def update_entity() -> None:
-    """Stub for test_update_entity."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def command_value_idle_mode() -> None:
-    """Stub for test_command_value_idle_mode."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def fan_speed_3_steps() -> None:
-    """Stub for test_fan_speed_3_steps."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def fan_speed_2_steps() -> None:
-    """Stub for test_fan_speed_2_steps."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def fan_speed_1_step() -> None:
-    """Stub for test_fan_speed_1_step."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def fan_speed_5_steps() -> None:
-    """Stub for test_fan_speed_5_steps."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def fan_speed_percentage() -> None:
-    """Stub for test_fan_speed_percentage."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def fan_speed_percentage_4_steps() -> None:
-    """Stub for test_fan_speed_percentage_4_steps."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def fan_speed_zero_mode_auto() -> None:
-    """Stub for test_fan_speed_zero_mode_auto."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def climate_humidity() -> None:
-    """Stub for test_climate_humidity."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def swing() -> None:
-    """Stub for test_swing."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def horizontal_swing() -> None:
-    """Stub for test_horizontal_swing."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def climate_ui_create() -> None:
-    """Stub for test_climate_ui_create."""
+    """Stub."""
 
-@test.skip("large file (1043 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def climate_ui_load() -> None:
-    """Stub for test_climate_ui_load."""
+    """Stub."""
