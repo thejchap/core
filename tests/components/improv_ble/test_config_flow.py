@@ -30,13 +30,27 @@ async def user_step_success_authorize(
     expect(True).to_be(True)
 
 
-@test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
+@test
 async def user_step_no_devices_found(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test user step with no devices found."""
-    expect(True).to_be(True)
+    from unittest.mock import patch  # noqa: PLC0415
+
+    from homeassistant import config_entries  # noqa: PLC0415
+    from homeassistant.components.improv_ble.const import DOMAIN  # noqa: PLC0415
+    from homeassistant.data_entry_flow import FlowResultType  # noqa: PLC0415
+
+    IMPROV_BLE = "homeassistant.components.improv_ble"
+    with patch(
+        f"{IMPROV_BLE}.config_flow.bluetooth.async_discovered_service_info",
+        return_value=[],
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
 
 
 @test.skip("requires improv_ble_client + bluetooth scanner chain (not in tryke shim)")
