@@ -1,38 +1,36 @@
-"""Tryke skip-stubs for test_diagnostics.py - sibling test pending tryke port."""
+"""Test the Z-Wave JS diagnostics."""
 
-from tryke import fixture, test
+from tryke import expect, test
 
-
-@fixture
-def _ensure_executor() -> None:
-    """Force a HookExecutor for this module (tryke discovery quirk)."""
+from homeassistant.components.zwave_js.helpers import ZwaveValueMatcher
 
 
-@test.skip("zwave_js: sibling test pending tryke port")
+@test
+def empty_zwave_value_matcher() -> None:
+    """Test that an empty ZwaveValueMatcher fails construction."""
+    expect(lambda: ZwaveValueMatcher()).to_raise(ValueError)
+
+
+@test.skip("zwave_js: requires client + integration conftest fixtures")
 async def config_entry_diagnostics() -> None:
     """Stub for test_config_entry_diagnostics."""
 
 
-@test.skip("zwave_js: sibling test pending tryke port")
+@test.skip("zwave_js: requires client + integration conftest fixtures")
 async def device_diagnostics() -> None:
     """Stub for test_device_diagnostics."""
 
 
-@test.skip("zwave_js: sibling test pending tryke port")
+@test.skip("zwave_js: requires client + integration conftest fixtures")
 async def device_diagnostics_error() -> None:
     """Stub for test_device_diagnostics_error."""
 
 
-@test.skip("zwave_js: sibling test pending tryke port")
-async def empty_zwave_value_matcher() -> None:
-    """Stub for test_empty_zwave_value_matcher."""
-
-
-@test.skip("zwave_js: sibling test pending tryke port")
+@test.skip("zwave_js: requires client + integration conftest fixtures")
 async def device_diagnostics_missing_primary_value() -> None:
     """Stub for test_device_diagnostics_missing_primary_value."""
 
 
-@test.skip("zwave_js: sibling test pending tryke port")
+@test.skip("zwave_js: requires client + integration conftest fixtures")
 async def device_diagnostics_secret_value() -> None:
     """Stub for test_device_diagnostics_secret_value."""
