@@ -47,6 +47,40 @@ async def flow_discovered_bridges_show_form(
     expect(result["step_id"]).to_equal("user")
 
 
+@test
+async def manual_configuration_after_discovery_timeout(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
+) -> None:
+    """Test failed discovery (timeout) falls back to manual configuration."""
+    aioclient.get(pydeconz.utils.URL_DISCOVER, exc=TimeoutError)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual_input")
+
+
+@test
+async def manual_configuration_after_discovery_ResponseError(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
+) -> None:
+    """Test failed discovery (ResponseError) falls back to manual configuration."""
+    aioclient.get(pydeconz.utils.URL_DISCOVER, exc=pydeconz.errors.ResponseError)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("manual_input")
+
+
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def flow_discovered_bridges() -> None:
     """Stub for test_flow_discovered_bridges (port deferred)."""
@@ -58,14 +92,6 @@ async def flow_manual_configuration_decision() -> None:
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def flow_manual_configuration() -> None:
     """Stub for test_flow_manual_configuration (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def manual_configuration_after_discovery_timeout() -> None:
-    """Stub for test_manual_configuration_after_discovery_timeout (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def manual_configuration_after_discovery_ResponseError() -> None:
-    """Stub for test_manual_configuration_after_discovery_ResponseError (port deferred)."""
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def manual_configuration_update_configuration() -> None:
