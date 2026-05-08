@@ -1,63 +1,117 @@
-"""Tryke skip-stubs for test_config_store.py - large file (606 LOC) - port deferred."""
+"""KNX config store tests."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("large file (606 LOC) - port deferred")
+from homeassistant.core import HomeAssistant
+
+from .conftest import KNXTestKit
+from ._fixtures import knx, mock_config_entry
+
+from tests.hass_fixtures import (
+    hass as hass_fixture,
+    hass_ws_client as hass_ws_client_fx,
+    mock_network,
+)
+from tests.typing import WebSocketGenerator
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Module-level fixture anchor."""
+
+
+@test
+async def create_entity_error(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    knx: KNXTestKit = Depends(knx),
+    hass_ws_client: WebSocketGenerator = Depends(hass_ws_client_fx),
+) -> None:
+    """Test unsuccessful entity creation."""
+    await knx.setup_integration()
+    client = await hass_ws_client(hass)
+
+    # invalid platform
+    await client.send_json_auto_id(
+        {
+            "type": "knx/create_entity",
+            "platform": "invalid_platform",
+            "data": {
+                "entity": {"name": "Test invalid platform"},
+                "knx": {"ga_switch": {"write": "1/2/3"}},
+            },
+        }
+    )
+    res = await client.receive_json()
+    expect(res["success"]).to_be(True)
+    expect(bool(res["result"]["success"])).to_be(False)
+
+
+@test.skip("port deferred - sibling test")
 async def create_entity() -> None:
-    """Stub for test_create_entity."""
+    """Stub."""
 
-@test.skip("large file (606 LOC) - port deferred")
-async def create_entity_error() -> None:
-    """Stub for test_create_entity_error."""
 
-@test.skip("large file (606 LOC) - port deferred")
+@test.skip("port deferred - sibling test")
 async def update_entity() -> None:
-    """Stub for test_update_entity."""
+    """Stub."""
 
-@test.skip("large file (606 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def update_entity_error() -> None:
-    """Stub for test_update_entity_error."""
+    """Stub."""
 
-@test.skip("large file (606 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def delete_entity() -> None:
-    """Stub for test_delete_entity."""
+    """Stub."""
 
-@test.skip("large file (606 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def delete_entity_error() -> None:
-    """Stub for test_delete_entity_error."""
+    """Stub."""
 
-@test.skip("large file (606 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def get_entity_config() -> None:
-    """Stub for test_get_entity_config."""
+    """Stub."""
 
-@test.skip("large file (606 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def get_entity_config_error() -> None:
-    """Stub for test_get_entity_config_error."""
+    """Stub."""
 
-@test.skip("large file (606 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def validate_entity() -> None:
-    """Stub for test_validate_entity."""
+    """Stub."""
 
-@test.skip("large file (606 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def update_expose_error() -> None:
-    """Stub for test_update_expose_error."""
+    """Stub."""
 
-@test.skip("large file (606 LOC) - port deferred")
-async def validate_expose() -> None:
-    """Stub for test_validate_expose."""
 
-@test.skip("large file (606 LOC) - port deferred")
-async def delete_expose() -> None:
-    """Stub for test_delete_expose."""
+@test.skip("port deferred - sibling test")
+async def get_entity_entries() -> None:
+    """Stub."""
 
-@test.skip("large file (606 LOC) - port deferred")
-async def delete_expose_error() -> None:
-    """Stub for test_delete_expose_error."""
 
-@test.skip("large file (606 LOC) - port deferred")
-async def migration_1_to_2() -> None:
-    """Stub for test_migration_1_to_2."""
+@test.skip("port deferred - sibling test")
+async def update_expose_remove_old_entity() -> None:
+    """Stub."""
 
-@test.skip("large file (606 LOC) - port deferred")
-async def migration_2_1_to_2_4() -> None:
-    """Stub for test_migration_2_1_to_2_4."""
+
+@test.skip("port deferred - sibling test")
+async def get_supported_platforms() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling test")
+async def update_entity_replaces_old() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling test")
+async def reload() -> None:
+    """Stub."""
