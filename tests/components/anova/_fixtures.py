@@ -195,3 +195,82 @@ async def anova_api(
             "sample",
         )
         yield api
+
+
+@fixture
+async def anova_api_no_devices(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> AsyncGenerator[AnovaApi]:
+    """Mock the api for Anova with no online devices."""
+    api_mock = anova_api_mock(connect_messages=[], post_connect_messages=[])
+
+    with (
+        patch("homeassistant.components.anova.AnovaApi", return_value=api_mock),
+        patch(
+            "homeassistant.components.anova.config_flow.AnovaApi", return_value=api_mock
+        ),
+    ):
+        api = AnovaApi(
+            None,
+            "sample@gmail.com",
+            "sample",
+        )
+        yield api
+
+
+@fixture
+async def anova_api_wrong_login(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> AsyncGenerator[AnovaApi]:
+    """Mock the api for Anova with a wrong login."""
+    api_mock = anova_api_mock()
+
+    async def authenticate_side_effect():
+        raise InvalidLogin
+
+    api_mock.authenticate.side_effect = authenticate_side_effect
+
+    with patch("homeassistant.components.anova.AnovaApi", return_value=api_mock):
+        api = AnovaApi(
+            None,
+            "sample@gmail.com",
+            "sample",
+        )
+        yield api
+
+
+@fixture
+async def anova_api_no_data(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> AsyncGenerator[AnovaApi]:
+    """Mock the api for Anova with no post-connect data."""
+    api_mock = anova_api_mock(post_connect_messages=[])
+
+    with patch("homeassistant.components.anova.AnovaApi", return_value=api_mock):
+        api = AnovaApi(
+            None,
+            "sample@gmail.com",
+            "sample",
+        )
+        yield api
+
+
+@fixture
+async def anova_api_websocket_failure(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> AsyncGenerator[AnovaApi]:
+    """Mock the api for Anova with a websocket failure."""
+    api_mock = anova_api_mock()
+
+    async def create_websocket_side_effect():
+        raise WebsocketFailure
+
+    api_mock.create_websocket.side_effect = create_websocket_side_effect
+
+    with patch("homeassistant.components.anova.AnovaApi", return_value=api_mock):
+        api = AnovaApi(
+            None,
+            "sample@gmail.com",
+            "sample",
+        )
+        yield api
