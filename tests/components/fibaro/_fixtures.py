@@ -75,3 +75,44 @@ def mock_config_entry(
     )
     entry.add_to_hass(hass)
     return entry
+
+
+@fixture
+def mock_room() -> Mock:
+    """Fixture for an individual room."""
+    room = Mock()
+    room.fibaro_id = 1
+    room.name = "Room 1"
+    return room
+
+
+@fixture
+def mock_light() -> Mock:
+    """Fixture for a dimmable light."""
+    light = Mock()
+    light.fibaro_id = 3
+    light.parent_fibaro_id = 0
+    light.name = "Test light"
+    light.room_id = 1
+    light.dead = False
+    light.visible = True
+    light.enabled = True
+    light.type = "com.fibaro.FGD212"
+    light.base_type = "com.fibaro.device"
+    light.properties = {"manufacturer": ""}
+    light.actions = {"setValue": 1, "on": 0, "off": 0}
+    light.supported_features = {}
+    light.raw_data = {"fibaro_id": 3, "name": "Test light", "properties": {"value": 20}}
+    value_mock = Mock()
+    value_mock.has_value = True
+    value_mock.int_value.return_value = 20
+    light.value = value_mock
+    return light
+
+
+async def init_integration(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+) -> None:
+    """Set up the fibaro integration for testing."""
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
