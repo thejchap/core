@@ -1,50 +1,149 @@
-"""Tryke skip-stubs for opower config flow tests.
+"""Test the Opower config flow."""
 
-Original tests use recorder_mock fixture; full port deferred.
-"""
+from unittest.mock import AsyncMock, patch
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("requires recorder_mock fixture (not in tryke shim)")
-async def form() -> None:
-    """Stub for test_form (port deferred)."""
+from homeassistant import config_entries
+from homeassistant.components.opower.const import DOMAIN
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-@test.skip("requires recorder_mock fixture (not in tryke shim)")
-async def form_with_totp() -> None:
-    """Stub for test_form_with_totp (port deferred)."""
+from ._fixtures import mock_setup_entry, recorder_mock
 
-@test.skip("requires recorder_mock fixture (not in tryke shim)")
-async def form_with_invalid_totp() -> None:
-    """Stub for test_form_with_invalid_totp (port deferred)."""
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-@test.skip("requires recorder_mock fixture (not in tryke shim)")
-async def form_with_mfa_challenge() -> None:
-    """Stub for test_form_with_mfa_challenge (port deferred)."""
 
-@test.skip("requires recorder_mock fixture (not in tryke shim)")
-async def form_with_mfa_challenge_but_no_mfa_options() -> None:
-    """Stub for test_form_with_mfa_challenge_but_no_mfa_options (port deferred)."""
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _recorder: object = Depends(recorder_mock),
+) -> None:
+    """Force tryke to resolve hass + recorder before each test."""
 
-@test.skip("requires recorder_mock fixture (not in tryke shim)")
-async def form_exceptions() -> None:
-    """Stub for test_form_exceptions (port deferred)."""
 
-@test.skip("requires recorder_mock fixture (not in tryke shim)")
-async def form_already_configured() -> None:
-    """Stub for test_form_already_configured (port deferred)."""
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Test we get the form and complete the flow successfully."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
 
-@test.skip("requires recorder_mock fixture (not in tryke shim)")
-async def form_not_already_configured() -> None:
-    """Stub for test_form_not_already_configured (port deferred)."""
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"utility": "Pacific Gas and Electric Company (PG&E)"},
+    )
+    expect(result2["type"]).to_be(FlowResultType.FORM)
+    expect(result2["step_id"]).to_equal("credentials")
 
-@test.skip("requires recorder_mock fixture (not in tryke shim)")
-async def form_valid_reauth() -> None:
-    """Stub for test_form_valid_reauth (port deferred)."""
+    with patch(
+        "homeassistant.components.opower.config_flow.Opower.async_login",
+    ) as mock_login:
+        result3 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "username": "test-username",
+                "password": "test-password",
+            },
+        )
+        await hass.async_block_till_done()
 
-@test.skip("requires recorder_mock fixture (not in tryke shim)")
-async def form_valid_reauth_with_totp() -> None:
-    """Stub for test_form_valid_reauth_with_totp (port deferred)."""
+    expect(result3["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result3["title"]).to_equal(
+        "Pacific Gas and Electric Company (PG&E) (test-username)"
+    )
+    expect(result3["data"]).to_equal(
+        {
+            "utility": "Pacific Gas and Electric Company (PG&E)",
+            "username": "test-username",
+            "password": "test-password",
+        }
+    )
+    expect(len(setup_entry.mock_calls)).to_equal(1)
+    expect(mock_login.call_count).to_equal(1)
 
-@test.skip("requires recorder_mock fixture (not in tryke shim)")
-async def reauth_with_mfa_challenge() -> None:
-    """Stub for test_reauth_with_mfa_challenge (port deferred)."""
+
+@test.skip("complex MFA challenge flow with multi-step recovery — port deferred")
+async def form_with_totp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_form_with_totp."""
+
+
+@test.skip("complex MFA challenge flow with multi-step recovery — port deferred")
+async def form_with_invalid_totp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_form_with_invalid_totp."""
+
+
+@test.skip("complex MFA challenge flow with multi-step recovery — port deferred")
+async def form_with_mfa_challenge(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_form_with_mfa_challenge."""
+
+
+@test.skip("complex MFA challenge flow with multi-step recovery — port deferred")
+async def form_with_mfa_challenge_but_no_mfa_options(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_form_with_mfa_challenge_but_no_mfa_options."""
+
+
+@test.skip("indirect parametrize not in tryke 0.0.27")
+async def form_exceptions(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_form_exceptions."""
+
+
+@test.skip("requires recorder + reauth flow — port deferred")
+async def form_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_form_already_configured."""
+
+
+@test.skip("requires recorder + reauth flow — port deferred")
+async def form_not_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_form_not_already_configured."""
+
+
+@test.skip("requires recorder + reauth flow — port deferred")
+async def form_valid_reauth(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_form_valid_reauth."""
+
+
+@test.skip("complex MFA challenge flow with multi-step recovery — port deferred")
+async def form_valid_reauth_with_totp(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_form_valid_reauth_with_totp."""
+
+
+@test.skip("complex MFA challenge flow with multi-step recovery — port deferred")
+async def reauth_with_mfa_challenge(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_reauth_with_mfa_challenge."""
