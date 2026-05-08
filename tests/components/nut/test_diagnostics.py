@@ -1,5 +1,7 @@
 """Tests for the diagnostics data provided by the Nut integration."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.components.nut.diagnostics import TO_REDACT
 from homeassistant.core import HomeAssistant
@@ -7,12 +9,24 @@ from homeassistant.core import HomeAssistant
 from .util import async_init_integration
 
 from tests.components.diagnostics import get_diagnostics_for_config_entry
-from tests.typing import ClientSessionGenerator
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    hass as hass_fixture,
+    hass_client as hass_client_fixture,
+    mock_network,
+)
 
 
-async def test_diagnostics(
-    hass: HomeAssistant,
-    hass_client: ClientSessionGenerator,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Force tryke fixture resolution before each test."""
+
+
+@test
+async def diagnostics(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
 ) -> None:
     """Test diagnostics."""
     list_commands: set[str] = ["beeper.enable"]
@@ -39,5 +53,5 @@ async def test_diagnostics(
     result = await get_diagnostics_for_config_entry(
         hass, hass_client, mock_config_entry
     )
-    assert result["entry"] == entry_dict | {"discovery_keys": {}}
-    assert result["nut_data"] == nut_data_dict
+    expect(result["entry"]).to_equal(entry_dict | {"discovery_keys": {}})
+    expect(result["nut_data"]).to_equal(nut_data_dict)

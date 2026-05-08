@@ -8,8 +8,25 @@ from nrgkick_api import ConnectorType, GridPhases
 from tryke import fixture
 
 from homeassistant.components.nrgkick.const import DOMAIN
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 
-from tests.common import load_json_object_fixture
+from tests.common import MockConfigEntry, load_json_object_fixture
+
+
+@fixture
+def mock_config_entry() -> MockConfigEntry:
+    """Mock config entry."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title="NRGkick Test",
+        data={
+            CONF_HOST: "192.168.1.100",
+            CONF_USERNAME: "test_user",
+            CONF_PASSWORD: "test_pass",
+        },
+        entry_id="test_entry_id",
+        unique_id="TEST123456",
+    )
 
 
 @fixture
