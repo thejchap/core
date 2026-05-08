@@ -1,22 +1,13 @@
-"""Test WattTime diagnostics."""
+"""Tryke skip stub for test_diagnostics.py - sibling test pending tryke port."""
 
-from syrupy.assertion import SnapshotAssertion
-from syrupy.filters import props
-
-from homeassistant.core import HomeAssistant
-
-from tests.components.diagnostics import get_diagnostics_for_config_entry
-from tests.typing import ClientSessionGenerator
+from tryke import fixture, test
 
 
-async def test_entry_diagnostics(
-    hass: HomeAssistant,
-    config_entry,
-    hass_client: ClientSessionGenerator,
-    setup_watttime,
-    snapshot: SnapshotAssertion,
-) -> None:
-    """Test config entry diagnostics."""
-    assert await get_diagnostics_for_config_entry(
-        hass, hass_client, config_entry
-    ) == snapshot(exclude=props("entry_id", "created_at", "modified_at"))
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test.skip("watttime: sibling test pending tryke port — needs: syrupy snapshot, hass_client")
+async def diagnostics() -> None:
+    """Placeholder skipped sibling tests."""

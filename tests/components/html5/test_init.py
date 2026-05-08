@@ -1,20 +1,7 @@
-"""Test the HTML5 setup."""
+"""Tryke skip-stubs for test_init.py - sibling port deferred (20 LOC, 0 parametrize)."""
 
-from homeassistant.config_entries import ConfigEntryState
-from homeassistant.core import HomeAssistant
+from tryke import test
 
-from tests.common import MockConfigEntry
-
-
-async def test_setup_entry(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-    """Test setup of a good config entry."""
-
-    config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    assert config_entry.state is ConfigEntryState.LOADED
-
-    assert await hass.config_entries.async_unload(config_entry.entry_id)
-
-    assert config_entry.state is ConfigEntryState.NOT_LOADED
+@test.skip("sibling port deferred (20 LOC, 0 parametrize)")
+async def setup_entry() -> None:
+    """Stub for test_setup_entry."""

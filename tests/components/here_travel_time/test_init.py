@@ -1,8 +1,9 @@
 """The test for the HERE Travel Time integration."""
 
 from datetime import datetime
+from unittest.mock import MagicMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.here_travel_time.config_flow import (
     DEFAULT_OPTIONS,
@@ -20,30 +21,51 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 
+from ._fixtures import valid_response
 from .const import DEFAULT_CONFIG
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    hass as hass_fixture,
+    issue_registry as issue_registry_fixture,
+)
 
 
-@pytest.mark.usefixtures("valid_response")
-@pytest.mark.parametrize(
-    "options",
-    [
-        DEFAULT_OPTIONS,
-        {
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _valid: MagicMock = Depends(valid_response),
+) -> HomeAssistant:
+    """Module-local anchor fixture."""
+    return hass
+
+
+@test.cases(
+    test.case("default", options=DEFAULT_OPTIONS),
+    test.case(
+        "departure_time",
+        options={
             CONF_ROUTE_MODE: ROUTE_MODE_FASTEST,
             CONF_DEPARTURE_TIME: datetime.now(),
         },
-        {
+    ),
+    test.case(
+        "arrival_time",
+        options={
             CONF_ROUTE_MODE: ROUTE_MODE_FASTEST,
             CONF_ARRIVAL_TIME: datetime.now(),
         },
-        {
-            CONF_ROUTE_MODE: ROUTE_MODE_FASTEST,
-        },
-    ],
+    ),
+    test.case(
+        "route_mode_only",
+        options={CONF_ROUTE_MODE: ROUTE_MODE_FASTEST},
+    ),
 )
-async def test_unload_entry(hass: HomeAssistant, options) -> None:
+async def unload_entry(
+    *,
+    options: dict,
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
     """Test that unloading an entry works."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -57,12 +79,12 @@ async def test_unload_entry(hass: HomeAssistant, options) -> None:
 
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    assert await hass.config_entries.async_unload(entry.entry_id)
+    expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
 
 
-@pytest.mark.usefixtures("valid_response")
-async def test_migrate_entry_v1_1_v1_2(
-    hass: HomeAssistant,
+@test
+async def migrate_entry_v1_1_v1_2(
+    hass: HomeAssistant = Depends(_trigger_executor),
 ) -> None:
     """Test successful migration of entry data."""
     mock_entry = MockConfigEntry(
@@ -78,14 +100,16 @@ async def test_migrate_entry_v1_1_v1_2(
 
     updated_entry = hass.config_entries.async_get_entry(mock_entry.entry_id)
 
-    assert updated_entry.state is ConfigEntryState.LOADED
-    assert updated_entry.minor_version == 2
-    assert updated_entry.options[CONF_TRAFFIC_MODE] is True
+    expect(updated_entry is not None).to_be(True)
+    expect(updated_entry.state).to_be(ConfigEntryState.LOADED)
+    expect(updated_entry.minor_version).to_equal(2)
+    expect(updated_entry.options[CONF_TRAFFIC_MODE]).to_be(True)
 
 
-@pytest.mark.usefixtures("valid_response")
-async def test_issue_multiple_here_integrations_detected(
-    hass: HomeAssistant, issue_registry: ir.IssueRegistry
+@test
+async def issue_multiple_here_integrations_detected(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    issue_registry: ir.IssueRegistry = Depends(issue_registry_fixture),
 ) -> None:
     """Test that an issue is created when multiple HERE integrations are detected."""
     entry1 = MockConfigEntry(
@@ -106,4 +130,4 @@ async def test_issue_multiple_here_integrations_detected(
     await hass.config_entries.async_setup(entry2.entry_id)
     await hass.async_block_till_done()
 
-    assert len(issue_registry.issues) == 1
+    expect(len(issue_registry.issues)).to_equal(1)

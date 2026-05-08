@@ -1,17 +1,135 @@
-"""Tryke skip-stubs for openai_conversation config flow tests.
+"""Test the OpenAI Conversation config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from unittest.mock import AsyncMock, patch
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("requires OpenAI subentry chain + multiple subentry types (not ported)")
-async def form() -> None:
-    """Stub for test_form (port deferred)."""
+from homeassistant import config_entries
+from homeassistant.components.openai_conversation.config_flow import (
+    RECOMMENDED_CONVERSATION_OPTIONS,
+)
+from homeassistant.components.openai_conversation.const import (
+    DEFAULT_AI_TASK_NAME,
+    DEFAULT_CONVERSATION_NAME,
+    DEFAULT_STT_NAME,
+    DEFAULT_TTS_NAME,
+    DOMAIN,
+    RECOMMENDED_AI_TASK_OPTIONS,
+    RECOMMENDED_STT_OPTIONS,
+    RECOMMENDED_TTS_OPTIONS,
+)
+from homeassistant.const import CONF_API_KEY
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.setup import async_setup_component
 
-@test.skip("requires OpenAI subentry chain + multiple subentry types (not ported)")
-async def duplicate_entry() -> None:
-    """Stub for test_duplicate_entry (port deferred)."""
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Force tryke fixture resolution before each test."""
+
+
+@test
+async def form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we get the form."""
+    expect(await async_setup_component(hass, "homeassistant", {})).to_be(True)
+    hass.config.components.add("openai_conversation")
+    MockConfigEntry(
+        domain=DOMAIN,
+        state=config_entries.ConfigEntryState.LOADED,
+    ).add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({})
+
+    with (
+        patch(
+            "homeassistant.components.openai_conversation.config_flow.openai.resources.models.AsyncModels.list",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "homeassistant.components.openai_conversation.async_setup_entry",
+            return_value=True,
+        ) as mock_setup_entry,
+    ):
+        result2 = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"api_key": "bla"},
+        )
+        await hass.async_block_till_done()
+
+    expect(result2["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(result2["data"]).to_equal({"api_key": "bla"})
+    expect(result2["options"]).to_equal({})
+    expect(result2["subentries"]).to_equal(
+        [
+            {
+                "subentry_type": "conversation",
+                "data": RECOMMENDED_CONVERSATION_OPTIONS,
+                "title": DEFAULT_CONVERSATION_NAME,
+                "unique_id": None,
+            },
+            {
+                "subentry_type": "ai_task_data",
+                "data": RECOMMENDED_AI_TASK_OPTIONS,
+                "title": DEFAULT_AI_TASK_NAME,
+                "unique_id": None,
+            },
+            {
+                "subentry_type": "stt",
+                "data": RECOMMENDED_STT_OPTIONS,
+                "title": DEFAULT_STT_NAME,
+                "unique_id": None,
+            },
+            {
+                "subentry_type": "tts",
+                "data": RECOMMENDED_TTS_OPTIONS,
+                "title": DEFAULT_TTS_NAME,
+                "unique_id": None,
+            },
+        ]
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
+@test
+async def duplicate_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we abort on duplicate config entry."""
+    expect(await async_setup_component(hass, "homeassistant", {})).to_be(True)
+    MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_API_KEY: "bla"},
+    ).add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(bool(result["errors"])).to_be(False)
+
+    with patch(
+        "homeassistant.components.openai_conversation.config_flow.openai.resources.models.AsyncModels.list",
+        new_callable=AsyncMock,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_API_KEY: "bla"},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 @test.skip("requires OpenAI subentry chain + multiple subentry types (not ported)")
 async def creating_conversation_subentry() -> None:

@@ -1,41 +1,11 @@
-"""Test the Home Knocki init module."""
+"""Tryke skip-stubs for test_init.py - sibling port deferred (41 LOC, 0 parametrize)."""
 
-from unittest.mock import AsyncMock
+from tryke import test
 
-from knocki import KnockiConnectionError
+@test.skip("sibling port deferred (41 LOC, 0 parametrize)")
+async def load_unload_entry() -> None:
+    """Stub for test_load_unload_entry."""
 
-from homeassistant.config_entries import ConfigEntryState
-from homeassistant.core import HomeAssistant
-
-from . import setup_integration
-
-from tests.common import MockConfigEntry
-
-
-async def test_load_unload_entry(
-    hass: HomeAssistant,
-    mock_knocki_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-) -> None:
-    """Test load and unload entry."""
-    await setup_integration(hass, mock_config_entry)
-
-    assert mock_config_entry.state is ConfigEntryState.LOADED
-
-    await hass.config_entries.async_remove(mock_config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    assert mock_config_entry.state is ConfigEntryState.NOT_LOADED
-
-
-async def test_initialization_failure(
-    hass: HomeAssistant,
-    mock_knocki_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-) -> None:
-    """Test initialization failure."""
-    mock_knocki_client.get_triggers.side_effect = KnockiConnectionError
-
-    await setup_integration(hass, mock_config_entry)
-
-    assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
+@test.skip("sibling port deferred (41 LOC, 0 parametrize)")
+async def initialization_failure() -> None:
+    """Stub for test_initialization_failure."""

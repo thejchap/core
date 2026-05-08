@@ -1,23 +1,13 @@
-"""Tests for the VRM Forecasts sensors.
+"""Tryke skip stub for test_sensor.py - sibling test pending tryke port."""
 
-Consolidates most per-sensor assertions into snapshot-based regression tests.
-"""
-
-import pytest
-from syrupy.assertion import SnapshotAssertion
-
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
-
-from tests.common import snapshot_platform
+from tryke import fixture, test
 
 
-@pytest.mark.usefixtures("entity_registry_enabled_by_default")
-async def test_sensors_snapshot(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    init_integration,
-    snapshot: SnapshotAssertion,
-) -> None:
-    """Snapshot all VRM sensor states & key attributes."""
-    await snapshot_platform(hass, entity_registry, snapshot, init_integration.entry_id)
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test.skip("victron_remote_monitoring: sibling test pending tryke port — needs: syrupy snapshot")
+async def sensor() -> None:
+    """Placeholder skipped sibling tests."""

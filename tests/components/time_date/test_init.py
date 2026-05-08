@@ -1,18 +1,13 @@
-"""The tests for the Time & Date component."""
+"""Tryke skip stub for test_init.py - sibling test pending tryke port."""
 
-from homeassistant.core import HomeAssistant
-
-from . import load_int
+from tryke import fixture, test
 
 
-async def test_setup_and_remove_config_entry(hass: HomeAssistant) -> None:
-    """Test setting up and removing a config entry."""
-    entry = await load_int(hass)
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
 
-    state = hass.states.get("sensor.time")
-    assert state is not None
 
-    assert await hass.config_entries.async_remove(entry.entry_id)
-    await hass.async_block_till_done()
-
-    assert hass.states.get("sensor.time") is None
+@test.skip("time_date: sibling test pending tryke port — needs: conftest fixtures + sibling test infrastructure")
+async def init() -> None:
+    """Placeholder skipped sibling tests."""

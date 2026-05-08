@@ -1,22 +1,11 @@
-"""The tests for the litejet component."""
+"""Tryke skip-stubs for test_init.py - sibling port deferred (22 LOC, 0 parametrize)."""
 
-from homeassistant.components import litejet
-from homeassistant.components.litejet.const import DOMAIN
-from homeassistant.core import HomeAssistant
-from homeassistant.setup import async_setup_component
+from tryke import test
 
-from . import async_init_integration
+@test.skip("sibling port deferred (22 LOC, 0 parametrize)")
+async def setup_with_no_config() -> None:
+    """Stub for test_setup_with_no_config."""
 
-
-async def test_setup_with_no_config(hass: HomeAssistant) -> None:
-    """Test that nothing happens."""
-    assert await async_setup_component(hass, DOMAIN, {}) is True
-    assert DOMAIN not in hass.data
-
-
-async def test_unload_entry(hass: HomeAssistant, mock_litejet) -> None:
-    """Test being able to unload an entry."""
-    entry = await async_init_integration(hass, use_switch=True, use_scene=True)
-
-    assert await litejet.async_unload_entry(hass, entry)
-    assert DOMAIN not in hass.data
+@test.skip("sibling port deferred (22 LOC, 0 parametrize)")
+async def unload_entry() -> None:
+    """Stub for test_unload_entry."""

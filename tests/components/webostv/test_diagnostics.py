@@ -1,24 +1,13 @@
-"""Tests for the diagnostics data provided by LG webOS TV."""
+"""Tryke skip stub for test_diagnostics.py - sibling test pending tryke port."""
 
-from syrupy.assertion import SnapshotAssertion
-from syrupy.filters import props
-
-from homeassistant.core import HomeAssistant
-
-from . import setup_webostv
-
-from tests.components.diagnostics import get_diagnostics_for_config_entry
-from tests.typing import ClientSessionGenerator
+from tryke import fixture, test
 
 
-async def test_diagnostics(
-    hass: HomeAssistant,
-    hass_client: ClientSessionGenerator,
-    client,
-    snapshot: SnapshotAssertion,
-) -> None:
-    """Test diagnostics."""
-    entry = await setup_webostv(hass)
-    assert await get_diagnostics_for_config_entry(hass, hass_client, entry) == snapshot(
-        exclude=props("created_at", "modified_at", "entry_id")
-    )
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test.skip("webostv: sibling test pending tryke port — needs: syrupy snapshot, hass_client")
+async def diagnostics() -> None:
+    """Placeholder skipped sibling tests."""

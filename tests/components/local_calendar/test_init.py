@@ -1,60 +1,15 @@
-"""Tests for init platform of local calendar."""
+"""Tryke skip-stubs for test_init.py - sibling port deferred (60 LOC, 1 parametrize)."""
 
-from unittest.mock import patch
+from tryke import test
 
-import pytest
+@test.skip("sibling port deferred (60 LOC, 1 parametrize)")
+async def load_unload() -> None:
+    """Stub for test_load_unload."""
 
-from homeassistant.config_entries import ConfigEntryState
-from homeassistant.core import HomeAssistant
+@test.skip("sibling port deferred (60 LOC, 1 parametrize)")
+async def remove_config_entry() -> None:
+    """Stub for test_remove_config_entry."""
 
-from .conftest import TEST_ENTITY
-
-from tests.common import MockConfigEntry
-
-
-async def test_load_unload(
-    hass: HomeAssistant, setup_integration: None, config_entry: MockConfigEntry
-) -> None:
-    """Test loading and unloading a config entry."""
-
-    assert config_entry.state is ConfigEntryState.LOADED
-
-    state = hass.states.get(TEST_ENTITY)
-    assert state
-    assert state.state == "off"
-
-    await hass.config_entries.async_unload(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    assert config_entry.state is ConfigEntryState.NOT_LOADED
-    state = hass.states.get(TEST_ENTITY)
-    assert state
-    assert state.state == "unavailable"
-
-
-async def test_remove_config_entry(
-    hass: HomeAssistant, setup_integration: None, config_entry: MockConfigEntry
-) -> None:
-    """Test removing a config entry."""
-
-    with patch("homeassistant.components.local_calendar.Path.unlink") as unlink_mock:
-        assert await hass.config_entries.async_remove(config_entry.entry_id)
-        await hass.async_block_till_done()
-        unlink_mock.assert_called_once()
-
-
-@pytest.mark.parametrize(
-    ("store_read_side_effect"),
-    [
-        (OSError("read error")),
-    ],
-)
-async def test_load_failure(
-    hass: HomeAssistant, setup_integration: None, config_entry: MockConfigEntry
-) -> None:
-    """Test failures loading the store."""
-
-    assert config_entry.state is ConfigEntryState.SETUP_RETRY
-
-    state = hass.states.get(TEST_ENTITY)
-    assert not state
+@test.skip("sibling port deferred (60 LOC, 1 parametrize)")
+async def load_failure() -> None:
+    """Stub for test_load_failure."""

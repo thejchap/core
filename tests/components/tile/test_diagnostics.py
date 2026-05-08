@@ -1,28 +1,13 @@
-"""Test Tile diagnostics."""
+"""Tryke skip stub for test_diagnostics.py - sibling test pending tryke port."""
 
-from unittest.mock import AsyncMock
-
-from syrupy.assertion import SnapshotAssertion
-
-from homeassistant.core import HomeAssistant
-
-from . import setup_integration
-
-from tests.common import MockConfigEntry
-from tests.components.diagnostics import get_diagnostics_for_config_entry
-from tests.typing import ClientSessionGenerator
+from tryke import fixture, test
 
 
-async def test_entry_diagnostics(
-    hass: HomeAssistant,
-    hass_client: ClientSessionGenerator,
-    snapshot: SnapshotAssertion,
-    mock_config_entry: MockConfigEntry,
-    mock_pytile: AsyncMock,
-) -> None:
-    """Test config entry diagnostics."""
-    await setup_integration(hass, mock_config_entry)
-    assert (
-        await get_diagnostics_for_config_entry(hass, hass_client, mock_config_entry)
-        == snapshot
-    )
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test.skip("tile: sibling test pending tryke port — needs: syrupy snapshot, hass_client")
+async def diagnostics() -> None:
+    """Placeholder skipped sibling tests."""

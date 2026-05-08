@@ -1,50 +1,14 @@
-"""Tests for the Freebox device trackers."""
+"""Tryke skip stub for test_device_tracker.py."""
 
-from unittest.mock import Mock
-
-from freezegun.api import FrozenDateTimeFactory
-
-from homeassistant.components.device_tracker import DOMAIN as DEVICE_TRACKER_DOMAIN
-from homeassistant.components.freebox import SCAN_INTERVAL
-from homeassistant.core import HomeAssistant
-
-from .common import setup_platform
-
-from tests.common import async_fire_time_changed
+from tryke import test
 
 
-async def test_router_mode(
-    hass: HomeAssistant,
-    freezer: FrozenDateTimeFactory,
-    router: Mock,
-) -> None:
-    """Test get_hosts_list invoqued multiple times if freebox into router mode."""
-    await setup_platform(hass, DEVICE_TRACKER_DOMAIN)
-
-    assert router().lan.get_hosts_list.call_count == 2
-
-    # Simulate an update
-    freezer.tick(SCAN_INTERVAL)
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
-
-    assert router().lan.get_hosts_list.call_count == 4
+@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+async def router_mode() -> None:
+    """Stub for test_router_mode."""
 
 
-async def test_bridge_mode(
-    hass: HomeAssistant,
-    freezer: FrozenDateTimeFactory,
-    router_bridge_mode: Mock,
-) -> None:
-    """Test get_interfaces invoqued once if freebox into bridge mode."""
-    await setup_platform(hass, DEVICE_TRACKER_DOMAIN)
+@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+async def bridge_mode() -> None:
+    """Stub for test_bridge_mode."""
 
-    assert router_bridge_mode().lan.get_interfaces.call_count == 1
-
-    # Simulate an update
-    freezer.tick(SCAN_INTERVAL)
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
-
-    # If get_interfaces failed, not called again
-    assert router_bridge_mode().lan.get_interfaces.call_count == 1

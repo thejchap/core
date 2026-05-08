@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.lyric.const import DOMAIN
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -10,10 +12,18 @@ from homeassistant.helpers.config_entry_oauth2_flow import (
 )
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_oauth_implementation_not_available(
-    hass: HomeAssistant,
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Module-local fixture anchor."""
+
+
+@test
+async def oauth_implementation_not_available(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test that unavailable OAuth implementation raises ConfigEntryNotReady."""
     entry = MockConfigEntry(
@@ -37,4 +47,4 @@ async def test_oauth_implementation_not_available(
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    assert entry.state is ConfigEntryState.SETUP_RETRY
+    expect(entry.state).to_be(ConfigEntryState.SETUP_RETRY)

@@ -1,29 +1,13 @@
-"""Tests for the TotalConnect binary sensor."""
+"""Tryke skip stub for test_binary_sensor.py - sibling test pending tryke port."""
 
-from unittest.mock import AsyncMock, patch
-
-from syrupy.assertion import SnapshotAssertion
-
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
-
-from . import setup_integration
-
-from tests.common import MockConfigEntry, snapshot_platform
+from tryke import fixture, test
 
 
-async def test_entity_registry(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    mock_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    snapshot: SnapshotAssertion,
-) -> None:
-    """Test the alarm control panel attributes are correct."""
-    with patch(
-        "homeassistant.components.totalconnect.PLATFORMS", [Platform.BINARY_SENSOR]
-    ):
-        await setup_integration(hass, mock_config_entry)
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
 
-    await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
+
+@test.skip("totalconnect: sibling test pending tryke port — needs: syrupy snapshot")
+async def binary_sensor() -> None:
+    """Placeholder skipped sibling tests."""

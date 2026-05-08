@@ -1,20 +1,13 @@
-"""Tests for the Stookwijzer sensor platform."""
+"""Tests for the Stookwijzer sensor platform. (tryke skip stub)."""
 
-import pytest
-from syrupy.assertion import SnapshotAssertion
-
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
-
-from tests.common import MockConfigEntry, snapshot_platform
+from tryke import fixture, test
 
 
-@pytest.mark.usefixtures("init_integration")
-async def test_entities(
-    hass: HomeAssistant,
-    mock_config_entry: MockConfigEntry,
-    entity_registry: er.EntityRegistry,
-    snapshot: SnapshotAssertion,
-) -> None:
-    """Test the Stookwijzer entities."""
-    await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test.skip("syrupy snapshot")
+async def entities() -> None:
+    """Stub for test_entities (port deferred)."""

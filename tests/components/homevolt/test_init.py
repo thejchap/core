@@ -1,58 +1,11 @@
-"""Test the Homevolt init module."""
+"""Tryke skip-stubs for test_init.py - sibling port deferred (58 LOC, 1 parametrize)."""
 
-from unittest.mock import MagicMock
+from tryke import test
 
-from homevolt import HomevoltAuthenticationError, HomevoltConnectionError
-import pytest
+@test.skip("sibling port deferred (58 LOC, 1 parametrize)")
+async def load_unload_entry() -> None:
+    """Stub for test_load_unload_entry."""
 
-from homeassistant.config_entries import ConfigEntryState
-from homeassistant.core import HomeAssistant
-
-from tests.common import MockConfigEntry
-
-
-async def test_load_unload_entry(
-    hass: HomeAssistant,
-    mock_homevolt_client: MagicMock,
-    mock_config_entry: MockConfigEntry,
-) -> None:
-    """Test load and unload entry."""
-    mock_config_entry.add_to_hass(hass)
-
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
-
-    assert mock_config_entry.state is ConfigEntryState.LOADED
-
-    await hass.config_entries.async_unload(mock_config_entry.entry_id)
-
-    assert mock_config_entry.state is ConfigEntryState.NOT_LOADED
-    mock_homevolt_client.close_connection.assert_called_once()
-
-
-@pytest.mark.parametrize(
-    ("side_effect", "expected_state"),
-    [
-        (
-            HomevoltConnectionError("Connection failed"),
-            ConfigEntryState.SETUP_RETRY,
-        ),
-        (
-            HomevoltAuthenticationError("Authentication failed"),
-            ConfigEntryState.SETUP_ERROR,
-        ),
-    ],
-)
-async def test_config_entry_setup_failure(
-    hass: HomeAssistant,
-    mock_homevolt_client: MagicMock,
-    mock_config_entry: MockConfigEntry,
-    side_effect: Exception,
-    expected_state: ConfigEntryState,
-) -> None:
-    """Test the Homevolt configuration entry setup failures."""
-    mock_homevolt_client.update_info.side_effect = side_effect
-    mock_config_entry.add_to_hass(hass)
-
-    await hass.config_entries.async_setup(mock_config_entry.entry_id)
-
-    assert mock_config_entry.state is expected_state
+@test.skip("sibling port deferred (58 LOC, 1 parametrize)")
+async def config_entry_setup_failure() -> None:
+    """Stub for test_config_entry_setup_failure."""

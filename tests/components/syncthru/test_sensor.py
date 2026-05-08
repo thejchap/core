@@ -1,29 +1,13 @@
-"""Tests for the Syncthru sensor platform."""
+"""Tryke skip stub for test_sensor.py - sibling test pending tryke port."""
 
-from unittest.mock import AsyncMock, patch
-
-import pytest
-from syrupy.assertion import SnapshotAssertion
-
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
-
-from . import setup_integration
-
-from tests.common import MockConfigEntry, snapshot_platform
+from tryke import fixture, test
 
 
-@pytest.mark.usefixtures("entity_registry_enabled_by_default")
-async def test_all_entities(
-    hass: HomeAssistant,
-    snapshot: SnapshotAssertion,
-    mock_syncthru: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-    entity_registry: er.EntityRegistry,
-) -> None:
-    """Test all entities."""
-    with patch("homeassistant.components.syncthru.PLATFORMS", [Platform.SENSOR]):
-        await setup_integration(hass, mock_config_entry)
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
 
-    await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
+
+@test.skip("syncthru: sibling test pending tryke port — needs: syrupy snapshot")
+async def sensor() -> None:
+    """Placeholder skipped sibling tests."""

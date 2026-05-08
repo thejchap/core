@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.microbees.const import DOMAIN
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -9,10 +11,22 @@ from homeassistant.helpers.config_entry_oauth2_flow import (
     ImplementationUnavailableError,
 )
 
+from ._fixtures import config_entry, expires_at, scopes
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_migrate_entry_minor_version_1_2(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Module-local fixture anchor."""
+
+
+@test
+async def migrate_entry_minor_version_1_2(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test migrating a 1.1 config entry to 1.2."""
     with patch(
         "homeassistant.components.microbees.async_setup_entry", return_value=True
@@ -33,24 +47,26 @@ async def test_migrate_entry_minor_version_1_2(hass: HomeAssistant) -> None:
             unique_id=54321,
         )
         entry.add_to_hass(hass)
-        assert await hass.config_entries.async_setup(entry.entry_id)
-        assert entry.version == 1
-        assert entry.minor_version == 2
-        assert entry.unique_id == "54321"
+        expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
+        expect(entry.version).to_equal(1)
+        expect(entry.minor_version).to_equal(2)
+        expect(entry.unique_id).to_equal("54321")
 
 
-async def test_oauth_implementation_not_available(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
+@test
+async def oauth_implementation_not_available(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
 ) -> None:
     """Test that unavailable OAuth implementation raises ConfigEntryNotReady."""
-    config_entry.add_to_hass(hass)
+    entry.add_to_hass(hass)
 
     with patch(
         "homeassistant.helpers.config_entry_oauth2_flow.async_get_config_entry_implementation",
         side_effect=ImplementationUnavailableError,
     ):
-        await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.SETUP_RETRY
+    expect(entry.state).to_be(ConfigEntryState.SETUP_RETRY)

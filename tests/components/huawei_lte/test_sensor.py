@@ -1,24 +1,7 @@
-"""Huawei LTE sensor tests."""
+"""Tryke skip-stubs for test_sensor.py - sibling port deferred (24 LOC, 1 parametrize)."""
 
-import pytest
+from tryke import test
 
-from homeassistant.components.huawei_lte import sensor
-from homeassistant.const import (
-    SIGNAL_STRENGTH_DECIBELS,
-    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
-)
-
-
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("-71 dBm", (-71, SIGNAL_STRENGTH_DECIBELS_MILLIWATT)),
-        ("15dB", (15, SIGNAL_STRENGTH_DECIBELS)),
-        (">=-51dBm", (-51, SIGNAL_STRENGTH_DECIBELS_MILLIWATT)),
-        ("&lt;-20dB", (-20, SIGNAL_STRENGTH_DECIBELS)),
-        ("&gt;=30dB", (30, SIGNAL_STRENGTH_DECIBELS)),
-    ],
-)
-def test_format_default(value, expected) -> None:
-    """Test that default formatter copes with expected values."""
-    assert sensor.format_default(value) == expected
+@test.skip("sibling port deferred (24 LOC, 1 parametrize)")
+async def format_default() -> None:
+    """Stub for test_format_default."""

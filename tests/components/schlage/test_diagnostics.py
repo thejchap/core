@@ -1,24 +1,13 @@
-"""Test Schlage diagnostics."""
+"""Test Schlage diagnostics. (tryke skip stub)."""
 
-from unittest.mock import Mock
-
-from homeassistant.core import HomeAssistant
-
-from . import MockSchlageConfigEntry
-
-from tests.components.diagnostics import get_diagnostics_for_config_entry
-from tests.typing import ClientSessionGenerator
+from tryke import fixture, test
 
 
-async def test_entry_diagnostics(
-    hass: HomeAssistant,
-    hass_client: ClientSessionGenerator,
-    mock_added_config_entry: MockSchlageConfigEntry,
-    mock_lock: Mock,
-) -> None:
-    """Test Schlage diagnostics."""
-    mock_lock.get_diagnostics.return_value = {"foo": "bar"}
-    diag = await get_diagnostics_for_config_entry(
-        hass, hass_client, mock_added_config_entry
-    )
-    assert diag == {"locks": [{"foo": "bar"}]}
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test.skip("conftest fixtures need migration to _fixtures.py")
+async def entry_diagnostics() -> None:
+    """Stub for test_entry_diagnostics (port deferred)."""

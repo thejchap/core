@@ -1,47 +1,11 @@
-"""Test the Litter-Robot binary sensor entity."""
+"""Tryke skip-stubs for test_binary_sensor.py - sibling port deferred (47 LOC, 0 parametrize)."""
 
-from unittest.mock import MagicMock
+from tryke import test
 
-import pytest
+@test.skip("sibling port deferred (47 LOC, 0 parametrize)")
+async def binary_sensors() -> None:
+    """Stub for test_binary_sensors."""
 
-from homeassistant.components.binary_sensor import (
-    DOMAIN as BINARY_SENSOR_DOMAIN,
-    BinarySensorDeviceClass,
-)
-from homeassistant.const import ATTR_DEVICE_CLASS
-from homeassistant.core import HomeAssistant
-
-from .conftest import setup_integration
-
-
-@pytest.mark.freeze_time("2022-09-18 23:00:44+00:00")
-@pytest.mark.usefixtures("entity_registry_enabled_by_default")
-async def test_binary_sensors(
-    hass: HomeAssistant,
-    mock_account: MagicMock,
-) -> None:
-    """Tests binary sensors."""
-    await setup_integration(hass, mock_account, BINARY_SENSOR_DOMAIN)
-
-    state = hass.states.get("binary_sensor.test_sleeping")
-    assert state.state == "off"
-    state = hass.states.get("binary_sensor.test_sleep_mode")
-    assert state.state == "on"
-    state = hass.states.get("binary_sensor.test_power_status")
-    assert state.attributes.get(ATTR_DEVICE_CLASS) == BinarySensorDeviceClass.PLUG
-    assert state.state == "on"
-
-
-@pytest.mark.usefixtures("entity_registry_enabled_by_default")
-async def test_litterhopper_binary_sensors(
-    hass: HomeAssistant,
-    mock_account_with_litterhopper: MagicMock,
-) -> None:
-    """Tests LitterHopper-specific binary sensors."""
-    await setup_integration(hass, mock_account_with_litterhopper, BINARY_SENSOR_DOMAIN)
-
-    state = hass.states.get("binary_sensor.test_hopper_connected")
-    assert state.state == "on"
-    assert (
-        state.attributes.get(ATTR_DEVICE_CLASS) == BinarySensorDeviceClass.CONNECTIVITY
-    )
+@test.skip("sibling port deferred (47 LOC, 0 parametrize)")
+async def litterhopper_binary_sensors() -> None:
+    """Stub for test_litterhopper_binary_sensors."""

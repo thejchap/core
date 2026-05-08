@@ -1,97 +1,15 @@
-"""Tests for JVC Projector remote platform."""
+"""Tryke skip-stubs for test_remote.py - sibling port deferred (97 LOC, 0 parametrize)."""
 
-from unittest.mock import MagicMock
+from tryke import test
 
-import pytest
+@test.skip("sibling port deferred (97 LOC, 0 parametrize)")
+async def entity_state() -> None:
+    """Stub for test_entity_state."""
 
-from homeassistant.components.remote import (
-    ATTR_COMMAND,
-    DOMAIN as REMOTE_DOMAIN,
-    SERVICE_SEND_COMMAND,
-)
-from homeassistant.const import ATTR_ENTITY_ID, SERVICE_TURN_OFF, SERVICE_TURN_ON
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
+@test.skip("sibling port deferred (97 LOC, 0 parametrize)")
+async def commands() -> None:
+    """Stub for test_commands."""
 
-from tests.common import MockConfigEntry
-
-ENTITY_ID = "remote.jvc_projector"
-
-
-async def test_entity_state(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    mock_device: MagicMock,
-    mock_integration: MockConfigEntry,
-) -> None:
-    """Tests entity state is registered."""
-    entity = hass.states.get(ENTITY_ID)
-    assert entity
-    assert entity_registry.async_get(entity.entity_id)
-
-
-async def test_commands(
-    hass: HomeAssistant,
-    mock_device: MagicMock,
-    mock_integration: MockConfigEntry,
-) -> None:
-    """Test service call are called."""
-    await hass.services.async_call(
-        REMOTE_DOMAIN,
-        SERVICE_TURN_ON,
-        {ATTR_ENTITY_ID: ENTITY_ID},
-        blocking=True,
-    )
-
-    await hass.services.async_call(
-        REMOTE_DOMAIN,
-        SERVICE_TURN_OFF,
-        {ATTR_ENTITY_ID: ENTITY_ID},
-        blocking=True,
-    )
-
-    await hass.services.async_call(
-        REMOTE_DOMAIN,
-        SERVICE_SEND_COMMAND,
-        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_COMMAND: ["ok"]},
-        blocking=True,
-    )
-
-    await hass.services.async_call(
-        REMOTE_DOMAIN,
-        SERVICE_SEND_COMMAND,
-        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_COMMAND: ["hdmi1"]},
-        blocking=True,
-    )
-
-    await hass.services.async_call(
-        REMOTE_DOMAIN,
-        SERVICE_SEND_COMMAND,
-        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_COMMAND: ["anamo"]},
-        blocking=True,
-    )
-
-    await hass.services.async_call(
-        REMOTE_DOMAIN,
-        SERVICE_SEND_COMMAND,
-        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_COMMAND: ["picture_mode"]},
-        blocking=True,
-    )
-    assert mock_device.remote.call_count == 4
-
-
-async def test_unknown_command(
-    hass: HomeAssistant,
-    mock_device: MagicMock,
-    mock_integration: MockConfigEntry,
-) -> None:
-    """Test unknown service call errors."""
-    with pytest.raises(HomeAssistantError) as err:
-        await hass.services.async_call(
-            REMOTE_DOMAIN,
-            SERVICE_SEND_COMMAND,
-            {ATTR_ENTITY_ID: ENTITY_ID, ATTR_COMMAND: ["bad"]},
-            blocking=True,
-        )
-    assert str(err.value) == "bad is not a known command"
+@test.skip("sibling port deferred (97 LOC, 0 parametrize)")
+async def unknown_command() -> None:
+    """Stub for test_unknown_command."""

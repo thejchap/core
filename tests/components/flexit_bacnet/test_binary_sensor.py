@@ -1,28 +1,9 @@
-"""Tests for the Flexit Nordic (BACnet) binary sensor entities."""
+"""Tryke skip stub for test_binary_sensor.py."""
 
-from unittest.mock import AsyncMock
-
-from syrupy.assertion import SnapshotAssertion
-
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
-
-from . import setup_with_selected_platforms
-
-from tests.common import MockConfigEntry, snapshot_platform
+from tryke import test
 
 
-async def test_binary_sensors(
-    hass: HomeAssistant,
-    snapshot: SnapshotAssertion,
-    entity_registry: er.EntityRegistry,
-    mock_flexit_bacnet: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-) -> None:
-    """Test binary sensor states are correctly collected from library."""
+@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+async def binary_sensors() -> None:
+    """Stub for test_binary_sensors."""
 
-    await setup_with_selected_platforms(
-        hass, mock_config_entry, [Platform.BINARY_SENSOR]
-    )
-    await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)

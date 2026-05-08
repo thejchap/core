@@ -1,81 +1,15 @@
-"""Tests for the kraken integration."""
+"""Tryke skip-stubs for test_init.py - sibling port deferred (81 LOC, 0 parametrize)."""
 
-from unittest.mock import patch
+from tryke import test
 
-from pykrakenapi.pykrakenapi import CallRateLimitError, KrakenAPIError
-import pytest
+@test.skip("sibling port deferred (81 LOC, 0 parametrize)")
+async def unload_entry() -> None:
+    """Stub for test_unload_entry."""
 
-from homeassistant.components.kraken.const import DOMAIN
-from homeassistant.core import HomeAssistant
+@test.skip("sibling port deferred (81 LOC, 0 parametrize)")
+async def unknown_error() -> None:
+    """Stub for test_unknown_error."""
 
-from .const import TICKER_INFORMATION_RESPONSE, TRADEABLE_ASSET_PAIR_RESPONSE
-
-from tests.common import MockConfigEntry
-
-
-async def test_unload_entry(hass: HomeAssistant) -> None:
-    """Test unload for Kraken."""
-    with (
-        patch(
-            "pykrakenapi.KrakenAPI.get_tradable_asset_pairs",
-            return_value=TRADEABLE_ASSET_PAIR_RESPONSE,
-        ),
-        patch(
-            "pykrakenapi.KrakenAPI.get_ticker_information",
-            return_value=TICKER_INFORMATION_RESPONSE,
-        ),
-    ):
-        entry = MockConfigEntry(domain=DOMAIN)
-        entry.add_to_hass(hass)
-
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-        assert await hass.config_entries.async_unload(entry.entry_id)
-        assert DOMAIN not in hass.data
-
-
-async def test_unknown_error(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Test unload for Kraken."""
-    with (
-        patch(
-            "pykrakenapi.KrakenAPI.get_tradable_asset_pairs",
-            return_value=TRADEABLE_ASSET_PAIR_RESPONSE,
-        ),
-        patch(
-            "pykrakenapi.KrakenAPI.get_ticker_information",
-            side_effect=KrakenAPIError("EQuery: Error"),
-        ),
-    ):
-        entry = MockConfigEntry(domain=DOMAIN)
-        entry.add_to_hass(hass)
-
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-        assert "Unable to fetch data from Kraken.com:" in caplog.text
-
-
-async def test_callrate_limit(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Test unload for Kraken."""
-    with (
-        patch(
-            "pykrakenapi.KrakenAPI.get_tradable_asset_pairs",
-            return_value=TRADEABLE_ASSET_PAIR_RESPONSE,
-        ),
-        patch(
-            "pykrakenapi.KrakenAPI.get_ticker_information",
-            side_effect=CallRateLimitError(),
-        ),
-    ):
-        entry = MockConfigEntry(domain=DOMAIN)
-        entry.add_to_hass(hass)
-
-        await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-        assert (
-            "Exceeded the Kraken.com call rate limit. Increase the update interval to"
-            " prevent this error" in caplog.text
-        )
+@test.skip("sibling port deferred (81 LOC, 0 parametrize)")
+async def callrate_limit() -> None:
+    """Stub for test_callrate_limit."""

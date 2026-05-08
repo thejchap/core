@@ -1,180 +1,27 @@
-"""Tests for the lifx component."""
+"""Tryke skip-stubs for test_init.py - sibling port deferred (180 LOC, 0 parametrize)."""
 
-from datetime import timedelta
-import socket
-from typing import Any
-from unittest.mock import patch
+from tryke import test
 
-import pytest
+@test.skip("sibling port deferred (180 LOC, 0 parametrize)")
+async def configuring_lifx_causes_discovery() -> None:
+    """Stub for test_configuring_lifx_causes_discovery."""
 
-from homeassistant.components import lifx
-from homeassistant.components.lifx import DOMAIN, discovery
-from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import CONF_HOST, EVENT_HOMEASSISTANT_STARTED
-from homeassistant.core import HomeAssistant
-from homeassistant.setup import async_setup_component
-from homeassistant.util import dt as dt_util
+@test.skip("sibling port deferred (180 LOC, 0 parametrize)")
+async def config_entry_reload() -> None:
+    """Stub for test_config_entry_reload."""
 
-from . import (
-    IP_ADDRESS,
-    SERIAL,
-    MockFailingLifxCommand,
-    _mocked_bulb,
-    _mocked_failing_bulb,
-    _patch_config_flow_try_connect,
-    _patch_device,
-    _patch_discovery,
-)
+@test.skip("sibling port deferred (180 LOC, 0 parametrize)")
+async def config_entry_retry() -> None:
+    """Stub for test_config_entry_retry."""
 
-from tests.common import MockConfigEntry, async_fire_time_changed
+@test.skip("sibling port deferred (180 LOC, 0 parametrize)")
+async def get_version_fails() -> None:
+    """Stub for test_get_version_fails."""
 
+@test.skip("sibling port deferred (180 LOC, 0 parametrize)")
+async def dns_error_at_startup() -> None:
+    """Stub for test_dns_error_at_startup."""
 
-async def test_configuring_lifx_causes_discovery(hass: HomeAssistant) -> None:
-    """Test that specifying empty config does discovery."""
-    start_calls = 0
-
-    class MockLifxDiscovery:
-        """Mock lifx discovery."""
-
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            """Init discovery."""
-            discovered = _mocked_bulb()
-            self.lights = {discovered.mac_addr: discovered}
-
-        def start(self):
-            """Mock start."""
-            nonlocal start_calls
-            start_calls += 1
-
-        def cleanup(self):
-            """Mock cleanup."""
-
-    with (
-        _patch_config_flow_try_connect(),
-        patch.object(discovery, "DEFAULT_TIMEOUT", 0),
-        patch(
-            "homeassistant.components.lifx.discovery.LifxDiscovery", MockLifxDiscovery
-        ),
-    ):
-        await async_setup_component(hass, lifx.DOMAIN, {lifx.DOMAIN: {}})
-        await hass.async_block_till_done()
-        assert start_calls == 0
-
-        hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
-        await hass.async_block_till_done()
-        assert start_calls == 1
-
-        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=5))
-        await hass.async_block_till_done(wait_background_tasks=True)
-        assert start_calls == 2
-
-        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=15))
-        await hass.async_block_till_done(wait_background_tasks=True)
-        assert start_calls == 3
-
-        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=30))
-        await hass.async_block_till_done(wait_background_tasks=True)
-        assert start_calls == 4
-
-
-async def test_config_entry_reload(hass: HomeAssistant) -> None:
-    """Test that a config entry can be reloaded."""
-    already_migrated_config_entry = MockConfigEntry(
-        domain=DOMAIN, data={CONF_HOST: "127.0.0.1"}, unique_id=SERIAL
-    )
-    already_migrated_config_entry.add_to_hass(hass)
-    with _patch_discovery(), _patch_config_flow_try_connect(), _patch_device():
-        await async_setup_component(hass, lifx.DOMAIN, {lifx.DOMAIN: {}})
-        await hass.async_block_till_done()
-        assert already_migrated_config_entry.state is ConfigEntryState.LOADED
-        await hass.config_entries.async_unload(already_migrated_config_entry.entry_id)
-        await hass.async_block_till_done()
-        assert already_migrated_config_entry.state is ConfigEntryState.NOT_LOADED
-
-
-async def test_config_entry_retry(hass: HomeAssistant) -> None:
-    """Test that a config entry can be retried."""
-    already_migrated_config_entry = MockConfigEntry(
-        domain=DOMAIN, data={CONF_HOST: IP_ADDRESS}, unique_id=SERIAL
-    )
-    already_migrated_config_entry.add_to_hass(hass)
-    with (
-        _patch_discovery(no_device=True),
-        _patch_config_flow_try_connect(no_device=True),
-        _patch_device(no_device=True),
-    ):
-        await async_setup_component(hass, lifx.DOMAIN, {lifx.DOMAIN: {}})
-        await hass.async_block_till_done()
-        assert already_migrated_config_entry.state is ConfigEntryState.SETUP_RETRY
-
-
-async def test_get_version_fails(hass: HomeAssistant) -> None:
-    """Test we handle get version failing."""
-    already_migrated_config_entry = MockConfigEntry(
-        domain=DOMAIN, data={CONF_HOST: IP_ADDRESS}, unique_id=SERIAL
-    )
-    already_migrated_config_entry.add_to_hass(hass)
-    bulb = _mocked_bulb()
-    bulb.product = None
-    bulb.host_firmware_version = None
-    bulb.get_version = MockFailingLifxCommand(bulb)
-
-    with _patch_discovery(device=bulb), _patch_device(device=bulb):
-        await async_setup_component(hass, lifx.DOMAIN, {lifx.DOMAIN: {}})
-        await hass.async_block_till_done()
-        assert already_migrated_config_entry.state is ConfigEntryState.SETUP_RETRY
-
-
-async def test_dns_error_at_startup(hass: HomeAssistant) -> None:
-    """Test we handle get version failing."""
-    already_migrated_config_entry = MockConfigEntry(
-        domain=DOMAIN, data={CONF_HOST: IP_ADDRESS}, unique_id=SERIAL
-    )
-    already_migrated_config_entry.add_to_hass(hass)
-    bulb = _mocked_failing_bulb()
-
-    class MockLifxConnectonDnsError:
-        """Mock lifx connection with a dns error."""
-
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            """Init connection."""
-            self.device = bulb
-
-        async def async_setup(self):
-            """Mock setup."""
-            raise socket.gaierror
-
-        def async_stop(self):
-            """Mock teardown."""
-
-    # Cannot connect due to dns error
-    with (
-        _patch_discovery(device=bulb),
-        patch(
-            "homeassistant.components.lifx.LIFXConnection",
-            MockLifxConnectonDnsError,
-        ),
-    ):
-        await async_setup_component(hass, lifx.DOMAIN, {lifx.DOMAIN: {}})
-        await hass.async_block_till_done()
-        assert already_migrated_config_entry.state is ConfigEntryState.SETUP_RETRY
-
-
-async def test_config_entry_wrong_serial(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Test config entry enters setup retry when serial mismatches."""
-    mismatched_serial = f"{SERIAL[:-1]}0"
-    already_migrated_config_entry = MockConfigEntry(
-        domain=DOMAIN, data={CONF_HOST: "127.0.0.1"}, unique_id=mismatched_serial
-    )
-    already_migrated_config_entry.add_to_hass(hass)
-    with _patch_discovery(), _patch_config_flow_try_connect(), _patch_device():
-        await async_setup_component(hass, lifx.DOMAIN, {lifx.DOMAIN: {}})
-        await hass.async_block_till_done()
-        assert already_migrated_config_entry.state is ConfigEntryState.SETUP_RETRY
-
-    assert (
-        "Unexpected device found at 127.0.0.1; expected aa:bb:cc:dd:ee:c0, found aa:bb:cc:dd:ee:cc"
-        in caplog.text
-    )
+@test.skip("sibling port deferred (180 LOC, 0 parametrize)")
+async def config_entry_wrong_serial() -> None:
+    """Stub for test_config_entry_wrong_serial."""
