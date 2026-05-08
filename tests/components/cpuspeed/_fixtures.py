@@ -38,3 +38,20 @@ def mock_setup_entry() -> Generator[AsyncMock]:
         "homeassistant.components.cpuspeed.async_setup_entry", return_value=True
     ) as mock_setup:
         yield mock_setup
+
+
+@fixture
+def mock_cpuinfo() -> Generator[MagicMock]:
+    """Return a mocked get_cpu_info."""
+    info = {
+        "hz_actual": (3200000001, 0),
+        "arch_string_raw": "aargh",
+        "brand_raw": "Intel Ryzen 7",
+        "hz_advertised": (3600000001, 0),
+    }
+
+    with patch(
+        "homeassistant.components.cpuspeed.cpuinfo.get_cpu_info",
+        return_value=info,
+    ) as cpuinfo_mock:
+        yield cpuinfo_mock
