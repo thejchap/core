@@ -61,14 +61,35 @@ async def controlling_state_via_mqtt(
     expect(state.state).to_equal(STATE_OFF)
 
 
-@test.skip("requires mqtt_mock + tasmota discovery — port deferred")
+@test.skip("requires paho mqtt mid bookkeeping — port deferred")
 async def sending_mqtt_commands() -> None:
-    """Stub for test_sending_mqtt_commands."""
+    """Stub for test_sending_mqtt_commands (publish-mid plumbing)."""
 
 
-@test.skip("requires mqtt_mock + tasmota discovery — port deferred")
-async def relay_as_light() -> None:
-    """Stub for test_relay_as_light."""
+@test
+async def relay_as_light(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    _setup: None = Depends(setup_tasmota),
+) -> None:
+    """Test relay does not show up as switch in light mode."""
+    config = copy.deepcopy(DEFAULT_CONFIG)
+    config["rl"][0] = 1
+    config["so"]["30"] = 1  # Enforce Home Assistant auto-discovery as light
+    mac = config["mac"]
+
+    async_fire_mqtt_message(
+        hass,
+        f"{DEFAULT_PREFIX}/{mac}/config",
+        json.dumps(config),
+    )
+    await hass.async_block_till_done()
+
+    state = hass.states.get("switch.tasmota_test")
+    expect(state).to_be(None)
+    state = hass.states.get("light.tasmota_test")
+    expect(state is not None).to_be(True)
 
 
 @test.skip("requires mqtt_mock + tasmota discovery — port deferred")
