@@ -1,6 +1,14 @@
 """Tryke skip-stubs for test_services.py - indirect parametrize unsupported."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def domain_const_importable() -> None:
+    """Smoke test: the home_connect integration's DOMAIN constant imports cleanly."""
+    from homeassistant.components.home_connect.const import DOMAIN  # noqa: PLC0415
+    expect(DOMAIN).to_equal("home_connect")
+
 
 @test.skip("indirect parametrize unsupported")
 async def services_yaml_set_program_and_options_program_keys() -> None:
