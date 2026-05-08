@@ -105,3 +105,49 @@ def migrated_config_entry() -> MockConfigEntry:
         version=1,
         minor_version=2,
     )
+
+
+@fixture
+def config_entry() -> MockConfigEntry:
+    """Create mocked config entry."""
+    return MockConfigEntry(
+        title="Electric Kiwi",
+        domain=DOMAIN,
+        data={
+            "id": "123456",
+            "auth_implementation": DOMAIN,
+            "token": {
+                "refresh_token": "mock-refresh-token",
+                "access_token": "mock-access-token",
+                "type": "Bearer",
+                "expires_in": 60,
+                "expires_at": time() + 60,
+            },
+        },
+        unique_id=DOMAIN,
+        version=1,
+        minor_version=1,
+    )
+
+
+@fixture
+def config_entry2() -> MockConfigEntry:
+    """Create second mocked config entry."""
+    return MockConfigEntry(
+        title="Electric Kiwi",
+        domain=DOMAIN,
+        data={
+            "id": "123457",
+            "auth_implementation": DOMAIN,
+            "token": {
+                "refresh_token": "mock-refresh-token",
+                "access_token": "mock-access-token",
+                "type": "Bearer",
+                "expires_in": 60,
+                "expires_at": time() + 60,
+            },
+        },
+        unique_id="1234567",
+        version=1,
+        minor_version=1,
+    )
