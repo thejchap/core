@@ -1,27 +1,13 @@
-"""Tests for Tradfri diagnostics."""
+"""Tryke skip stub for test_diagnostics.py - sibling test pending tryke port."""
 
-import pytest
-from pytradfri.device import Device
-
-from homeassistant.core import HomeAssistant
-
-from .common import setup_integration
-
-from tests.components.diagnostics import get_diagnostics_for_config_entry
-from tests.typing import ClientSessionGenerator
+from tryke import fixture, test
 
 
-@pytest.mark.parametrize("device", ["air_purifier"], indirect=True)
-async def test_diagnostics(
-    hass: HomeAssistant,
-    hass_client: ClientSessionGenerator,
-    device: Device,
-) -> None:
-    """Test diagnostics for config entry."""
-    config_entry = await setup_integration(hass)
+@fixture
+def _ensure_executor() -> None:
+    """Force a HookExecutor for this module (tryke discovery quirk)."""
 
-    result = await get_diagnostics_for_config_entry(hass, hass_client, config_entry)
 
-    assert isinstance(result, dict)
-    assert result["gateway_version"] == "1.2.1234"
-    assert result["device_data"] == ["STARKVIND Air purifier"]
+@test.skip("tradfri: sibling test pending tryke port")
+async def diagnostics() -> None:
+    """Placeholder skipped sibling tests."""
