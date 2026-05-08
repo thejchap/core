@@ -1,6 +1,8 @@
-"""The test for the sensibo climate platform. (tryke skip stub)."""
+"""The test for the sensibo climate platform."""
 
-from tryke import fixture, test
+from tryke import expect, fixture, test
+
+from homeassistant.components.sensibo.climate import _find_valid_target_temp
 
 
 @fixture
@@ -8,9 +10,20 @@ def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
 
 
-@test.skip("syrupy snapshot")
+@test
 async def climate_find_valid_targets() -> None:
-    """Stub for test_climate_find_valid_targets (port deferred)."""
+    """Test function to return temperature from valid targets."""
+    valid_targets = [10, 16, 17, 18, 19, 20]
+
+    expect(_find_valid_target_temp(7, valid_targets)).to_equal(10)
+    expect(_find_valid_target_temp(10, valid_targets)).to_equal(10)
+    expect(_find_valid_target_temp(11, valid_targets)).to_equal(16)
+    expect(_find_valid_target_temp(15, valid_targets)).to_equal(16)
+    expect(_find_valid_target_temp(16, valid_targets)).to_equal(16)
+    expect(_find_valid_target_temp(18.5, valid_targets)).to_equal(19)
+    expect(_find_valid_target_temp(20, valid_targets)).to_equal(20)
+    expect(_find_valid_target_temp(25, valid_targets)).to_equal(20)
+
 
 @test.skip("syrupy snapshot")
 async def climate() -> None:
@@ -78,8 +91,8 @@ async def climate_full_ac_state() -> None:
 
 @test.skip("syrupy snapshot")
 async def climate_fan_mode_and_swing_mode_not_supported() -> None:
-    """Stub for test_climate_fan_mode_and_swing_mode_not_supported (port deferred)."""
+    """Stub (port deferred)."""
 
 @test.skip("syrupy snapshot")
 async def climate_get_device_capabilities() -> None:
-    """Stub for test_climate_get_device_capabilities (port deferred)."""
+    """Stub (port deferred)."""
