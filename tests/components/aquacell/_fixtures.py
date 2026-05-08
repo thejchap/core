@@ -1,12 +1,21 @@
 """Tryke fixtures for the Aquacell integration."""
 
 from collections.abc import Generator
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from aioaquacell import AquacellApi, Softener
 from tryke import fixture
 
-from tests.common import load_json_array_fixture
+from homeassistant.components.aquacell.const import (
+    CONF_REFRESH_TOKEN_CREATION_TIME,
+    DOMAIN,
+)
+from homeassistant.const import CONF_EMAIL
+
+from . import TEST_CONFIG_ENTRY, TEST_CONFIG_ENTRY_WITHOUT_BRAND
+
+from tests.common import MockConfigEntry, load_json_array_fixture
 
 
 @fixture
@@ -42,3 +51,42 @@ def mock_aquacell_api() -> Generator[MagicMock]:
         mock_aquacell_api.get_all_softeners.return_value = softeners
 
         yield mock_aquacell_api
+
+
+@fixture
+def mock_config_entry_expired() -> MockConfigEntry:
+    """Mock a config entry."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title="Aquacell",
+        unique_id=TEST_CONFIG_ENTRY[CONF_EMAIL],
+        data=TEST_CONFIG_ENTRY,
+    )
+
+
+@fixture
+def mock_config_entry() -> MockConfigEntry:
+    """Mock a config entry."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title="Aquacell",
+        unique_id=TEST_CONFIG_ENTRY[CONF_EMAIL],
+        data={
+            **TEST_CONFIG_ENTRY,
+            CONF_REFRESH_TOKEN_CREATION_TIME: datetime.now().timestamp(),
+        },
+    )
+
+
+@fixture
+def mock_config_entry_without_brand() -> MockConfigEntry:
+    """Mock a config entry."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title="Aquacell",
+        unique_id=TEST_CONFIG_ENTRY[CONF_EMAIL],
+        data={
+            **TEST_CONFIG_ENTRY_WITHOUT_BRAND,
+            CONF_REFRESH_TOKEN_CREATION_TIME: datetime.now().timestamp(),
+        },
+    )
