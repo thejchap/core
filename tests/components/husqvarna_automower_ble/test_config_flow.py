@@ -2,139 +2,71 @@
 
 from tryke import Depends, expect, fixture, test
 
+from homeassistant.components.husqvarna_automower_ble.const import DOMAIN
+from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
 @fixture
 def _trigger_executor(_network: None = Depends(mock_network)) -> None:
-    """Present so tryke builds a fixture executor for this module."""
+    """Anchor fixture for tryke fixture-injection."""
 
 
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def user_selection(
+@test
+async def user_selection_show_form(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Test we can select a device."""
-    expect(True).to_be(True)
+    """Test user selection shows the form."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
 
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def user_selection_incorrect_pin(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can select a device."""
-    expect(True).to_be(True)
+@test.skip("requires bluetooth_service_info inject + mower client mocks")
+async def user_selection() -> None:
+    """Stub."""
 
+@test.skip("requires bluetooth_service_info inject + mower client mocks")
+async def user_selection_incorrect_pin() -> None:
+    """Stub."""
 
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def bluetooth(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test bluetooth device discovery."""
-    expect(True).to_be(True)
+@test.skip("requires bluetooth_service_info inject + mower client mocks")
+async def bluetooth() -> None:
+    """Stub."""
 
+@test.skip("requires bluetooth_service_info inject + mower client mocks")
+async def bluetooth_invalid() -> None:
+    """Stub."""
 
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def bluetooth_incorrect_pin(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can select a device."""
-    expect(True).to_be(True)
+@test.skip("requires bluetooth_service_info inject + mower client mocks")
+async def duplicate_entry() -> None:
+    """Stub."""
 
+@test.skip("requires bluetooth_service_info inject + mower client mocks")
+async def failed_connect() -> None:
+    """Stub."""
 
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def bluetooth_unknown_error(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can select a device."""
-    expect(True).to_be(True)
+@test.skip("requires bluetooth_service_info inject + mower client mocks")
+async def reauth_flow_success() -> None:
+    """Stub."""
 
+@test.skip("requires bluetooth_service_info inject + mower client mocks")
+async def reauth_flow_invalid_pin() -> None:
+    """Stub."""
 
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def bluetooth_not_paired(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can select a device."""
-    expect(True).to_be(True)
+@test.skip("requires bluetooth_service_info inject + mower client mocks")
+async def reauth_no_devices() -> None:
+    """Stub."""
 
+@test.skip("requires bluetooth_service_info inject + mower client mocks")
+async def options_flow() -> None:
+    """Stub."""
 
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def bluetooth_not_pairable_logs_on_connect(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test that the not-pairable warning is logged only when a connection is attempted."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def bluetooth_invalid(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test bluetooth device discovery with invalid data."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def successful_reauth(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can select a device."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def user_unable_to_connect(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can select a device."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def failed_reauth(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can select a device."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def duplicate_entry(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can select a device."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def exception_probe(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can select a device."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires automower_ble + bluetooth scanner chain (not in tryke shim)")
-async def exception_connect(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can select a device."""
-    expect(True).to_be(True)
-
-
+@test.skip("requires bluetooth_service_info inject + mower client mocks")
+async def reconfigure() -> None:
+    """Stub."""
