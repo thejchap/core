@@ -1,14 +1,25 @@
-"""Tryke skip stub for test_temperature_format.py."""
+"""The tests for the Daikin target temperature conversion."""
 
-from tryke import test
+from tryke import expect, test
 
-
-@test.skip("sibling test pending fixture migration to _fixtures.py")
-async def int_conversion() -> None:
-    """Stub for test_int_conversion."""
+from homeassistant.components.daikin.climate import format_target_temperature
 
 
-@test.skip("sibling test pending fixture migration to _fixtures.py")
-async def rounding() -> None:
-    """Stub for test_rounding."""
+@test
+def int_conversion() -> None:
+    """Check no decimal are kept when target temp is an integer."""
+    formatted = format_target_temperature("16")
+    expect(formatted).to_equal("16")
 
+
+@test
+def rounding() -> None:
+    """Check 1 decimal is kept when target temp is a decimal."""
+    formatted = format_target_temperature("16.1")
+    expect(formatted).to_equal("16")
+    formatted = format_target_temperature("16.3")
+    expect(formatted).to_equal("16.5")
+    formatted = format_target_temperature("16.65")
+    expect(formatted).to_equal("16.5")
+    formatted = format_target_temperature("16.9")
+    expect(formatted).to_equal("17")
