@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def show_auth_menu(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def show_auth_menu(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def auth_form_display(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def auth_form_display(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def password_auth_incorrect_login(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def password_auth_incorrect_login(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def password_auth_account_locked(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def password_auth_account_locked(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def password_auth_no_plants(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def password_auth_no_plants(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def token_auth_no_plants(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def token_auth_no_plants(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def password_auth_single_plant(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def password_auth_single_plant(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def password_auth_multiple_plants(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def password_auth_multiple_plants(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def token_auth_api_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def token_auth_api_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def token_auth_connection_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def token_auth_connection_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def token_auth_invalid_response(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def token_auth_invalid_response(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def token_auth_single_plant(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def token_auth_single_plant(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def token_auth_multiple_plants(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def token_auth_multiple_plants(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def password_auth_existing_plant_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def password_auth_existing_plant_configured(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def token_auth_existing_plant_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def token_auth_existing_plant_configured(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def password_auth_connection_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def password_auth_connection_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def password_auth_invalid_response(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def password_auth_invalid_response(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def password_auth_plant_list_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def password_auth_plant_list_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def password_auth_plant_list_invalid_format(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def password_auth_plant_list_invalid_format(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reauth_password_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -192,7 +192,7 @@ async def reauth_password_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reauth_password_error_then_recovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -201,7 +201,7 @@ async def reauth_password_error_then_recovery(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reauth_token_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -210,7 +210,7 @@ async def reauth_token_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reauth_token_error_then_recovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -219,7 +219,7 @@ async def reauth_token_error_then_recovery(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reauth_token_non_auth_api_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -228,7 +228,7 @@ async def reauth_token_non_auth_api_error(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reauth_password_invalid_response(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -237,7 +237,7 @@ async def reauth_password_invalid_response(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reauth_password_non_auth_login_failure(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -246,7 +246,7 @@ async def reauth_password_non_auth_login_failure(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reauth_password_exception(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -255,7 +255,7 @@ async def reauth_password_exception(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reauth_token_exception(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -264,7 +264,7 @@ async def reauth_token_exception(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reauth_unknown_auth_type(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -273,7 +273,7 @@ async def reauth_unknown_auth_type(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reconfigure_password_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -282,7 +282,7 @@ async def reconfigure_password_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reconfigure_password_error_then_recovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -291,7 +291,7 @@ async def reconfigure_password_error_then_recovery(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reconfigure_token_success(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -300,7 +300,7 @@ async def reconfigure_token_success(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reconfigure_token_error_then_recovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -309,7 +309,7 @@ async def reconfigure_token_error_then_recovery(
     expect(True).to_be(True)
 
 
-@test.skip("complex fixtures; needs detailed manual port")
+@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
 async def reconfigure_unknown_auth_type(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
