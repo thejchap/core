@@ -57,6 +57,21 @@ def config_entry(
 
 
 @fixture
+async def setup_integration(
+    hass: HomeAssistant = Depends(hass),
+    config_entry: MockConfigEntry = Depends(config_entry),
+    _discovergy: AsyncMock = Depends(discovergy),
+) -> None:
+    """Fixture for setting up the component."""
+    from homeassistant.setup import async_setup_component  # noqa: PLC0415
+
+    config_entry.add_to_hass(hass)
+
+    assert await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+
+
+@fixture
 def mock_zeroconf() -> Generator[MagicMock]:
     """Mock zeroconf."""
     from zeroconf import DNSCache  # noqa: PLC0415
