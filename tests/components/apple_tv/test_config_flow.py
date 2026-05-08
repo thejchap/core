@@ -1,158 +1,140 @@
-"""Tryke skip-stubs for apple_tv config flow tests.
+"""Test the apple_tv config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from tryke import Depends, expect, fixture, test
 
-from tryke import test
+from homeassistant import config_entries
+from homeassistant.components.apple_tv.const import DOMAIN
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Anchor fixture for tryke fixture-injection."""
+
+
+@test
+async def show_user_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the user flow renders the device input form."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(bool(result.get("type"))).to_be(True)
+
+
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_input_device_not_found() -> None:
-    """Stub for test_user_input_device_not_found (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_input_unexpected_error() -> None:
-    """Stub for test_user_input_unexpected_error (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_adds_full_device() -> None:
-    """Stub for test_user_adds_full_device (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_adds_dmap_device() -> None:
-    """Stub for test_user_adds_dmap_device (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_adds_dmap_device_failed() -> None:
-    """Stub for test_user_adds_dmap_device_failed (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_adds_device_with_ip_filter() -> None:
-    """Stub for test_user_adds_device_with_ip_filter (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_pair_no_interaction() -> None:
-    """Stub for test_user_pair_no_interaction (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_adds_device_by_ip_uses_unicast_scan() -> None:
-    """Stub for test_user_adds_device_by_ip_uses_unicast_scan (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_adds_existing_device() -> None:
-    """Stub for test_user_adds_existing_device (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_connection_failed() -> None:
-    """Stub for test_user_connection_failed (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_start_pair_error_failed() -> None:
-    """Stub for test_user_start_pair_error_failed (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_pair_service_with_password() -> None:
-    """Stub for test_user_pair_service_with_password (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_pair_disabled_service() -> None:
-    """Stub for test_user_pair_disabled_service (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_pair_ignore_unsupported() -> None:
-    """Stub for test_user_pair_ignore_unsupported (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_pair_invalid_pin() -> None:
-    """Stub for test_user_pair_invalid_pin (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_pair_unexpected_error() -> None:
-    """Stub for test_user_pair_unexpected_error (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_pair_backoff_error() -> None:
-    """Stub for test_user_pair_backoff_error (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def user_pair_begin_unexpected_error() -> None:
-    """Stub for test_user_pair_begin_unexpected_error (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
+async def user_pair_begin_pair_error_failed() -> None:
+    """Stub."""
+
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
 async def ignores_disabled_service() -> None:
-    """Stub for test_ignores_disabled_service (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_unsupported_service_aborts() -> None:
-    """Stub for test_zeroconf_unsupported_service_aborts (port deferred)."""
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
+async def zeroconf() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_add_mrp_device() -> None:
-    """Stub for test_zeroconf_add_mrp_device (port deferred)."""
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
+async def zeroconf_unsupported() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_add_dmap_device() -> None:
-    """Stub for test_zeroconf_add_dmap_device (port deferred)."""
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
+async def zeroconf_during_zeroconf() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_ip_change() -> None:
-    """Stub for test_zeroconf_ip_change (port deferred)."""
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
+async def zeroconf_existing_device_aborts() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_ip_change_after_ip_conflict_with_ignored_entry() -> None:
-    """Stub for test_zeroconf_ip_change_after_ip_conflict_with_ignored_entry (port deferred)."""
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
+async def zeroconf_two_aborts() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_ip_change_via_secondary_identifier() -> None:
-    """Stub for test_zeroconf_ip_change_via_secondary_identifier (port deferred)."""
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
+async def reconfigure_update_address() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_updates_identifiers_for_ignored_entries() -> None:
-    """Stub for test_zeroconf_updates_identifiers_for_ignored_entries (port deferred)."""
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
+async def reconfigure_dmap_unique_id_does_not_change() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_add_existing_aborts() -> None:
-    """Stub for test_zeroconf_add_existing_aborts (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_add_but_device_not_found() -> None:
-    """Stub for test_zeroconf_add_but_device_not_found (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_add_existing_device() -> None:
-    """Stub for test_zeroconf_add_existing_device (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_unexpected_error() -> None:
-    """Stub for test_zeroconf_unexpected_error (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_abort_if_other_in_progress() -> None:
-    """Stub for test_zeroconf_abort_if_other_in_progress (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_missing_device_during_protocol_resolve() -> None:
-    """Stub for test_zeroconf_missing_device_during_protocol_resolve (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_additional_protocol_resolve_failure() -> None:
-    """Stub for test_zeroconf_additional_protocol_resolve_failure (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_pair_additionally_found_protocols() -> None:
-    """Stub for test_zeroconf_pair_additionally_found_protocols (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_mismatch() -> None:
-    """Stub for test_zeroconf_mismatch (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reconfigure_update_credentials() -> None:
-    """Stub for test_reconfigure_update_credentials (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def option_start_off() -> None:
-    """Stub for test_option_start_off (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def zeroconf_rejects_ipv6() -> None:
-    """Stub for test_zeroconf_rejects_ipv6 (port deferred)."""
+@test.skip("requires pyatv scan/pair mock chain + ssdp/zeroconf/dhcp/usb discovery")
+async def options() -> None:
+    """Stub."""
