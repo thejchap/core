@@ -1,13 +1,35 @@
-"""Tryke skip-stubs for elmax config flow tests.
+"""Test the Elmax config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from tryke import Depends, expect, fixture, test
 
-from tryke import test
+from homeassistant import config_entries
+from homeassistant.components.elmax.const import DOMAIN
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def show_menu() -> None:
-    """Stub for test_show_menu (port deferred)."""
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+) -> HomeAssistant:
+    """Anchor fixture so tryke fully resolves hass."""
+    return hass
+
+
+@test
+async def show_menu(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test that the form is served with no input."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("choose_mode")
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def direct_setup() -> None:
