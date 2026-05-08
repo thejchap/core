@@ -2,7 +2,10 @@
 
 from tryke import Depends, expect, fixture, test
 
+from homeassistant.components.hyperion.const import DOMAIN
+from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
@@ -12,13 +15,21 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
+@test
 async def user_if_no_configuration(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Check flow behavior when no configuration is present."""
-    expect(True).to_be(True)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_USER},
+        data={},
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["handler"]).to_equal(DOMAIN)
 
 
 @test.skip("requires mock_light_profiles chain from light component (not in tryke shim)")
