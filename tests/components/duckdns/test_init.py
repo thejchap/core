@@ -1,45 +1,87 @@
-"""Tryke skip stubs for test_init - sibling test pending port."""
+"""Test the DuckDNS component."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.duckdns.const import DOMAIN
+from homeassistant.components.duckdns.helpers import UPDATE_URL
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+
+from ._fixtures import TEST_SUBDOMAIN, TEST_TOKEN, config_entry
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    aioclient_mock as aioclient_mock_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
+from tests.test_util.aiohttp import AiohttpClientMocker
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test.skip("pending - parametrize + freezer")
 async def setup() -> None:
-    """Stub for test_setup (port deferred)."""
+    """Stub."""
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+@test.skip("requires freezer + complex backoff parametrize")
 async def setup_backoff() -> None:
-    """Stub for test_setup_backoff (port deferred)."""
+    """Stub."""
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+@test.skip("requires aioclient_mock + service call assertions")
 async def service_set_txt() -> None:
-    """Stub for test_service_set_txt (port deferred)."""
+    """Stub."""
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+@test.skip("requires aioclient_mock + service call assertions")
 async def service_clear_txt() -> None:
-    """Stub for test_service_clear_txt (port deferred)."""
+    """Stub."""
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+@test.skip("requires service exception parametrize")
 async def service_exceptions() -> None:
-    """Stub for test_service_exceptions (port deferred)."""
+    """Stub."""
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+@test.skip("requires service exception parametrize")
 async def service_request_exception() -> None:
-    """Stub for test_service_request_exception (port deferred)."""
+    """Stub."""
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+@test.skip("requires aioclient_mock + service call assertions")
 async def service_select_entry() -> None:
-    """Stub for test_service_select_entry (port deferred)."""
+    """Stub."""
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
-async def load_unload() -> None:
-    """Stub for test_load_unload (port deferred)."""
+@test
+async def load_unload(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entry: MockConfigEntry = Depends(config_entry),
+    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fixture),
+) -> None:
+    """Test loading and unloading of the config entry."""
 
+    aioclient_mock.get(
+        UPDATE_URL,
+        params={"domains": TEST_SUBDOMAIN, "token": TEST_TOKEN},
+        text="OK",
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
+    entries = hass.config_entries.async_entries(DOMAIN)
+    expect(len(entries)).to_equal(1)
+
+    expect(entry.state).to_be(ConfigEntryState.LOADED)
+
+    expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
+    expect(entry.state).to_be(ConfigEntryState.NOT_LOADED)
