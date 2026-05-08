@@ -1,7 +1,5 @@
 """Tests for the AsusWrt config flow."""
 
-from socket import gaierror
-
 from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.asuswrt.const import (
@@ -55,7 +53,7 @@ async def error_invalid_host(
     get_host=Depends(patch_get_host),
 ) -> None:
     """Test we abort if host name is invalid."""
-    get_host.side_effect = gaierror
+    get_host.return_value = None
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
