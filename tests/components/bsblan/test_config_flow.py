@@ -1,5 +1,6 @@
 """Tests for the BSBLan device config flow."""
 
+from ipaddress import ip_address
 from unittest.mock import AsyncMock, MagicMock
 
 from bsblan import BSBLANAuthError, BSBLANConnectionError, BSBLANError
@@ -10,16 +11,28 @@ from homeassistant.components.bsblan.const import (
     CONF_PASSKEY,
     DOMAIN,
 )
-from homeassistant.config_entries import SOURCE_USER
+from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.device_registry import format_mac
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from ._fixtures import mock_bsblan, mock_config_entry, mock_setup_entry
 
 from tests.common import MockConfigEntry
 from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+ZEROCONF_DISCOVERY_INFO = ZeroconfServiceInfo(
+    ip_address=ip_address("10.0.2.60"),
+    ip_addresses=[ip_address("10.0.2.60")],
+    name="BSB-LAN web service._http._tcp.local.",
+    type="_http._tcp.local.",
+    properties={"mac": "00:80:41:19:69:90"},
+    port=80,
+    hostname="BSB-LAN.local.",
+)
 
 
 @fixture
@@ -204,18 +217,39 @@ async def user_device_exists_abort(
     expect(result["reason"]).to_equal("already_configured")
 
 
+@test
+async def abort_if_existing_entry_for_zeroconf(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _bsblan: MagicMock = Depends(mock_bsblan),
+) -> None:
+    """Test we abort if same host/port already exists during zeroconf discovery."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_HOST: "127.0.0.1",
+            CONF_PORT: 80,
+            CONF_USERNAME: "admin",
+            CONF_PASSWORD: "admin1234",
+        },
+        unique_id="00:80:41:19:69:90",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_ZEROCONF},
+        data=ZEROCONF_DISCOVERY_INFO,
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+
+
 @test.skip("zeroconf flow tests need additional fixtures and discovery info")
 async def zeroconf_discovery(
     _trigger: HomeAssistant = Depends(_trigger_executor),
 ) -> None:
     """Test zeroconf discovery flow."""
-
-
-@test.skip("zeroconf flow tests need additional fixtures")
-async def abort_if_existing_entry_for_zeroconf(
-    _trigger: HomeAssistant = Depends(_trigger_executor),
-) -> None:
-    """Test abort if existing entry for zeroconf."""
 
 
 @test.skip("reauth flow tests not yet ported")
