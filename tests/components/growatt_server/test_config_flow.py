@@ -2,7 +2,10 @@
 
 from tryke import Depends, expect, fixture, test
 
+from homeassistant import config_entries
+from homeassistant.components.growatt_server.const import DOMAIN
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
@@ -12,13 +15,19 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
+@test
 async def show_auth_menu(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test that the authentication menu is displayed."""
-    expect(True).to_be(True)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.MENU)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["menu_options"]).to_equal(["password_auth", "token_auth"])
 
 
 @test.skip("requires growattServer V1+Classic API mock chain (mock_growatt_v1_api/mock_growatt_classic_api with extensive parametrize)")
