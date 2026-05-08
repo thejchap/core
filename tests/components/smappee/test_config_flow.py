@@ -1,23 +1,39 @@
 """Test the Smappee component config flow module."""
 
+from http import HTTPStatus
 from ipaddress import ip_address
 from unittest.mock import patch
 
 from tryke import Depends, expect, fixture, test
 
+from homeassistant import setup
 from homeassistant.components.smappee.const import (
     CONF_SERIALNUMBER,
     DOMAIN,
     ENV_CLOUD,
     ENV_LOCAL,
+    TOKEN_URL,
 )
 from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF
+from homeassistant.const import CONF_CLIENT_ID, CONF_CLIENT_SECRET
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from tests.common import MockConfigEntry
-from tests.hass_fixtures import hass as hass_fixture, mock_network
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    aioclient_mock,
+    current_request_with_host,
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
+)
+from tests.test_util.aiohttp import AiohttpClientMocker
+
+CLIENT_ID = "1234"
+CLIENT_SECRET = "5678"
 
 
 @fixture
@@ -483,9 +499,63 @@ async def abort_cloud_flow_if_local_device_exists(
     expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
 
-@test.skip("requires aioclient_mock + hass_client_no_auth + current_request_with_host (OAuth)")
-async def full_user_flow() -> None:
-    """OAuth full flow - skipped."""
+@test
+async def full_user_flow(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _request: None = Depends(current_request_with_host),
+    client_factory: ClientSessionGenerator = Depends(hass_client_no_auth),
+    aioclient: AiohttpClientMocker = Depends(aioclient_mock),
+) -> None:
+    """Check full flow."""
+    expect(
+        await setup.async_setup_component(
+            hass,
+            DOMAIN,
+            {
+                DOMAIN: {CONF_CLIENT_ID: CLIENT_ID, CONF_CLIENT_SECRET: CLIENT_SECRET},
+                "http": {"base_url": "https://example.com"},
+            },
+        )
+    ).to_be(True)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_USER},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"environment": ENV_CLOUD}
+    )
+    state = config_entry_oauth2_flow._encode_jwt(
+        hass,
+        {
+            "flow_id": result["flow_id"],
+            "redirect_uri": "https://example.com/auth/external/callback",
+        },
+    )
+
+    client = await client_factory()
+    resp = await client.get(f"/auth/external/callback?code=abcd&state={state}")
+    expect(resp.status).to_equal(HTTPStatus.OK)
+    expect(resp.headers["content-type"]).to_equal("text/html; charset=utf-8")
+
+    aioclient.post(
+        TOKEN_URL["PRODUCTION"],
+        json={
+            "refresh_token": "mock-refresh-token",
+            "access_token": "mock-access-token",
+            "type": "Bearer",
+            "expires_in": 60,
+        },
+    )
+
+    with patch(
+        "homeassistant.components.smappee.async_setup_entry", return_value=True
+    ) as mock_setup:
+        await hass.config_entries.flow.async_configure(result["flow_id"])
+
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(len(mock_setup.mock_calls)).to_equal(1)
 
 
 @test
