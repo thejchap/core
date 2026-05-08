@@ -1,9 +1,33 @@
-"""Tryke skip-stubs for fritz config flow tests.
+"""Test the fritz config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from tryke import Depends, expect, fixture, test
 
-from tryke import test
+from homeassistant.components.fritz.const import DOMAIN
+from homeassistant.config_entries import SOURCE_USER
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Anchor fixture for tryke fixture-injection."""
+
+
+@test
+async def user_show_form(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the user form is shown for an empty flow."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def user() -> None:
