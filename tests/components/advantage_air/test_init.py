@@ -1,13 +1,49 @@
-"""Tryke skip stub for test_init.py - sibling test pending fixture and snapshot port."""
+"""Test the Advantage Air Initialization."""
 
-from tryke import fixture, test
+from unittest.mock import AsyncMock
+
+from advantage_air import ApiError
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+
+from . import add_mock_config, patch_get
+from ._fixtures import mock_get
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+from tests.hass_tryke_helpers import mock_async_zeroconf
 
 
 @fixture
-def _ensure_executor() -> None:
-    """Force a HookExecutor for this module (tryke discovery quirk)."""
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _zc: None = Depends(mock_async_zeroconf),
+) -> None:
+    """Per-module trigger to anchor fixture resolution."""
 
 
-@test.skip("advantage_air sibling tests need conftest fixture migration into _fixtures.py and/or syrupy snapshot support")
-async def placeholder() -> None:
-    """Placeholder skipped sibling tests."""
+@test
+async def async_setup_entry(
+    _t: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_get: AsyncMock = Depends(mock_get),
+) -> None:
+    """Test a successful setup entry and unload."""
+    entry = await add_mock_config(hass)
+    expect(entry.state).to_be(ConfigEntryState.LOADED)
+
+    expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
+    expect(entry.state).to_be(ConfigEntryState.NOT_LOADED)
+
+
+@test
+async def async_setup_entry_failure(
+    _t: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test a unsuccessful setup entry."""
+    with patch_get(side_effect=ApiError):
+        entry = await add_mock_config(hass)
+    expect(entry.state).to_be(ConfigEntryState.SETUP_RETRY)
