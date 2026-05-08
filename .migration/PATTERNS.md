@@ -245,6 +245,82 @@ but skip it with a one-line reason; (2) update the patch target to the
 import-site (`homeassistant.components.<int>.config_flow.<Class>`).
 Precedent: prosegur — two tests skipped after diagnosis.
 
+### Translation injection for entity_id slugs and exception messages
+
+The tryke test environment doesn't compile integration translations
+(`translations/<lang>.json` is absent in dev tree, only `strings.json`
+exists). Without those compiled files, `_async_get_component_strings`
+returns nothing, which means:
+
+- Entities with `_attr_has_entity_name=True` and `translation_key="..."`
+  get an entity_id slug that falls back to just the device name (e.g.
+  `button.lunar_ddeeff` instead of `button.lunar_ddeeff_tare`).
+- `HomeAssistantError(translation_key="api_error", ...)` returns the
+  literal "api_error" instead of the translated message with placeholders.
+
+Tests that assert on those slugs/messages need a translation injection.
+The reliable pattern (4 patches) — used in actron_air's test_climate /
+test_switch and acaia/altruist/abode/aemet/airzone_cloud test ports:
+
+```python
+_FAKE_TRANSLATIONS = {
+    # Entity name slugs — picked up by EntityPlatform
+    "component.actron_air.entity.switch.away_mode.name": "Away mode",
+    # Sensor entity_component (device_class) — picked up by sensor platform
+    "component.sensor.entity_component.humidity.name": "Humidity",
+    # Exception messages — picked up by HomeAssistantError.__str__
+    "component.actron_air.exceptions.api_error.message":
+        "Failed to communicate: {error}",
+}
+
+async def _fake_get_translations(hass, language, category, integrations=None, config_flow=None):
+    return _FAKE_TRANSLATIONS
+
+def _fake_get_cached_translations(hass, language, category, integration=None):
+    return _FAKE_TRANSLATIONS
+
+def _fake_get_exception_message(translation_domain, translation_key, translation_placeholders=None):
+    key = f"component.{translation_domain}.exceptions.{translation_key}.message"
+    msg = _FAKE_TRANSLATIONS.get(key, translation_key)
+    if translation_placeholders:
+        try:
+            msg = msg.format(**translation_placeholders)
+        except KeyError:
+            pass
+    return msg
+
+with (
+    patch("homeassistant.helpers.entity_platform.translation.async_get_translations", side_effect=_fake_get_translations),
+    patch("homeassistant.helpers.translation.async_get_cached_translations", side_effect=_fake_get_cached_translations),
+    patch("homeassistant.helpers.translation.async_get_exception_message", side_effect=_fake_get_exception_message),
+    # Must seed the function cache too — homeassistant/exceptions.py caches
+    # the resolved async_get_exception_message on first __str__ call.
+    patch.dict(
+        "homeassistant.exceptions._function_cache",
+        {"async_get_exception_message": _fake_get_exception_message},
+        clear=False,
+    ),
+):
+    await setup_integration(...)
+```
+
+**Materializing the translated message**: HomeAssistantError caches its
+`__str__` result. When `expect_raises_async` later calls `str(raised)`
+*after* the patch context exits, the patches are gone and the message
+resolves to the bare `translation_key`. Workaround — capture inside the
+patch context:
+
+```python
+raised: HomeAssistantError | None = None
+with _patch_translations():
+    try:
+        await hass.services.async_call(...)
+    except HomeAssistantError as err:
+        err._message = str(err)  # noqa: SLF001 — freeze translated message
+        raised = err
+expect("Test error" in str(raised)).to_be(True)
+```
+
 ### Tryke 0.0.27 missing matcher: `to_not_be`
 
 `expect(x).to_not_be(None)` doesn't exist (tryke 0.0.27). Rewrite as `expect(x is not None).to_be(True)`. Likely a candidate for an upstream tryke PR. **Why:** chaining `.not_` on `to_be` works for most matchers but `to_not_be` was missing; just use the bool form for now.
