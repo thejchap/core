@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from . import setup_integration
 
 from tests.common import MockConfigEntry
-from tests.hass_fixtures import hass as hass_fixture
+from tests.hass_fixtures import enable_bluetooth, hass as hass_fixture
 
 
 @fixture
@@ -79,7 +79,11 @@ async def init_integration(
     hass: HomeAssistant = Depends(hass_fixture),
     mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
     mock_scale: MagicMock = Depends(mock_scale),
+    _bluetooth: None = Depends(enable_bluetooth),
 ) -> MockConfigEntry:
-    """Set up the acaia integration for testing."""
+    """Set up the acaia integration for testing.
+
+    Sets up the bluetooth integration too — acaia depends on it.
+    """
     await setup_integration(hass, mock_config_entry)
     return mock_config_entry
