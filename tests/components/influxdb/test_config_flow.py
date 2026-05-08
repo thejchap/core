@@ -2,148 +2,75 @@
 
 from tryke import Depends, expect, fixture, test
 
+from homeassistant.components.influxdb.const import DOMAIN
+from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
 @fixture
 def _trigger_executor(_network: None = Depends(mock_network)) -> None:
-    """Present so tryke builds a fixture executor for this module."""
+    """Anchor fixture for tryke fixture-injection."""
 
 
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def setup_v1(
+@test
+async def show_user_form(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Test we can setup an InfluxDB v1."""
-    expect(True).to_be(True)
+    """Test the user form is shown for an empty flow."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.MENU)
 
 
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def setup_v1_ssl_cert(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can setup an InfluxDB v1 with SSL Certificate."""
-    expect(True).to_be(True)
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def setup_v1() -> None:
+    """Stub."""
 
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def setup_v1_ssl_cert() -> None:
+    """Stub."""
 
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def setup_v2(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can setup an InfluxDB v2."""
-    expect(True).to_be(True)
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def setup_v2() -> None:
+    """Stub."""
 
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def setup_v2_ssl_cert() -> None:
+    """Stub."""
 
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def setup_v2_ssl_cert(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can setup an InfluxDB v2 with SSL Certificate."""
-    expect(True).to_be(True)
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def reauth_flow() -> None:
+    """Stub."""
 
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def reauth_invalid() -> None:
+    """Stub."""
 
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def setup_connection_error(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test connection error during setup of InfluxDB v2."""
-    expect(True).to_be(True)
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def reconfigure_flow() -> None:
+    """Stub."""
 
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def reconfigure_unique_id_change() -> None:
+    """Stub."""
 
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def single_instance(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we cannot setup a second entry for InfluxDB."""
-    expect(True).to_be(True)
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def reconfigure_invalid() -> None:
+    """Stub."""
 
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def import_flow() -> None:
+    """Stub."""
 
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def import(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we can import."""
-    expect(True).to_be(True)
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def import_flow_failure() -> None:
+    """Stub."""
 
-
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def import_connection_error(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test abort on connection error."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def single_instance_import(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we cannot setup a second entry for InfluxDB."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def reconfigure_v1(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test reconfiguration of InfluxDB v1."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def reconfigure_v2(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test reconfiguration of InfluxDB v2."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def reconfigure_v1_ssl_cert(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test reconfiguration of InfluxDB v1 with SSL certificate upload."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def reconfigure_v2_ssl_cert(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test reconfiguration of InfluxDB v2 with SSL certificate upload."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def reconfigure_preserves_existing_cert(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test reconfiguration preserves existing cert when none uploaded."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires complex influxdb v1+v2 client chain (not in tryke shim)")
-async def reconfigure_connection_error(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test reconfiguration handles connection errors."""
-    expect(True).to_be(True)
-
-
+@test.skip("requires influxdb client mock chain + indirect parametrize over v1/v2 mocks")
+async def import_flow_already_configured() -> None:
+    """Stub."""
