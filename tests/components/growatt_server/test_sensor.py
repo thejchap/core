@@ -1,9 +1,16 @@
-"""Tryke skip stub for test_sensor.py."""
+"""Tryke skip stub for test_sensor.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
+@test
+def domain_const_importable() -> None:
+    """Smoke test: the growatt_server integration's DOMAIN constant imports cleanly."""
+    from homeassistant.components.growatt_server.const import DOMAIN  # noqa: PLC0415
+    expect(DOMAIN).to_equal("growatt_server")
+
+
+@test.skip("requires mock_growatt_v1_api fixture + syrupy snapshot")
 async def sph_sensors_v1_api() -> None:
     """Stub for test_sph_sensors_v1_api."""
 
