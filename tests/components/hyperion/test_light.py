@@ -1,83 +1,124 @@
-"""Tryke skip-stubs for test_light.py - large file (814 LOC) - port deferred."""
+"""Tests for the Hyperion integration light platform."""
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("large file (814 LOC) - port deferred")
-async def setup_config_entry() -> None:
-    """Stub for test_setup_config_entry."""
+from homeassistant.core import HomeAssistant
 
-@test.skip("large file (814 LOC) - port deferred")
+from . import TEST_ENTITY_ID_1, create_mock_client, setup_test_config_entry
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Module-level fixture anchor."""
+
+
+@test
+async def setup_config_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setting up the component via config entries."""
+    await setup_test_config_entry(hass, hyperion_client=create_mock_client())
+    expect(hass.states.get(TEST_ENTITY_ID_1) is not None).to_be(True)
+
+
+@test.skip("port deferred - sibling tests")
 async def setup_config_entry_not_ready_connect_fail() -> None:
-    """Stub for test_setup_config_entry_not_ready_connect_fail."""
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def setup_config_entry_not_ready_switch_instance_fail() -> None:
-    """Stub for test_setup_config_entry_not_ready_switch_instance_fail."""
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def setup_config_entry_not_ready_load_state_fail() -> None:
-    """Stub for test_setup_config_entry_not_ready_load_state_fail."""
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def setup_config_entry_dynamic_instances() -> None:
-    """Stub for test_setup_config_entry_dynamic_instances."""
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def light_basic_properties() -> None:
-    """Stub for test_light_basic_properties."""
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def light_async_turn_on() -> None:
-    """Stub for test_light_async_turn_on."""
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def light_async_turn_on_fail_async_send_set_effect() -> None:
-    """Stub for test_light_async_turn_on_fail_async_send_set_effect."""
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def light_async_turn_on_fail_async_send_set_color() -> None:
-    """Stub for test_light_async_turn_on_fail_async_send_set_color."""
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
+
+@test.skip("port deferred - sibling tests")
 async def light_async_turn_off_fail_async_send_send_clear() -> None:
-    """Stub for test_light_async_turn_off_fail_async_send_send_clear."""
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
-async def light_async_turn_off() -> None:
-    """Stub for test_light_async_turn_off."""
 
-@test.skip("large file (814 LOC) - port deferred")
+@test.skip("port deferred - sibling tests")
 async def light_async_updates_from_hyperion_client() -> None:
-    """Stub for test_light_async_updates_from_hyperion_client."""
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
-async def full_state_loaded_on_start() -> None:
-    """Stub for test_full_state_loaded_on_start."""
 
-@test.skip("large file (814 LOC) - port deferred")
-async def unload_entry() -> None:
-    """Stub for test_unload_entry."""
+@test.skip("port deferred - sibling tests")
+async def light_async_updates_from_hyperion_client_no_priority() -> None:
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
-async def version_log_warning() -> None:
-    """Stub for test_version_log_warning."""
 
-@test.skip("large file (814 LOC) - port deferred")
-async def version_no_log_warning() -> None:
-    """Stub for test_version_no_log_warning."""
+@test.skip("port deferred - sibling tests")
+async def light_async_updates_from_hyperion_client_priority_no_owner() -> None:
+    """Stub."""
 
-@test.skip("large file (814 LOC) - port deferred")
-async def setup_entry_no_token_reauth() -> None:
-    """Stub for test_setup_entry_no_token_reauth."""
 
-@test.skip("large file (814 LOC) - port deferred")
-async def setup_entry_bad_token_reauth() -> None:
-    """Stub for test_setup_entry_bad_token_reauth."""
-
-@test.skip("large file (814 LOC) - port deferred")
-async def light_option_effect_hide_list() -> None:
-    """Stub for test_light_option_effect_hide_list."""
-
-@test.skip("large file (814 LOC) - port deferred")
+@test.skip("port deferred - sibling tests")
 async def device_info() -> None:
-    """Stub for test_device_info."""
+    """Stub."""
+
+
+@test.skip("port deferred - sibling tests")
+async def light_options() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling tests")
+async def deprecated_effect_names() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling tests")
+async def deprecated_effect_names_not_in_effect_list() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling tests")
+async def setup_entry_no_token() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling tests")
+async def setup_entry_token() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling tests")
+async def setup_entry_token_failure() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling tests")
+async def setup_with_token_invalid() -> None:
+    """Stub."""

@@ -1,8 +1,15 @@
 """Test the lametric config flow."""
 
+from homeassistant.helpers.service_info.ssdp import (
+    ATTR_UPNP_SERIAL,
+    SsdpServiceInfo,
+)
 from tryke import Depends, expect, fixture, test
 
+from homeassistant.components.lametric.const import DOMAIN
+from homeassistant.config_entries import SOURCE_SSDP
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
@@ -10,6 +17,21 @@ from tests.hass_fixtures import hass as hass_fixture, mock_network
 @fixture
 def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def ssdp_abort_invalid_discovery_no_upnp_data(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Check SSDP discovery aborts on invalid info."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_SSDP},
+        data=SsdpServiceInfo(ssdp_usn="mock_usn", ssdp_st="mock_st", upnp={}),
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("invalid_discovery_info")
 
 
 @test.skip("requires demetriek mock + zeroconf chain (not in tryke shim)")
