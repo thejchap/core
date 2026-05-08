@@ -1,13 +1,65 @@
-"""Tryke skip-stubs for bayesian config flow tests.
+"""Test the Config flow for the Bayesian integration."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from unittest.mock import patch
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("complex multi-fixture flow not yet ported")
-async def config_flow_step_user() -> None:
-    """Stub for test_config_flow_step_user (port deferred)."""
+from homeassistant import config_entries
+from homeassistant.components.bayesian.config_flow import USER
+from homeassistant.components.bayesian.const import (
+    CONF_PRIOR,
+    CONF_PROBABILITY_THRESHOLD,
+    DOMAIN,
+)
+from homeassistant.config_entries import FlowType
+from homeassistant.const import CONF_DEVICE_CLASS, CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+) -> HomeAssistant:
+    """Anchor fixture so tryke fully resolves hass."""
+    return hass
+
+
+@test
+async def config_flow_step_user(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the config flow with an example."""
+    with patch(
+        "homeassistant.components.bayesian.async_setup_entry", return_value=True
+    ):
+        result0 = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        expect(result0["step_id"]).to_equal(USER)
+        expect(result0["type"]).to_be(FlowResultType.FORM)
+        expect(result0["description_placeholders"]["url"]).to_equal(
+            "https://www.home-assistant.io/integrations/bayesian/"
+        )
+
+        result1 = await hass.config_entries.flow.async_configure(
+            result0["flow_id"],
+            {
+                CONF_NAME: "Office occupied",
+                CONF_PROBABILITY_THRESHOLD: 50,
+                CONF_PRIOR: 15,
+                CONF_DEVICE_CLASS: "occupancy",
+            },
+        )
+        await hass.async_block_till_done()
+
+        expect(result1["type"]).to_equal(FlowResultType.CREATE_ENTRY)
+        expect(result1["result"].title).to_equal("Office occupied")
+        expect(result1["next_flow"][0]).to_equal(FlowType.CONFIG_SUBENTRIES_FLOW)
 
 @test.skip("complex multi-fixture flow not yet ported")
 async def subentry_flow() -> None:
