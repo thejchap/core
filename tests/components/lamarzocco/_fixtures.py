@@ -3,6 +3,7 @@
 from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from bleak.backends.device import BLEDevice
 from pylamarzocco.const import ModelName
 from pylamarzocco.models import (
     Thing,
@@ -15,7 +16,7 @@ from pylamarzocco.util import InstallationKey
 from tryke import Depends, fixture
 
 from homeassistant.components.lamarzocco.const import CONF_INSTALLATION_KEY, DOMAIN
-from homeassistant.const import CONF_ADDRESS, CONF_TOKEN
+from homeassistant.const import CONF_ADDRESS, CONF_MAC, CONF_TOKEN
 
 from . import MOCK_INSTALLATION_KEY, SERIAL_DICT, USER_INPUT
 
@@ -128,6 +129,56 @@ def mock_config_entry(
         data=USER_INPUT
         | {
             CONF_ADDRESS: "000000000000",
+            CONF_TOKEN: "token",
+            CONF_INSTALLATION_KEY: MOCK_INSTALLATION_KEY,
+        },
+        unique_id=mock_lamarzocco.serial_number,
+    )
+
+
+@fixture
+def mock_ble_device() -> BLEDevice:
+    """Return a mock BLE device."""
+    return BLEDevice("00:00:00:00:00:00", "GS_GS012345", details={"path": "path"})
+
+
+@fixture
+def mock_bluetooth_client() -> Generator[MagicMock]:
+    """Return a mocked Bluetooth client."""
+    with patch(
+        "homeassistant.components.lamarzocco.LaMarzoccoBluetoothClient",
+        autospec=True,
+    ) as mock_bt_client_cls:
+        mock_bt_client = mock_bt_client_cls.return_value
+        mock_bt_client.disconnect = AsyncMock()
+        yield mock_bt_client
+
+
+@fixture
+def mock_ble_device_from_address(
+    mock_ble_device: BLEDevice = Depends(mock_ble_device),
+) -> Generator[MagicMock]:
+    """Return a mocked async_ble_device_from_address."""
+    with patch(
+        "homeassistant.components.lamarzocco.async_ble_device_from_address",
+        return_value=mock_ble_device,
+    ) as mock_addr:
+        yield mock_addr
+
+
+@fixture
+def mock_config_entry_bluetooth(
+    mock_lamarzocco: MagicMock = Depends(mock_lamarzocco),
+    mock_ble_device: BLEDevice = Depends(mock_ble_device),
+) -> MockConfigEntry:
+    """Return a mocked config entry with Bluetooth enabled."""
+    return MockConfigEntry(
+        title=mock_lamarzocco.serial_number,
+        domain=DOMAIN,
+        version=4,
+        data=USER_INPUT
+        | {
+            CONF_MAC: mock_ble_device.address,
             CONF_TOKEN: "token",
             CONF_INSTALLATION_KEY: MOCK_INSTALLATION_KEY,
         },
