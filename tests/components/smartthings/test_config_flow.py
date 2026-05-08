@@ -72,6 +72,8 @@ async def missing_credentials_abort(
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Without OAuth credentials configured, the flow aborts."""
+    if "cloud" in hass.config.components:
+        hass.config.components.remove("cloud")
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -270,6 +272,8 @@ async def no_cloud(
     _setup: AsyncMock = Depends(mock_setup_entry),
 ) -> None:
     """Check we abort when cloud is not enabled."""
+    if "cloud" in hass.config.components:
+        hass.config.components.remove("cloud")
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
@@ -458,6 +462,8 @@ async def reauthentication_no_cloud(
     config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test SmartThings reauthentication without cloud."""
+    if "cloud" in hass.config.components:
+        hass.config.components.remove("cloud")
     config_entry.add_to_hass(hass)
 
     result = await config_entry.start_reauth_flow(hass)
@@ -649,6 +655,8 @@ async def migration_no_cloud(
     config_entry: MockConfigEntry = Depends(mock_old_config_entry),
 ) -> None:
     """Test SmartThings migration without cloud."""
+    if "cloud" in hass.config.components:
+        hass.config.components.remove("cloud")
     config_entry.add_to_hass(hass)
 
     await hass.config_entries.async_setup(config_entry.entry_id)
