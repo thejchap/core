@@ -9,69 +9,53 @@ from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 @fixture
 def _trigger_executor(_network: None = Depends(mock_network)) -> None:
-    """Present so tryke builds a fixture executor for this module."""
+    """Anchor fixture for tryke fixture-injection."""
 
 
-@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
-async def config_flow_zigbee(
+@test
+async def domain_module_importable(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
-    """Test the config flow for SkyConnect with Zigbee."""
-    expect(True).to_be(True)
+    """Smoke test: the homeassistant_sky_connect integration module imports cleanly."""
+    from homeassistant.components.homeassistant_sky_connect.const import (  # noqa: PLC0415
+        DOMAIN,
+    )
+    expect(DOMAIN).to_equal("homeassistant_sky_connect")
 
 
-@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
-async def config_flow_thread(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test the config flow for SkyConnect with Thread."""
-    expect(True).to_be(True)
+@test.skip("requires aiohasupervisor + USBDevice/USBServiceInfo + firmware_config_flow chain")
+async def config_flow_zigbee() -> None:
+    """Stub."""
 
+@test.skip("requires aiohasupervisor + USBDevice/USBServiceInfo + firmware_config_flow chain")
+async def config_flow_thread() -> None:
+    """Stub."""
 
-@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
-async def options_flow(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test the options flow for SkyConnect."""
-    expect(True).to_be(True)
+@test.skip("requires aiohasupervisor + USBDevice/USBServiceInfo + firmware_config_flow chain")
+async def options_flow() -> None:
+    """Stub."""
 
+@test.skip("requires aiohasupervisor + USBDevice/USBServiceInfo + firmware_config_flow chain")
+async def options_flow_multipan_uninstall() -> None:
+    """Stub."""
 
-@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
-async def options_flow_multipan_uninstall(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test options flow for when multi-PAN firmware is installed."""
-    expect(True).to_be(True)
+@test.skip("requires aiohasupervisor + USBDevice/USBServiceInfo + firmware_config_flow chain")
+async def firmware_callback_auto_creates_entry() -> None:
+    """Stub."""
 
+@test.skip("requires aiohasupervisor + USBDevice/USBServiceInfo + firmware_config_flow chain")
+async def firmware_callback_does_not_create_entry_if_dup() -> None:
+    """Stub."""
 
-@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
-async def firmware_callback_auto_creates_entry(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test that firmware notification triggers import flow that auto-creates config entry."""
-    expect(True).to_be(True)
+@test.skip("requires aiohasupervisor + USBDevice/USBServiceInfo + firmware_config_flow chain")
+async def usb_discovery_already_configured() -> None:
+    """Stub."""
 
+@test.skip("requires aiohasupervisor + USBDevice/USBServiceInfo + firmware_config_flow chain")
+async def usb_discovery() -> None:
+    """Stub."""
 
-@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
-async def duplicate_usb_discovery_aborts_early(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test USB discovery aborts early when unique_id exists before serial path resolution."""
-    expect(True).to_be(True)
-
-
-@test.skip("requires aiohasupervisor + USB serial chain (not in tryke shim)")
-async def firmware_callback_updates_existing_entry(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test that firmware notification updates existing config entry device path."""
-    expect(True).to_be(True)
-
-
+@test.skip("requires aiohasupervisor + USBDevice/USBServiceInfo + firmware_config_flow chain")
+async def reconfigure() -> None:
+    """Stub."""
