@@ -1,6 +1,14 @@
 """Tryke skip-stubs for test_binary_sensor.py - snapshot_platform diverged - needs pytest --snapshot-update."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def domain_const_importable() -> None:
+    """Smoke test: the hikvision integration's DOMAIN constant imports cleanly."""
+    from homeassistant.components.hikvision.const import DOMAIN  # noqa: PLC0415
+    expect(DOMAIN).to_equal("hikvision")
+
 
 @test.skip("snapshot_platform diverged - needs pytest --snapshot-update")
 async def all_entities() -> None:
