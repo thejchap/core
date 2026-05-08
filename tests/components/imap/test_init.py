@@ -1,83 +1,137 @@
-"""Tryke skip-stubs for test_init.py - large file (1098 LOC) - port deferred."""
+"""Test the imap entry initialization."""
 
-from tryke import test
+from unittest.mock import MagicMock
 
-@test.skip("large file (1098 LOC) - port deferred")
-async def entry_startup_and_unload() -> None:
-    """Stub for test_entry_startup_and_unload."""
+from tryke import Depends, expect, fixture, test
 
-@test.skip("large file (1098 LOC) - port deferred")
+from homeassistant.components.imap import DOMAIN
+from homeassistant.core import HomeAssistant
+
+from ._fixtures import (
+    imap_fetch,
+    imap_has_capability,
+    imap_login_state,
+    imap_pending_idle,
+    imap_search,
+    imap_select_state,
+    mock_imap_protocol,
+)
+from .test_config_flow import MOCK_CONFIG
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Module-level fixture anchor."""
+
+
+@test
+async def entry_startup_and_unload(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _imap_protocol: MagicMock = Depends(mock_imap_protocol),
+) -> None:
+    """Test imap entry startup and unload (single push case)."""
+    config = MOCK_CONFIG.copy()
+    config_entry = MockConfigEntry(domain=DOMAIN, data=config)
+    config_entry.add_to_hass(hass)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
+    expect(await hass.config_entries.async_unload(config_entry.entry_id)).to_be(True)
+
+
+@test.skip("port deferred - sibling test")
 async def entry_startup_fails() -> None:
-    """Stub for test_entry_startup_fails."""
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def receiving_message_successfully() -> None:
-    """Stub for test_receiving_message_successfully."""
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def receiving_message_with_invalid_encoding() -> None:
-    """Stub for test_receiving_message_with_invalid_encoding."""
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def receiving_message_no_subject_to_from() -> None:
-    """Stub for test_receiving_message_no_subject_to_from."""
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def initial_authentication_error() -> None:
-    """Stub for test_initial_authentication_error."""
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def initial_invalid_folder_error() -> None:
-    """Stub for test_initial_invalid_folder_error."""
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def late_authentication_retry() -> None:
-    """Stub for test_late_authentication_retry."""
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def late_authentication_error() -> None:
-    """Stub for test_late_authentication_error."""
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
 async def late_folder_error() -> None:
-    """Stub for test_late_folder_error."""
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
-async def handle_cleanup_exception() -> None:
-    """Stub for test_handle_cleanup_exception."""
 
-@test.skip("large file (1098 LOC) - port deferred")
-async def lost_connection_with_imap_push() -> None:
-    """Stub for test_lost_connection_with_imap_push."""
+@test.skip("port deferred - sibling test")
+async def message_data_event_options() -> None:
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
+
+@test.skip("port deferred - sibling test")
+async def reset_last_message_uid_handler() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling test")
 async def fetch_number_of_messages() -> None:
-    """Stub for test_fetch_number_of_messages."""
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
-async def reset_last_message() -> None:
-    """Stub for test_reset_last_message."""
 
-@test.skip("large file (1098 LOC) - port deferred")
-async def event_skipped_message_too_large() -> None:
-    """Stub for test_event_skipped_message_too_large."""
+@test.skip("port deferred - sibling test")
+async def reauth_started() -> None:
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
-async def message_is_truncated() -> None:
-    """Stub for test_message_is_truncated."""
 
-@test.skip("large file (1098 LOC) - port deferred")
-async def message_data() -> None:
-    """Stub for test_message_data."""
+@test.skip("port deferred - sibling test")
+async def setup_with_imap_session_terminated_error() -> None:
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
-async def custom_template() -> None:
-    """Stub for test_custom_template."""
 
-@test.skip("large file (1098 LOC) - port deferred")
-async def enforce_polling() -> None:
-    """Stub for test_enforce_polling."""
+@test.skip("port deferred - sibling test")
+async def push_messages() -> None:
+    """Stub."""
 
-@test.skip("large file (1098 LOC) - port deferred")
-async def services() -> None:
-    """Stub for test_services."""
+
+@test.skip("port deferred - sibling test")
+async def services_seen_unseen_or_move() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling test")
+async def event_state_only() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling test")
+async def event_test() -> None:
+    """Stub."""
+
+
+@test.skip("port deferred - sibling test")
+async def auto_subscribed() -> None:
+    """Stub."""
