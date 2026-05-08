@@ -1,13 +1,57 @@
-"""Tryke skip-stubs for elkm1 config flow tests.
+"""Test the Elk-M1 Control config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from tryke import Depends, expect, fixture, test
 
-from tryke import test
+from homeassistant import config_entries
+from homeassistant.components.elkm1.const import DOMAIN
+from homeassistant.const import CONF_HOST
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def discovery_ignored_entry() -> None:
-    """Stub for test_discovery_ignored_entry (port deferred)."""
+from . import ELK_DISCOVERY, MOCK_IP_ADDRESS, _patch_discovery, _patch_elk
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+ELK_DISCOVERY_INFO = {
+    "mac_address": ELK_DISCOVERY.mac_address,
+    "ip_address": ELK_DISCOVERY.ip_address,
+    "port": ELK_DISCOVERY.port,
+}
+
+
+@fixture
+def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+) -> HomeAssistant:
+    """Anchor fixture so tryke fully resolves hass."""
+    return hass
+
+
+@test
+async def discovery_ignored_entry(
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we abort on ignored entry."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: f"elks://{MOCK_IP_ADDRESS}"},
+        unique_id="aa:bb:cc:dd:ee:ff",
+        source=config_entries.SOURCE_IGNORE,
+    )
+    config_entry.add_to_hass(hass)
+
+    with _patch_discovery(), _patch_elk():
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_INTEGRATION_DISCOVERY},
+            data=ELK_DISCOVERY_INFO,
+        )
+        await hass.async_block_till_done()
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def form_user_with_secure_elk_no_discovery() -> None:
