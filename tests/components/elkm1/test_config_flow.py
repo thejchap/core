@@ -1,5 +1,7 @@
 """Test the Elk-M1 Control config flow."""
 
+from dataclasses import asdict
+
 from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
@@ -7,17 +9,20 @@ from homeassistant.components.elkm1.const import DOMAIN
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
-from . import ELK_DISCOVERY, MOCK_IP_ADDRESS, _patch_discovery, _patch_elk
+from . import ELK_DISCOVERY, MOCK_IP_ADDRESS, MOCK_MAC, _patch_discovery, _patch_elk
 
 from tests.common import MockConfigEntry
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-ELK_DISCOVERY_INFO = {
-    "mac_address": ELK_DISCOVERY.mac_address,
-    "ip_address": ELK_DISCOVERY.ip_address,
-    "port": ELK_DISCOVERY.port,
-}
+ELK_DISCOVERY_INFO = asdict(ELK_DISCOVERY)
+DHCP_DISCOVERY = DhcpServiceInfo(
+    ip=MOCK_IP_ADDRESS,
+    hostname="",
+    macaddress=dr.format_mac(MOCK_MAC).replace(":", ""),
+)
 
 
 @fixture
@@ -52,6 +57,73 @@ async def discovery_ignored_entry(
         await hass.async_block_till_done()
     expect(result["type"]).to_be(FlowResultType.ABORT)
     expect(result["reason"]).to_equal("already_configured")
+
+
+@test.cases(
+    test.case("dhcp", source=config_entries.SOURCE_DHCP, data=DHCP_DISCOVERY),
+    test.case(
+        "integration",
+        source=config_entries.SOURCE_INTEGRATION_DISCOVERY,
+        data=ELK_DISCOVERY_INFO,
+    ),
+)
+async def discovered_by_dhcp_or_discovery_mac_address_mismatch_host_already_configured(
+    *,
+    source: str,
+    data,
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test abort when host is already configured but mac does not match."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: f"elks://{MOCK_IP_ADDRESS}"},
+        unique_id="cc:cc:cc:cc:cc:cc",
+    )
+    config_entry.add_to_hass(hass)
+
+    with _patch_discovery(), _patch_elk():
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": source}, data=data
+        )
+        await hass.async_block_till_done()
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(config_entry.unique_id).to_equal("cc:cc:cc:cc:cc:cc")
+
+
+@test.cases(
+    test.case("dhcp", source=config_entries.SOURCE_DHCP, data=DHCP_DISCOVERY),
+    test.case(
+        "integration",
+        source=config_entries.SOURCE_INTEGRATION_DISCOVERY,
+        data=ELK_DISCOVERY_INFO,
+    ),
+)
+async def discovered_by_dhcp_or_discovery_adds_missing_unique_id(
+    *,
+    source: str,
+    data,
+    _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test missing unique_id is filled in on a discovered already-configured entry."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: f"elks://{MOCK_IP_ADDRESS}"},
+    )
+    config_entry.add_to_hass(hass)
+
+    with _patch_discovery(), _patch_elk():
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": source}, data=data
+        )
+        await hass.async_block_till_done()
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_configured")
+    expect(config_entry.unique_id).to_equal(MOCK_MAC)
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def form_user_with_secure_elk_no_discovery() -> None:
@@ -136,14 +208,6 @@ async def form_import_non_secure_device_discovered_invalid_auth() -> None:
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def form_import_existing() -> None:
     """Stub for test_form_import_existing (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def discovered_by_dhcp_or_discovery_mac_address_mismatch_host_already_configured() -> None:
-    """Stub for test_discovered_by_dhcp_or_discovery_mac_address_mismatch_host_already_configured (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def discovered_by_dhcp_or_discovery_adds_missing_unique_id() -> None:
-    """Stub for test_discovered_by_dhcp_or_discovery_adds_missing_unique_id (port deferred)."""
 
 @test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
 async def discovered_by_discovery_and_dhcp() -> None:
