@@ -55,12 +55,38 @@ async def user_flow_with_credentials(
     """Stub for test_user_flow_with_credentials."""
 
 
-@test.skip("requires invalid host validation — port deferred")
+@test.cases(
+    test.case("scheme_only", url="http://"),
+    test.case("empty", url=""),
+)
 async def form_invalid_host_input(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    nrgkick_api: AsyncMock = Depends(mock_nrgkick_api),
+    *,
+    url: str,
 ) -> None:
-    """Stub for test_form_invalid_host_input."""
+    """Test we handle invalid host input during normalization."""
+    from homeassistant.config_entries import SOURCE_USER
+    from homeassistant.const import CONF_HOST
+    from homeassistant.data_entry_flow import FlowResultType
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: url}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": "cannot_connect"})
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: "192.168.1.100"}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
 @test.skip("requires alternate fixture data — port deferred")
