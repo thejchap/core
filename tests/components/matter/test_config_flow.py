@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def manual_create_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def manual_create_entry(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def manual_errors(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def manual_errors(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def manual_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def manual_already_configured(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def zeroconf_discovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def zeroconf_discovery(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def zeroconf_discovery_not_onboarded_not_supervisor(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def zeroconf_discovery_not_onboarded_not_supervisor(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def zeroconf_not_onboarded_already_discovered(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def zeroconf_not_onboarded_already_discovered(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def zeroconf_not_onboarded_running(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def zeroconf_not_onboarded_running(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def zeroconf_not_onboarded_installed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def zeroconf_not_onboarded_installed(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def zeroconf_not_onboarded_not_installed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def zeroconf_not_onboarded_not_installed(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def supervisor_discovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def supervisor_discovery(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def supervisor_discovery_addon_info_failed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def supervisor_discovery_addon_info_failed(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def clean_supervisor_discovery_on_user_create(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def clean_supervisor_discovery_on_user_create(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def abort_supervisor_discovery_with_existing_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def abort_supervisor_discovery_with_existing_entry(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def abort_supervisor_discovery_with_existing_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def abort_supervisor_discovery_with_existing_flow(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def abort_supervisor_discovery_for_other_addon(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def abort_supervisor_discovery_for_other_addon(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def supervisor_discovery_addon_not_running(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def supervisor_discovery_addon_not_running(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def supervisor_discovery_addon_not_installed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def supervisor_discovery_addon_not_installed(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def not_addon(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def not_addon(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_running(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def addon_running(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_running_failures(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -192,7 +192,7 @@ async def addon_running_failures(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_running_failures_zeroconf(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -201,7 +201,7 @@ async def addon_running_failures_zeroconf(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_running_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -210,7 +210,7 @@ async def addon_running_already_configured(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_installed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -219,7 +219,7 @@ async def addon_installed(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_installed_failures(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -228,7 +228,7 @@ async def addon_installed_failures(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_installed_failures_zeroconf(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -237,7 +237,7 @@ async def addon_installed_failures_zeroconf(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_installed_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -246,7 +246,7 @@ async def addon_installed_already_configured(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_not_installed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -255,7 +255,7 @@ async def addon_not_installed(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_not_installed_failures(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -264,7 +264,7 @@ async def addon_not_installed_failures(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_not_installed_failures_zeroconf(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -273,7 +273,7 @@ async def addon_not_installed_failures_zeroconf(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohasupervisor + matter_server.client mock chain + ADDON_SLUG discovery (not in tryke shim)")
 async def addon_not_installed_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

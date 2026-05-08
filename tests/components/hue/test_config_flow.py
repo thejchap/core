@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def flow_works(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def flow_works(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def manual_flow_works(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def manual_flow_works(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def manual_flow_bridge_exist(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def manual_flow_bridge_exist(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def manual_flow_no_discovered_bridges(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def manual_flow_no_discovered_bridges(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def flow_all_discovered_bridges_exist(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def flow_all_discovered_bridges_exist(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def flow_bridges_discovered(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def flow_bridges_discovered(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def flow_two_bridges_discovered_one_new(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def flow_two_bridges_discovered_one_new(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def flow_timeout_discovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def flow_timeout_discovery(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def flow_link_unknown_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def flow_link_unknown_error(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def flow_link_button_not_pressed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def flow_link_button_not_pressed(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def flow_link_cannot_connect(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def flow_link_cannot_connect(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def import_with_no_config(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def import_with_no_config(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def creating_entry_removes_entries_for_same_host_or_bridge(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def creating_entry_removes_entries_for_same_host_or_bridge(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def bridge_homekit(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def bridge_homekit(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def bridge_import_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def bridge_import_already_configured(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def bridge_homekit_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def bridge_homekit_already_configured(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def options_flow_v1(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def options_flow_v1(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def options_flow_v2(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def options_flow_v2(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def bridge_zeroconf(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def bridge_zeroconf(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def bridge_zeroconf_already_exists(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -192,7 +192,7 @@ async def bridge_zeroconf_already_exists(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def bridge_zeroconf_ipv6(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -201,7 +201,7 @@ async def bridge_zeroconf_ipv6(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def bridge_connection_failed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -210,7 +210,7 @@ async def bridge_connection_failed(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def bsb003_bridge_discovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -219,7 +219,7 @@ async def bsb003_bridge_discovery(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def bsb003_bridge_discovery_old_version(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -228,7 +228,7 @@ async def bsb003_bridge_discovery_old_version(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def bsb003_bridge_discovery_same_host(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -237,7 +237,7 @@ async def bsb003_bridge_discovery_same_host(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohue bridge mock + zeroconf+SSDP discovery chain (not in tryke shim)")
 async def bsb003_bridge_discovery_cannot_connect(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

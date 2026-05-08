@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def setup_in_bridge_mode(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def setup_in_bridge_mode(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def setup_in_bridge_mode_name_taken(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def setup_in_bridge_mode_name_taken(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def setup_creates_entries_for_accessory_mode_devices(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def setup_creates_entries_for_accessory_mode_devices(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def import(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def import(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_exclude_mode_advanced(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def options_flow_exclude_mode_advanced(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_exclude_mode_basic(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def options_flow_exclude_mode_basic(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_devices(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def options_flow_devices(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_devices_preserved_when_advanced_off(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def options_flow_devices_preserved_when_advanced_off(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_include_mode_with_non_existant_entity(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def options_flow_include_mode_with_non_existant_entity(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_exclude_mode_with_non_existant_entity(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def options_flow_exclude_mode_with_non_existant_entity(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_include_mode_basic(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def options_flow_include_mode_basic(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_exclude_mode_with_cameras(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def options_flow_exclude_mode_with_cameras(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_include_mode_with_cameras(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def options_flow_include_mode_with_cameras(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_with_camera_audio(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def options_flow_with_camera_audio(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_blocked_when_from_yaml(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def options_flow_blocked_when_from_yaml(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_include_mode_basic_accessory(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def options_flow_include_mode_basic_accessory(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def converting_bridge_to_accessory_mode(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def converting_bridge_to_accessory_mode(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_exclude_mode_skips_category_entities(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def options_flow_exclude_mode_skips_category_entities(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_exclude_mode_skips_hidden_entities(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def options_flow_exclude_mode_skips_hidden_entities(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires pyhap mock + iid_storage + AccessoryDriver chain (not in tryke shim)")
 async def options_flow_include_mode_allows_hidden_entities(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),

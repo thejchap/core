@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_works(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def discovery_works(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def abort_duplicate_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def abort_duplicate_flow(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def pair_already_paired_1(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def pair_already_paired_1(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def unknown_domain_type(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def unknown_domain_type(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def id_missing(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def id_missing(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_ignored_model(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def discovery_ignored_model(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_ignored_hk_bridge(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def discovery_ignored_hk_bridge(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_does_not_ignore_non_homekit(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def discovery_does_not_ignore_non_homekit(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_broken_pairing_flag(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def discovery_broken_pairing_flag(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_invalid_config_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def discovery_invalid_config_entry(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_ignored_config_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def discovery_ignored_config_entry(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def discovery_already_configured(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_already_configured_update_csharp(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def discovery_already_configured_update_csharp(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def pair_abort_errors_on_start(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def pair_abort_errors_on_start(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def pair_try_later_errors_on_start(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def pair_try_later_errors_on_start(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def pair_form_errors_on_start(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def pair_form_errors_on_start(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def pair_abort_errors_on_finish(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def pair_abort_errors_on_finish(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def pair_form_errors_on_finish(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def pair_form_errors_on_finish(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def pair_unknown_errors(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def pair_unknown_errors(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def user_works(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -192,7 +192,7 @@ async def user_works(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def user_pairing_with_insecure_setup_code(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -201,7 +201,7 @@ async def user_pairing_with_insecure_setup_code(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def user_no_devices(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -210,7 +210,7 @@ async def user_no_devices(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def user_no_unpaired_devices(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -219,7 +219,7 @@ async def user_no_unpaired_devices(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_dismiss_existing_flow_on_paired(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -228,7 +228,7 @@ async def discovery_dismiss_existing_flow_on_paired(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def mdns_update_to_paired_during_pairing(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -237,7 +237,7 @@ async def mdns_update_to_paired_during_pairing(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_no_bluetooth_support(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -246,7 +246,7 @@ async def discovery_no_bluetooth_support(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def bluetooth_not_homekit(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -255,7 +255,7 @@ async def bluetooth_not_homekit(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def bluetooth_valid_device_no_discovery(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -264,7 +264,7 @@ async def bluetooth_valid_device_no_discovery(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def bluetooth_valid_device_discovery_paired(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -273,7 +273,7 @@ async def bluetooth_valid_device_discovery_paired(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def bluetooth_valid_device_discovery_unpaired(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -282,7 +282,7 @@ async def bluetooth_valid_device_discovery_unpaired(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_updates_ip_when_config_entry_set_up(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -291,7 +291,7 @@ async def discovery_updates_ip_when_config_entry_set_up(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("requires aiohomekit Accessory/AuthenticationError chain + zeroconf discovery (not in tryke shim)")
 async def discovery_updates_ip_config_entry_not_set_up(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
