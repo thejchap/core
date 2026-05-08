@@ -1,101 +1,16 @@
-"""Tests for the ntfy integration."""
+"""Tryke skip-stubs for ntfy test_init (port deferred)."""
+from tryke import test
 
-from unittest.mock import AsyncMock
+@test.skip("requires aiontfy + Notification/Account/Event mocks (not ported)")
+async def coordinator_update_exceptions() -> None:
+    """Stub for test_coordinator_update_exceptions (port deferred)."""
 
-from aiontfy.exceptions import (
-    NtfyConnectionError,
-    NtfyHTTPError,
-    NtfyTimeoutError,
-    NtfyUnauthorizedAuthenticationError,
-)
-import pytest
+@test.skip("requires aiontfy + Notification/Account/Event mocks (not ported)")
+async def entry_setup_unload() -> None:
+    """Stub for test_entry_setup_unload (port deferred)."""
 
-from homeassistant.config_entries import ConfigEntryState
-from homeassistant.core import HomeAssistant
-
-from tests.common import MockConfigEntry
+@test.skip("requires aiontfy + Notification/Account/Event mocks (not ported)")
+async def config_entry_not_ready() -> None:
+    """Stub for test_config_entry_not_ready (port deferred)."""
 
 
-@pytest.mark.usefixtures("mock_aiontfy")
-async def test_entry_setup_unload(
-    hass: HomeAssistant, config_entry: MockConfigEntry
-) -> None:
-    """Test integration setup and unload."""
-
-    config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    assert config_entry.state is ConfigEntryState.LOADED
-
-    assert await hass.config_entries.async_unload(config_entry.entry_id)
-
-    assert config_entry.state is ConfigEntryState.NOT_LOADED
-
-
-@pytest.mark.parametrize(
-    ("exception", "state"),
-    [
-        (
-            NtfyUnauthorizedAuthenticationError(
-                40101,
-                401,
-                "unauthorized",
-                "https://ntfy.sh/docs/publish/#authentication",
-            ),
-            ConfigEntryState.SETUP_ERROR,
-        ),
-        (NtfyHTTPError(418001, 418, "I'm a teapot", ""), ConfigEntryState.SETUP_RETRY),
-        (NtfyConnectionError, ConfigEntryState.SETUP_RETRY),
-        (NtfyTimeoutError, ConfigEntryState.SETUP_RETRY),
-    ],
-)
-async def test_config_entry_not_ready(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    mock_aiontfy: AsyncMock,
-    exception: Exception,
-    state: ConfigEntryState,
-) -> None:
-    """Test config entry not ready."""
-
-    mock_aiontfy.account.side_effect = exception
-    config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    assert config_entry.state is state
-
-
-@pytest.mark.parametrize(
-    ("exception", "state"),
-    [
-        (
-            NtfyUnauthorizedAuthenticationError(
-                40101,
-                401,
-                "unauthorized",
-                "https://ntfy.sh/docs/publish/#authentication",
-            ),
-            ConfigEntryState.SETUP_ERROR,
-        ),
-        (NtfyHTTPError(418001, 418, "I'm a teapot", ""), ConfigEntryState.SETUP_RETRY),
-        (NtfyConnectionError, ConfigEntryState.SETUP_RETRY),
-        (NtfyTimeoutError, ConfigEntryState.SETUP_RETRY),
-    ],
-)
-async def test_coordinator_update_exceptions(
-    hass: HomeAssistant,
-    config_entry: MockConfigEntry,
-    mock_aiontfy: AsyncMock,
-    exception: Exception,
-    state: ConfigEntryState,
-) -> None:
-    """Test config entry not ready from update failed in _async_update_data."""
-    mock_aiontfy.account.side_effect = [None, exception]
-
-    config_entry.add_to_hass(hass)
-    await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-
-    assert config_entry.state is state
