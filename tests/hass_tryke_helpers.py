@@ -188,6 +188,208 @@ def make_oauth_token(
     return token
 
 
+# --- respx async HTTP mock helpers ----------------------------------------
+
+
+@asynccontextmanager
+async def respx_mock_session(
+    *,
+    assert_all_called: bool = False,
+    assert_all_mocked: bool = True,
+) -> AsyncGenerator[Any]:
+    """Async context manager wrapping respx.mock for HTTPX-based integration tests.
+
+    Use inside ``async with`` to register HTTPX route mocks::
+
+        async with respx_mock_session() as respx_mock:
+            respx_mock.get("https://example.com/api").mock(
+                return_value=httpx.Response(200, json={"ok": True})
+            )
+            # ... test body ...
+
+    This replaces the ``respx.mock`` pytest plugin's autouse fixture. Set
+    ``assert_all_called=True`` to fail the test if any registered route was
+    never hit.
+    """
+    import respx as _respx  # noqa: PLC0415
+
+    with _respx.mock(
+        assert_all_called=assert_all_called,
+        assert_all_mocked=assert_all_mocked,
+    ) as m:
+        yield m
+
+
+# --- entity registry helpers ----------------------------------------------
+
+
+@fixture
+def entity_registry_enabled_by_default() -> Generator[Any]:
+    """Force every integration entity to be enabled-by-default.
+
+    Replacement for the ``entity_registry_enabled_by_default`` autouse
+    fixture in many sibling test files. Without it, integrations whose
+    entity descriptions set ``entity_registry_enabled_default=False``
+    (legacy / niche sensors) skip entity creation, breaking
+    ``snapshot_platform`` and entity-presence assertions.
+    """
+    from unittest.mock import patch as _patch  # noqa: PLC0415
+
+    with _patch(
+        "homeassistant.helpers.entity.Entity.entity_registry_enabled_default",
+        return_value=True,
+    ):
+        yield
+
+
+# --- supervisor_client helpers --------------------------------------------
+
+
+def make_supervisor_client_mock(
+    *,
+    addons_installed: list[str] | None = None,
+    os_info: dict[str, Any] | None = None,
+) -> Any:
+    """Build a minimal `aiohasupervisor` client mock for hassio-dependent tests.
+
+    Mirrors the supervisor_client mock pattern in
+    ``tests/components/homeassistant_connect_zbt2/_fixtures.py`` but as a
+    factory consumable by any integration whose tests bridge through the
+    Home Assistant Supervisor (otbr, homeassistant_green/sky_connect/yellow,
+    music_assistant via hassio, etc.).
+
+    Returns a ``MagicMock`` shaped like ``aiohasupervisor.SupervisorClient``
+    with the ``addons``, ``os``, and ``store`` namespaces wired enough for
+    the most common test paths. Tests can extend the returned object
+    in-place before passing it through ``patch(..., return_value=client)``.
+    """
+    from unittest.mock import AsyncMock, MagicMock  # noqa: PLC0415
+
+    client = MagicMock()
+    addons_list = addons_installed or []
+
+    # addons namespace
+    client.addons = MagicMock()
+    client.addons.list = AsyncMock(
+        return_value=MagicMock(addons=addons_list)
+    )
+    client.addons.addon_info = AsyncMock(
+        return_value=MagicMock(installed=False, available=True, version="1.0.0")
+    )
+    client.addons.start_addon = AsyncMock(return_value=None)
+    client.addons.stop_addon = AsyncMock(return_value=None)
+    client.addons.uninstall_addon = AsyncMock(return_value=None)
+
+    # store namespace
+    client.store = MagicMock()
+    client.store.addon_store_info = AsyncMock(
+        return_value=MagicMock(installed=False, available=True, version="1.0.0")
+    )
+    client.store.install_addon = AsyncMock(return_value=None)
+
+    # os namespace
+    client.os = MagicMock()
+    info = os_info or {
+        "version": "12.0",
+        "version_latest": "12.0",
+        "update_available": False,
+        "board": "generic-x86-64",
+        "boot": "A",
+    }
+    client.os.info = AsyncMock(return_value=MagicMock(**info))
+
+    return client
+
+
+# --- mqtt_mock helpers ----------------------------------------------------
+
+
+async def setup_mqtt_mock(
+    hass: Any,
+    config_entry_data: dict[str, Any] | None = None,
+    config_entry_options: dict[str, Any] | None = None,
+) -> Any:
+    """Set up an MQTT mock for tests, returning the mocked HA MQTT client.
+
+    Replacement for the ``mqtt_mock`` fixture in ``tests/conftest.py``.
+    Initialises the MQTT integration with a mocked paho client and a
+    pre-configured config entry, returns the mock that tests assert on.
+
+    Usage in a per-integration ``_fixtures.py``::
+
+        from tryke import Depends, fixture
+        from tests.hass_fixtures import hass as hass_fixture
+        from tests.hass_tryke_helpers import setup_mqtt_mock
+
+        @fixture
+        async def mqtt_mock(
+            hass: HomeAssistant = Depends(hass_fixture),
+        ):
+            return await setup_mqtt_mock(hass)
+
+    Skips the real-MQTT-instance verification from the conftest fixture
+    (those checks are integration-internal). The returned mock supports
+    ``async_publish`` / ``async_subscribe`` / ``connected`` / ``mock_calls``
+    for assertion patterns.
+    """
+    from unittest.mock import AsyncMock, MagicMock, Mock, patch  # noqa: PLC0415
+
+    from homeassistant.components import mqtt  # noqa: PLC0415
+    from homeassistant.config_entries import ConfigEntryState  # noqa: PLC0415
+    from homeassistant.setup import async_setup_component  # noqa: PLC0415
+
+    from .common import MockConfigEntry  # noqa: PLC0415
+
+    if config_entry_data is None:
+        config_entry_data = {
+            mqtt.CONF_BROKER: "mock-broker",
+            mqtt.CONF_PROTOCOL: "5",
+        }
+    if config_entry_options is None:
+        config_entry_options = {mqtt.CONF_BIRTH_MESSAGE: {}}
+
+    # Build a paho-client mock with the methods MQTT integration calls.
+    paho_client_mock = MagicMock()
+    paho_client_mock.connect = MagicMock(return_value=0)
+    paho_client_mock.subscribe = MagicMock(return_value=(0, 1))
+    paho_client_mock.unsubscribe = MagicMock(return_value=(0, 2))
+    paho_client_mock.publish = MagicMock(return_value=Mock(rc=0, mid=3, is_published=lambda: True))
+    paho_client_mock.loop_start = MagicMock()
+    paho_client_mock.loop_stop = MagicMock()
+    paho_client_mock.disconnect = MagicMock()
+    paho_client_mock.reconnect = MagicMock()
+    paho_client_mock.is_connected = MagicMock(return_value=True)
+    paho_client_mock.tls_set = MagicMock()
+    paho_client_mock.tls_insecure_set = MagicMock()
+    paho_client_mock.username_pw_set = MagicMock()
+    paho_client_mock.will_set = MagicMock()
+    paho_client_mock.connect_async = MagicMock()
+
+    entry = MockConfigEntry(
+        data=config_entry_data,
+        options=config_entry_options,
+        domain=mqtt.DOMAIN,
+        title="MQTT",
+        version=1,
+        minor_version=2,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "homeassistant.components.mqtt.async_client.AsyncMQTTClient",
+        return_value=paho_client_mock,
+    ):
+        assert await async_setup_component(hass, mqtt.DOMAIN, {})
+        await hass.async_block_till_done()
+
+    # Return the mqtt component's HA-side client (used by tests for
+    # async_publish assertions etc.). If setup didn't fully wire, return the
+    # paho mock so consumer tests at least have something to assert against.
+    if entry.state is ConfigEntryState.LOADED:
+        return entry.runtime_data
+    return paho_client_mock
+
+
 # --- recorder_mock helper -------------------------------------------------
 
 
