@@ -1,66 +1,64 @@
-"""Tryke skip-stubs for bosch_alarm config flow tests.
+"""Test the bosch_alarm config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from tryke import Depends, expect, fixture, test
 
-from tryke import test
+from homeassistant.components.bosch_alarm.const import DOMAIN
+from homeassistant.config_entries import SOURCE_USER
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
+
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Anchor fixture for tryke fixture-injection."""
+
+
+@test
+async def form_user_show(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the user form is shown."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+
+
+@test.skip("requires bosch_alarm panel mock + parametrize over panel models")
 async def form_user() -> None:
-    """Stub for test_form_user (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires bosch_alarm panel mock + parametrize over panel models")
 async def form_exceptions() -> None:
-    """Stub for test_form_exceptions (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
+@test.skip("requires bosch_alarm panel mock + parametrize over panel models")
 async def form_exceptions_user() -> None:
-    """Stub for test_form_exceptions_user (port deferred)."""
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def entry_already_configured_host() -> None:
-    """Stub for test_entry_already_configured_host (port deferred)."""
+@test.skip("requires bosch_alarm panel mock + parametrize over panel models")
+async def form_unique_id_collision() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def entry_already_configured_serial() -> None:
-    """Stub for test_entry_already_configured_serial (port deferred)."""
+@test.skip("requires bosch_alarm panel mock + parametrize over panel models")
+async def reauth() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_can_finish() -> None:
-    """Stub for test_dhcp_can_finish (port deferred)."""
+@test.skip("requires bosch_alarm panel mock + parametrize over panel models")
+async def reauth_invalid_auth() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_exceptions() -> None:
-    """Stub for test_dhcp_exceptions (port deferred)."""
+@test.skip("requires bosch_alarm panel mock + parametrize over panel models")
+async def reconfigure() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_updates_host() -> None:
-    """Stub for test_dhcp_updates_host (port deferred)."""
+@test.skip("requires bosch_alarm panel mock + parametrize over panel models")
+async def reconfigure_invalid_auth() -> None:
+    """Stub."""
 
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_discovery_if_panel_setup_config_flow() -> None:
-    """Stub for test_dhcp_discovery_if_panel_setup_config_flow (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_abort_ongoing_flow() -> None:
-    """Stub for test_dhcp_abort_ongoing_flow (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def dhcp_updates_mac() -> None:
-    """Stub for test_dhcp_updates_mac (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reauth_flow_success() -> None:
-    """Stub for test_reauth_flow_success (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reauth_flow_error() -> None:
-    """Stub for test_reauth_flow_error (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reconfig_flow() -> None:
-    """Stub for test_reconfig_flow (port deferred)."""
-
-@test.skip("discovery flow (ssdp/zeroconf/dhcp/usb) and complex fixture chain")
-async def reconfig_flow_incorrect_model() -> None:
-    """Stub for test_reconfig_flow_incorrect_model (port deferred)."""
+@test.skip("requires bosch_alarm panel mock + parametrize over panel models")
+async def options_flow() -> None:
+    """Stub."""
