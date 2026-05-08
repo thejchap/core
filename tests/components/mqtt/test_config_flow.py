@@ -12,7 +12,7 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def user_connection_works(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -21,7 +21,7 @@ async def user_connection_works(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def user_connection_works_with_supervisor(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -30,7 +30,7 @@ async def user_connection_works_with_supervisor(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def user_v5_connection_works(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -39,7 +39,7 @@ async def user_v5_connection_works(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def user_connection_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,7 +48,7 @@ async def user_connection_fails(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def manual_config_set(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -57,7 +57,7 @@ async def manual_config_set(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def user_single_instance(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -66,7 +66,7 @@ async def user_single_instance(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def hassio_already_configured(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -75,7 +75,7 @@ async def hassio_already_configured(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def hassio_ignored(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -84,7 +84,7 @@ async def hassio_ignored(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def hassio_confirm(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -93,7 +93,7 @@ async def hassio_confirm(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def hassio_cannot_connect(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -102,7 +102,7 @@ async def hassio_cannot_connect(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def addon_flow_with_supervisor_addon_running(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -111,7 +111,7 @@ async def addon_flow_with_supervisor_addon_running(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def addon_flow_with_supervisor_addon_installed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -120,7 +120,7 @@ async def addon_flow_with_supervisor_addon_installed(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def addon_flow_with_supervisor_addon_running_connection_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -129,7 +129,7 @@ async def addon_flow_with_supervisor_addon_running_connection_fails(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def addon_not_running_api_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -138,7 +138,7 @@ async def addon_not_running_api_error(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def addon_discovery_info_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -147,7 +147,7 @@ async def addon_discovery_info_error(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def addon_info_error(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -156,7 +156,7 @@ async def addon_info_error(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def addon_flow_with_supervisor_addon_not_installed(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -165,7 +165,7 @@ async def addon_flow_with_supervisor_addon_not_installed(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def addon_not_installed_failures(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -174,7 +174,7 @@ async def addon_not_installed_failures(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def option_flow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -183,7 +183,7 @@ async def option_flow(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def bad_certificate(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -192,7 +192,7 @@ async def bad_certificate(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def keepalive_validation(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -201,7 +201,7 @@ async def keepalive_validation(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def disable_birth_will(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -210,7 +210,7 @@ async def disable_birth_will(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def invalid_discovery_prefix(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -219,7 +219,7 @@ async def invalid_discovery_prefix(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def option_flow_default_suggested_values(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -228,7 +228,7 @@ async def option_flow_default_suggested_values(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def step_reauth(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -237,7 +237,7 @@ async def step_reauth(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def step_hassio_reauth(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -246,7 +246,7 @@ async def step_hassio_reauth(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def step_hassio_reauth_no_discovery_info(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -255,7 +255,7 @@ async def step_hassio_reauth_no_discovery_info(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def reconfigure_user_connection_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -264,7 +264,7 @@ async def reconfigure_user_connection_fails(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def options_bad_birth_message_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -273,7 +273,7 @@ async def options_bad_birth_message_fails(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def options_bad_will_message_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -282,7 +282,7 @@ async def options_bad_will_message_fails(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def try_connection_with_advanced_parameters(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -291,7 +291,7 @@ async def try_connection_with_advanced_parameters(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def setup_with_advanced_settings(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -300,7 +300,7 @@ async def setup_with_advanced_settings(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def setup_with_certificates(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -309,7 +309,7 @@ async def setup_with_certificates(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def change_websockets_transport_to_tcp(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -318,7 +318,7 @@ async def change_websockets_transport_to_tcp(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def reconfigure_flow_form(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -327,7 +327,7 @@ async def reconfigure_flow_form(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def reconfigure_no_changed_password(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -336,7 +336,7 @@ async def reconfigure_no_changed_password(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def migrate_config_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -345,7 +345,7 @@ async def migrate_config_entry(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def migrate_of_incompatible_config_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -354,7 +354,7 @@ async def migrate_of_incompatible_config_entry(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def subentry_configflow(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -363,7 +363,7 @@ async def subentry_configflow(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def subentry_reconfigure_remove_entity(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -372,7 +372,7 @@ async def subentry_reconfigure_remove_entity(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def subentry_reconfigure_edit_entity_multi_entitites(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -381,7 +381,7 @@ async def subentry_reconfigure_edit_entity_multi_entitites(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def subentry_reconfigure_edit_entity_single_entity(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -390,7 +390,7 @@ async def subentry_reconfigure_edit_entity_single_entity(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def subentry_reconfigure_edit_entity_reset_fields(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -399,7 +399,7 @@ async def subentry_reconfigure_edit_entity_reset_fields(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def subentry_reconfigure_add_entity(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -408,7 +408,7 @@ async def subentry_reconfigure_add_entity(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def subentry_reconfigure_update_device_properties(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -417,7 +417,7 @@ async def subentry_reconfigure_update_device_properties(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def subentry_reconfigure_availablity(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -426,7 +426,7 @@ async def subentry_reconfigure_availablity(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def subentry_reconfigure_export_settings(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -435,7 +435,7 @@ async def subentry_reconfigure_export_settings(
     expect(True).to_be(True)
 
 
-@test.skip("discovery + extensive setup")
+@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
 async def subentry_configflow_section_feature(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
