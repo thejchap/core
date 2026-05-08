@@ -1,20 +1,66 @@
-"""Test the Portainer initial specific behavior. (tryke skip stub)."""
+"""Test the Portainer initial specific behavior."""
 
-from tryke import fixture, test
+from unittest.mock import AsyncMock
+
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.portainer.const import DOMAIN
+from homeassistant.const import (
+    CONF_API_KEY,
+    CONF_API_TOKEN,
+    CONF_HOST,
+    CONF_URL,
+    CONF_VERIFY_SSL,
+)
+from homeassistant.core import HomeAssistant
+
+from ._fixtures import TEST_INSTANCE_ID, mock_portainer_client
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
 @fixture
-def _ensure_executor() -> None:
-    """Force a HookExecutor for this module (tryke discovery quirk)."""
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Force tryke to fully resolve hass before each test."""
 
 
-@test.skip("syrupy snapshot")
+@test
+async def migrations(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    portainer_client: AsyncMock = Depends(mock_portainer_client),
+) -> None:
+    """Test migration from v1 config entry."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_HOST: "http://test_host",
+            CONF_API_KEY: "test_key",
+        },
+        unique_id="1",
+        version=1,
+    )
+    entry.add_to_hass(hass)
+    expect(entry.version).to_equal(1)
+    expect(CONF_VERIFY_SSL not in entry.data).to_be(True)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    expect(CONF_HOST not in entry.data).to_be(True)
+    expect(CONF_API_KEY not in entry.data).to_be(True)
+    expect(entry.data[CONF_URL]).to_equal("http://test_host")
+    expect(entry.data[CONF_API_TOKEN]).to_equal("test_key")
+    expect(entry.data[CONF_VERIFY_SSL]).to_be(True)
+    expect(entry.version).to_equal(5)
+    expect(entry.unique_id).to_equal(TEST_INSTANCE_ID)
+
+
+@test.skip("indirect parametrize + needs syrupy snapshot - port deferred")
 async def setup_exceptions() -> None:
     """Stub for test_setup_exceptions (port deferred)."""
-
-@test.skip("syrupy snapshot")
-async def migrations() -> None:
-    """Stub for test_migrations (port deferred)."""
 
 @test.skip("syrupy snapshot")
 async def remove_config_entry_device() -> None:
