@@ -1,21 +1,73 @@
-"""Tryke skip-stubs for plex config flow tests.
+"""Tests for Plex config flow."""
 
-Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
-"""
+from unittest.mock import patch
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.plex.const import DOMAIN
+from homeassistant.config_entries import SOURCE_USER
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from tests.hass_fixtures import (
+    current_request_with_host,
+    hass as hass_fixture,
+    mock_network,
+)
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _request: None = Depends(current_request_with_host),
+) -> None:
+    """Force tryke fixture resolution before each test."""
+
 
 @test.skip("requires plexapi + requests_mock + MockGDM extensive fixtures (not ported)")
-async def bad_credentials() -> None:
-    """Stub for test_bad_credentials (port deferred)."""
+async def bad_credentials(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_bad_credentials."""
+
 
 @test.skip("requires plexapi + requests_mock + MockGDM extensive fixtures (not ported)")
-async def bad_hostname() -> None:
-    """Stub for test_bad_hostname (port deferred)."""
+async def bad_hostname(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Stub for test_bad_hostname."""
 
-@test.skip("requires plexapi + requests_mock + MockGDM extensive fixtures (not ported)")
-async def unknown_exception() -> None:
-    """Stub for test_unknown_exception (port deferred)."""
+
+@test
+async def unknown_exception(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test when an unknown exception is encountered."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+
+    with (
+        patch("plexapi.myplex.MyPlexAccount", side_effect=Exception),
+        patch("plexauth.PlexAuth.initiate_auth"),
+        patch("plexauth.PlexAuth.token", return_value="MOCK_TOKEN"),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={}
+        )
+        expect(result["type"]).to_be(FlowResultType.EXTERNAL_STEP)
+
+        result = await hass.config_entries.flow.async_configure(result["flow_id"])
+        expect(result["type"]).to_be(FlowResultType.EXTERNAL_STEP_DONE)
+
+        result = await hass.config_entries.flow.async_configure(result["flow_id"])
+        expect(result["type"]).to_be(FlowResultType.ABORT)
+        expect(result["reason"]).to_equal("unknown")
 
 @test.skip("requires plexapi + requests_mock + MockGDM extensive fixtures (not ported)")
 async def no_servers_found() -> None:
