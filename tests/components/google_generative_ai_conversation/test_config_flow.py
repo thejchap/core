@@ -2,11 +2,19 @@
 
 The integration depends on `conversation` which depends on
 `homeassistant.exposed_entities`; that dependency is not available under
-the tryke shim's minimal hass setup, so we cannot easily render the user
-form without first wiring that chain. Defer the full port.
+the tryke shim's minimal hass setup. Defer the full config flow port.
 """
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def domain_const_importable() -> None:
+    """Smoke test: the google_generative_ai_conversation DOMAIN imports cleanly."""
+    from homeassistant.components.google_generative_ai_conversation.const import (  # noqa: PLC0415
+        DOMAIN,
+    )
+    expect(DOMAIN).to_equal("google_generative_ai_conversation")
 
 
 @test.skip("requires conversation+exposed_entities setup chain (not in tryke shim)")
