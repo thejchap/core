@@ -3,11 +3,13 @@
 from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from tryke import fixture
+from tryke import Depends, fixture
 
 from homeassistant.components.green_planet_energy.const import DOMAIN
+from homeassistant.core import HomeAssistant
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
 
 
 @fixture
@@ -65,3 +67,16 @@ def mock_api() -> Generator[MagicMock]:
         mock_api_instance.get_current_price.side_effect = get_current_price_mock
         mock_api_class.return_value = mock_api_instance
         yield mock_api_instance
+
+
+@fixture
+async def init_integration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_api: MagicMock = Depends(mock_api),
+) -> MockConfigEntry:
+    """Set up the Green Planet Energy integration for testing."""
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    return mock_config_entry
