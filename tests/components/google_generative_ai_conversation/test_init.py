@@ -1,6 +1,13 @@
-"""Tryke skip stub for test_init.py."""
+"""Tryke skip stub for test_init.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def domain_const_importable() -> None:
+    """Smoke test: the google_generative_ai_conversation integration's DOMAIN constant imports cleanly."""
+    from homeassistant.components.google_generative_ai_conversation.const import DOMAIN  # noqa: PLC0415
+    expect(DOMAIN).to_equal("google_generative_ai_conversation")
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

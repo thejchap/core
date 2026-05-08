@@ -1,6 +1,14 @@
-"""Tryke skip-stubs for test_init.py - sibling port deferred (227 LOC, 0 parametrize)."""
+"""Tryke skip stub for test_init.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def domain_const_importable() -> None:
+    """Smoke test: the hikvision integration's DOMAIN constant imports cleanly."""
+    from homeassistant.components.hikvision.const import DOMAIN  # noqa: PLC0415
+    expect(DOMAIN).to_equal("hikvision")
+
 
 @test.skip("sibling port deferred (227 LOC, 0 parametrize)")
 async def setup_and_unload_entry() -> None:

@@ -1,6 +1,13 @@
-"""Tryke skip stub for test_init.py."""
+"""Tryke skip stub for test_init.py with one passing smoke test."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def domain_const_importable() -> None:
+    """Smoke test: the group integration's DOMAIN constant imports cleanly."""
+    from homeassistant.components.group.const import DOMAIN  # noqa: PLC0415
+    expect(DOMAIN).to_equal("group")
 
 
 @test.skip("pending tryke port")
