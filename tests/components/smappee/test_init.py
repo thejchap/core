@@ -2,17 +2,34 @@
 
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.smappee.const import DOMAIN
-from homeassistant.config_entries import SOURCE_USER, SOURCE_ZEROCONF, ConfigEntryState
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.config_entry_oauth2_flow import (
     ImplementationUnavailableError,
 )
 
+from ._fixtures import mock_cloud_config_entry, mock_local_config_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_unload_config_entry(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test
+async def unload_config_entry(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_local_config_entry),
+) -> None:
     """Test unload config entry flow."""
     with (
         patch("pysmappee.api.SmappeeLocalApi.logon", return_value={}),
@@ -28,37 +45,22 @@ async def test_unload_config_entry(hass: HomeAssistant) -> None:
             return_value=[{"key": "phase0ActivePower", "value": 0}],
         ),
     ):
-        config_entry = MockConfigEntry(
-            domain=DOMAIN,
-            data={"host": "1.2.3.4"},
-            unique_id="smappee1006000212",
-            source=SOURCE_ZEROCONF,
-        )
         config_entry.add_to_hass(hass)
-        assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+        expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
 
         entry = hass.config_entries.async_entries(DOMAIN)[0]
         await hass.config_entries.async_unload(entry.entry_id)
         await hass.async_block_till_done()
-        assert not hass.data.get(DOMAIN)
+        expect(hass.data.get(DOMAIN)).to_be(None)
 
 
-async def test_oauth_implementation_not_available(hass: HomeAssistant) -> None:
+@test
+async def oauth_implementation_not_available(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_cloud_config_entry),
+) -> None:
     """Test that unavailable OAuth implementation raises ConfigEntryNotReady."""
-    config_entry = MockConfigEntry(
-        domain=DOMAIN,
-        unique_id="smappeeCloud",
-        source=SOURCE_USER,
-        data={
-            "auth_implementation": DOMAIN,
-            "token": {
-                "access_token": "mock-access-token",
-                "refresh_token": "mock-refresh-token",
-                "expires_at": 9999999999,
-                "token_type": "Bearer",
-            },
-        },
-    )
     config_entry.add_to_hass(hass)
 
     with patch(
@@ -68,4 +70,4 @@ async def test_oauth_implementation_not_available(hass: HomeAssistant) -> None:
         await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.SETUP_RETRY
+    expect(config_entry.state).to_be(ConfigEntryState.SETUP_RETRY)

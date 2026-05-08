@@ -2,32 +2,35 @@
 
 from unittest.mock import patch
 
-from homeassistant.components.neato.const import DOMAIN
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.config_entry_oauth2_flow import (
     ImplementationUnavailableError,
 )
 
+from ._fixtures import mock_config_entry, setup_credentials
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_oauth_implementation_not_available(
-    hass: HomeAssistant,
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _creds: None = Depends(setup_credentials),
+) -> None:
+    """Anchor for tryke fixture resolution + creds."""
+
+
+@test
+async def oauth_implementation_not_available(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that unavailable OAuth implementation raises ConfigEntryNotReady."""
-    config_entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            "auth_implementation": DOMAIN,
-            "token": {
-                "refresh_token": "mock-refresh-token",
-                "access_token": "mock-access-token",
-                "type": "Bearer",
-                "expires_in": 60,
-            },
-        },
-    )
     config_entry.add_to_hass(hass)
 
     with patch(
@@ -37,4 +40,4 @@ async def test_oauth_implementation_not_available(
         await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.SETUP_RETRY
+    expect(config_entry.state).to_be(ConfigEntryState.SETUP_RETRY)

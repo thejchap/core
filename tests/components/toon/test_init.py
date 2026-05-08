@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.toon import DOMAIN
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -9,27 +11,26 @@ from homeassistant.helpers.config_entry_oauth2_flow import (
     ImplementationUnavailableError,
 )
 
+from ._fixtures import mock_config_entry
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_oauth_implementation_not_available(
-    hass: HomeAssistant,
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test
+async def oauth_implementation_not_available(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test that unavailable OAuth implementation raises ConfigEntryNotReady."""
-    config_entry = MockConfigEntry(
-        domain=DOMAIN,
-        version=2,
-        data={
-            "auth_implementation": DOMAIN,
-            "token": {
-                "refresh_token": "mock-refresh-token",
-                "access_token": "mock-access-token",
-                "type": "Bearer",
-                "expires_in": 60,
-            },
-            "agreement_id": "test-agreement-id",
-        },
-    )
     config_entry.add_to_hass(hass)
 
     with patch(
@@ -39,10 +40,14 @@ async def test_oauth_implementation_not_available(
         await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    assert config_entry.state is ConfigEntryState.SETUP_RETRY
+    expect(config_entry.state).to_be(ConfigEntryState.SETUP_RETRY)
 
 
-async def test_migrate_entry_minor_version_2_2(hass: HomeAssistant) -> None:
+@test
+async def migrate_entry_minor_version_2_2(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test migrating a 2.1 config entry to 2.2."""
     with patch("homeassistant.components.toon.async_setup_entry", return_value=True):
         entry = MockConfigEntry(
@@ -62,7 +67,7 @@ async def test_migrate_entry_minor_version_2_2(hass: HomeAssistant) -> None:
             unique_id=123,
         )
         entry.add_to_hass(hass)
-        assert await hass.config_entries.async_setup(entry.entry_id)
-        assert entry.version == 2
-        assert entry.minor_version == 2
-        assert entry.unique_id == "123"
+        expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
+        expect(entry.version).to_equal(2)
+        expect(entry.minor_version).to_equal(2)
+        expect(entry.unique_id).to_equal("123")

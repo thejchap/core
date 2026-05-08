@@ -1,26 +1,63 @@
-"""Tryke skip-stubs for onedrive_for_business init tests.
+"""Test the OneDrive for Business setup."""
 
-Original tests use OAuth2 application credentials flow + onedrive_personal_sdk mocks; full port deferred.
-"""
+from unittest.mock import patch
 
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
-@test.skip("OAuth2 application credentials flow + onedrive_personal_sdk mocks")
-async def load_unload_config_entry() -> None:
-    """Test loading and unloading the integration."""
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.config_entry_oauth2_flow import (
+    ImplementationUnavailableError,
+)
 
-@test.skip("OAuth2 application credentials flow + onedrive_personal_sdk mocks")
-async def approot_errors() -> None:
-    """Test errors during approot retrieval."""
+from ._fixtures import mock_config_entry, setup_credentials
 
-@test.skip("OAuth2 application credentials flow + onedrive_personal_sdk mocks")
-async def get_integration_folder_creation() -> None:
-    """Test faulty integration folder creation."""
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-@test.skip("OAuth2 application credentials flow + onedrive_personal_sdk mocks")
-async def get_integration_folder_creation_error() -> None:
-    """Test faulty integration folder creation error."""
 
-@test.skip("OAuth2 application credentials flow + onedrive_personal_sdk mocks")
-async def oauth_implementation_not_available() -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _creds: None = Depends(setup_credentials),
+) -> None:
+    """Anchor for tryke fixture resolution + creds."""
+
+
+@test
+async def oauth_implementation_not_available(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+) -> None:
     """Test that unavailable OAuth implementation raises ConfigEntryNotReady."""
+    config_entry.add_to_hass(hass)
+
+    with patch(
+        "homeassistant.components.onedrive_for_business.async_get_config_entry_implementation",
+        side_effect=ImplementationUnavailableError,
+    ):
+        await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    expect(config_entry.state).to_be(ConfigEntryState.SETUP_RETRY)
+
+
+@test.skip("requires onedrive_personal_sdk mocks (OneDriveClient + Drive/Folder)")
+async def load_unload_config_entry() -> None:
+    """Stub for test_load_unload_config_entry."""
+
+
+@test.skip("requires onedrive_personal_sdk mocks (OneDriveClient + Drive/Folder)")
+async def approot_errors() -> None:
+    """Stub for test_approot_errors."""
+
+
+@test.skip("requires onedrive_personal_sdk mocks (OneDriveClient + Drive/Folder)")
+async def get_integration_folder_creation() -> None:
+    """Stub for test_get_integration_folder_creation."""
+
+
+@test.skip("requires onedrive_personal_sdk mocks (OneDriveClient + Drive/Folder)")
+async def get_integration_folder_creation_error() -> None:
+    """Stub for test_get_integration_folder_creation_error."""
