@@ -4,7 +4,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock
 
 from accuweather import ApiError, InvalidApiKeyError
-from freezegun.api import FrozenDateTimeFactory
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.accuweather.const import (
     DOMAIN,
@@ -18,24 +18,46 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from . import init_integration
+from ._fixtures import mock_accuweather_client
 
 from tests.common import MockConfigEntry, async_fire_time_changed
+from tests.hass_fixtures import (
+    entity_registry as entity_registry_fixture,
+    freezer as freezer_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
 
 
-async def test_async_setup_entry(
-    hass: HomeAssistant, mock_accuweather_client: AsyncMock
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    """Force tryke to fully resolve hass before tests run."""
+    return hass
+
+
+@test
+async def async_setup_entry(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_accuweather_client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test a successful setup entry."""
     await init_integration(hass)
 
     state = hass.states.get("weather.home")
-    assert state is not None
-    assert state.state != STATE_UNAVAILABLE
-    assert state.state == "sunny"
+    expect(state is not None).to_be(True)
+    expect(state.state != STATE_UNAVAILABLE).to_be(True)
+    expect(state.state).to_equal("sunny")
 
 
-async def test_config_not_ready(
-    hass: HomeAssistant, mock_accuweather_client: AsyncMock
+@test
+async def config_not_ready(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_accuweather_client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test for setup failure if connection to AccuWeather is missing."""
     entry = MockConfigEntry(
@@ -56,55 +78,62 @@ async def test_config_not_ready(
 
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
-    assert entry.state is ConfigEntryState.SETUP_RETRY
+    expect(entry.state).to_be(ConfigEntryState.SETUP_RETRY)
 
 
-async def test_unload_entry(
-    hass: HomeAssistant, mock_accuweather_client: AsyncMock
+@test
+async def unload_entry(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_accuweather_client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test successful unload of entry."""
     entry = await init_integration(hass)
 
-    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
-    assert entry.state is ConfigEntryState.LOADED
+    expect(len(hass.config_entries.async_entries(DOMAIN))).to_equal(1)
+    expect(entry.state).to_be(ConfigEntryState.LOADED)
 
-    assert await hass.config_entries.async_unload(entry.entry_id)
+    expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
 
-    assert entry.state is ConfigEntryState.NOT_LOADED
-    assert not hass.data.get(DOMAIN)
+    expect(entry.state).to_be(ConfigEntryState.NOT_LOADED)
+    expect(bool(hass.data.get(DOMAIN))).to_be(False)
 
 
-async def test_update_interval(
-    hass: HomeAssistant,
-    mock_accuweather_client: AsyncMock,
-    freezer: FrozenDateTimeFactory,
+@test
+async def update_interval(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_accuweather_client: AsyncMock = Depends(mock_accuweather_client),
+    freezer=Depends(freezer_fixture),
 ) -> None:
     """Test correct update interval."""
     entry = await init_integration(hass)
 
-    assert entry.state is ConfigEntryState.LOADED
+    expect(entry.state).to_be(ConfigEntryState.LOADED)
 
-    assert mock_accuweather_client.async_get_current_conditions.call_count == 1
-    assert mock_accuweather_client.async_get_daily_forecast.call_count == 1
+    expect(mock_accuweather_client.async_get_current_conditions.call_count).to_equal(1)
+    expect(mock_accuweather_client.async_get_daily_forecast.call_count).to_equal(1)
 
     freezer.tick(UPDATE_INTERVAL_OBSERVATION)
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
 
-    assert mock_accuweather_client.async_get_current_conditions.call_count == 2
+    expect(mock_accuweather_client.async_get_current_conditions.call_count).to_equal(2)
 
     freezer.tick(UPDATE_INTERVAL_DAILY_FORECAST)
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
 
-    assert mock_accuweather_client.async_get_daily_forecast.call_count == 2
+    expect(mock_accuweather_client.async_get_daily_forecast.call_count).to_equal(2)
 
 
-async def test_remove_ozone_sensors(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    mock_accuweather_client: AsyncMock,
+@test
+async def remove_ozone_sensors(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fixture),
+    mock_accuweather_client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test remove ozone sensors from registry."""
     entity_registry.async_get_or_create(
@@ -118,13 +147,15 @@ async def test_remove_ozone_sensors(
     await init_integration(hass)
 
     entry = entity_registry.async_get("sensor.home_ozone_0d")
-    assert entry is None
+    expect(entry).to_be(None)
 
 
-async def test_auth_error(
-    hass: HomeAssistant,
-    freezer: FrozenDateTimeFactory,
-    mock_accuweather_client: AsyncMock,
+@test
+async def auth_error(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    freezer=Depends(freezer_fixture),
+    mock_accuweather_client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test authentication error when polling data."""
     mock_accuweather_client.async_get_current_conditions.side_effect = (
@@ -133,29 +164,31 @@ async def test_auth_error(
 
     mock_config_entry = await init_integration(hass)
 
-    assert mock_config_entry.state is ConfigEntryState.SETUP_ERROR
+    expect(mock_config_entry.state).to_be(ConfigEntryState.SETUP_ERROR)
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
 
     flow = flows[0]
-    assert flow.get("step_id") == "reauth_confirm"
-    assert flow.get("handler") == DOMAIN
+    expect(flow.get("step_id")).to_equal("reauth_confirm")
+    expect(flow.get("handler")).to_equal(DOMAIN)
 
-    assert "context" in flow
-    assert flow["context"].get("source") == SOURCE_REAUTH
-    assert flow["context"].get("entry_id") == mock_config_entry.entry_id
+    expect("context" in flow).to_be(True)
+    expect(flow["context"].get("source")).to_equal(SOURCE_REAUTH)
+    expect(flow["context"].get("entry_id")).to_equal(mock_config_entry.entry_id)
 
 
-async def test_auth_error_whe_polling_data(
-    hass: HomeAssistant,
-    freezer: FrozenDateTimeFactory,
-    mock_accuweather_client: AsyncMock,
+@test
+async def auth_error_whe_polling_data(
+    _t: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    freezer=Depends(freezer_fixture),
+    mock_accuweather_client: AsyncMock = Depends(mock_accuweather_client),
 ) -> None:
     """Test authentication error when polling data."""
     mock_config_entry = await init_integration(hass)
 
-    assert mock_config_entry.state is ConfigEntryState.LOADED
+    expect(mock_config_entry.state).to_be(ConfigEntryState.LOADED)
 
     mock_accuweather_client.async_get_current_conditions.side_effect = (
         InvalidApiKeyError("Invalid API Key")
@@ -164,15 +197,15 @@ async def test_auth_error_whe_polling_data(
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
 
-    assert mock_config_entry.state is ConfigEntryState.LOADED
+    expect(mock_config_entry.state).to_be(ConfigEntryState.LOADED)
 
     flows = hass.config_entries.flow.async_progress()
-    assert len(flows) == 1
+    expect(len(flows)).to_equal(1)
 
     flow = flows[0]
-    assert flow.get("step_id") == "reauth_confirm"
-    assert flow.get("handler") == DOMAIN
+    expect(flow.get("step_id")).to_equal("reauth_confirm")
+    expect(flow.get("handler")).to_equal(DOMAIN)
 
-    assert "context" in flow
-    assert flow["context"].get("source") == SOURCE_REAUTH
-    assert flow["context"].get("entry_id") == mock_config_entry.entry_id
+    expect("context" in flow).to_be(True)
+    expect(flow["context"].get("source")).to_equal(SOURCE_REAUTH)
+    expect(flow["context"].get("entry_id")).to_equal(mock_config_entry.entry_id)
