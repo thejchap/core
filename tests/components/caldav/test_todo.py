@@ -1,6 +1,13 @@
 """Tryke skip stub for test_todo.py."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.caldav.todo module imports cleanly."""
+    from homeassistant.components.caldav import todo  # noqa: PLC0415
+    expect(todo).not_.to_be(None)
 
 
 @test.skip("sibling test pending fixture migration to _fixtures.py")
