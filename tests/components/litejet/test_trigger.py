@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_trigger.py - sibling port deferred (312 LOC, 0 parametrize)."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.litejet.trigger module imports cleanly."""
+    from homeassistant.components.litejet import trigger  # noqa: PLC0415
+    expect(trigger).not_.to_be(None)
+
 
 @test.skip("sibling port deferred (312 LOC, 0 parametrize)")
 async def simple() -> None:
