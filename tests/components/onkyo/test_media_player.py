@@ -3,7 +3,14 @@
 Original tests use aioonkyo discovery autouse + receiver mocks; full port deferred.
 """
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.onkyo.media_player module imports cleanly."""
+    from homeassistant.components.onkyo import media_player  # noqa: PLC0415
+    expect(media_player).not_.to_be(None)
+
 
 @test.skip("aioonkyo discovery autouse + receiver mocks")
 async def entities() -> None:
