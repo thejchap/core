@@ -2,6 +2,11 @@
 
 from unittest.mock import AsyncMock
 
+from satel_integra import (
+    SatelConnectFailedError,
+    SatelConnectionInitializationError,
+    SatelPanelBusyError,
+)
 from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.satel_integra.const import (
@@ -67,9 +72,70 @@ async def setup_flow(
     expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
-@test.skip("indirect parametrize over connection-failure exceptions; not in tryke 0.0.27")
-async def setup_connection_failed() -> None:
-    """Skipped pending parametrize port."""
+@test.cases(
+    test.case(
+        "cannot_connect",
+        exception=SatelConnectFailedError,
+        error="cannot_connect",
+    ),
+    test.case(
+        "panel_busy",
+        exception=SatelPanelBusyError,
+        error="panel_busy",
+    ),
+    test.case(
+        "connection_initialization_failed",
+        exception=SatelConnectionInitializationError,
+        error="connection_initialization_failed",
+    ),
+    test.case(
+        "unknown",
+        exception=Exception,
+        error="unknown",
+    ),
+)
+async def setup_connection_failed(
+    exception: type[Exception],
+    error: str,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    satel: AsyncMock = Depends(mock_satel),
+    setup_entry: AsyncMock = Depends(mock_setup_entry),
+) -> None:
+    """Test the setup flow when connection fails."""
+    user_input = MOCK_CONFIG_DATA
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    satel.connect.side_effect = exception
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input,
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["errors"]).to_equal({"base": error})
+
+    satel.connect.side_effect = None
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input,
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("code")
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {},
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
+    expect(len(setup_entry.mock_calls)).to_equal(1)
 
 
 @test.skip("complex socket-server mock fixtures")
