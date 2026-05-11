@@ -1,6 +1,13 @@
 """Tryke skip stub for test_climate.py: uses syrupy snapshot — needs pytest --snapshot-update first."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.airpatrol.climate module imports cleanly."""
+    from homeassistant.components.airpatrol import climate  # noqa: PLC0415
+    expect(climate).not_.to_be(None)
 
 
 @test.skip("uses syrupy snapshot — needs pytest --snapshot-update first")
