@@ -3,7 +3,14 @@
 Original tests use complex fixture chain not yet ported to tryke shim; full port deferred.
 """
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.nanoleaf.config_flow module imports cleanly."""
+    from homeassistant.components.nanoleaf import config_flow  # noqa: PLC0415
+    expect(config_flow).not_.to_be(None)
+
 
 @test.skip("requires aionanoleaf2 + complex zeroconf+ssdp chain (not in tryke shim)")
 async def user_unavailable_user_step_link_step() -> None:
