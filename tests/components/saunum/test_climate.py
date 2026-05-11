@@ -1,19 +1,23 @@
 """Test the Saunum climate platform."""
 
+from dataclasses import replace
 from unittest.mock import MagicMock
 
 from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.climate import (
+    ATTR_HVAC_ACTION,
     ATTR_HVAC_MODE,
     DOMAIN as CLIMATE_DOMAIN,
     SERVICE_SET_HVAC_MODE,
+    SERVICE_SET_TEMPERATURE,
+    HVACAction,
     HVACMode,
 )
-from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
 
-from ._fixtures import init_integration, mock_saunum_client
+from ._fixtures import init_integration, mock_config_entry, mock_saunum_client
 
 from tests.common import MockConfigEntry
 from tests.hass_fixtures import hass as hass_fixture, mock_network
@@ -66,17 +70,88 @@ async def climate_set_hvac_mode_heat(
 async def entities() -> None:
     """Stub for test_entities (port deferred)."""
 
-@test.skip("indirect parametrize - port deferred")
-async def climate_service_calls() -> None:
-    """Stub for test_climate_service_calls (port deferred)."""
+@test.cases(
+    test.case(
+        "set_hvac_mode_heat",
+        service=SERVICE_SET_HVAC_MODE,
+        service_data={ATTR_HVAC_MODE: HVACMode.HEAT},
+        client_method="async_start_session",
+        expected_args=(),
+    ),
+    test.case(
+        "set_hvac_mode_off",
+        service=SERVICE_SET_HVAC_MODE,
+        service_data={ATTR_HVAC_MODE: HVACMode.OFF},
+        client_method="async_stop_session",
+        expected_args=(),
+    ),
+    test.case(
+        "set_temperature",
+        service=SERVICE_SET_TEMPERATURE,
+        service_data={ATTR_TEMPERATURE: 85},
+        client_method="async_set_target_temperature",
+        expected_args=(85,),
+    ),
+)
+async def climate_service_calls(
+    service: str,
+    service_data: dict,
+    client_method: str,
+    expected_args: tuple,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    saunum_client: MagicMock = Depends(mock_saunum_client),
+    entry: MockConfigEntry = Depends(init_integration),
+) -> None:
+    """Test climate service calls."""
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        service,
+        {ATTR_ENTITY_ID: "climate.saunum_leil", **service_data},
+        blocking=True,
+    )
+
+    getattr(saunum_client, client_method).assert_called_once_with(*expected_args)
 
 @test.skip("requires translation injection for service errors")
 async def hvac_mode_door_open_validation() -> None:
     """Stub for test_hvac_mode_door_open_validation (port deferred)."""
 
-@test.skip("indirect parametrize - port deferred")
-async def hvac_actions() -> None:
-    """Stub for test_hvac_actions (port deferred)."""
+@test.cases(
+    test.case(
+        "heating",
+        heater_elements_active=3,
+        expected_hvac_action=HVACAction.HEATING,
+    ),
+    test.case(
+        "idle",
+        heater_elements_active=0,
+        expected_hvac_action=HVACAction.IDLE,
+    ),
+)
+async def hvac_actions(
+    heater_elements_active: int,
+    expected_hvac_action: HVACAction,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    saunum_client: MagicMock = Depends(mock_saunum_client),
+) -> None:
+    """Test HVAC actions when session is active."""
+    saunum_client.async_get_data.return_value = replace(
+        saunum_client.async_get_data.return_value,
+        session_active=True,
+        heater_elements_active=heater_elements_active,
+    )
+
+    config_entry.add_to_hass(hass)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
+
+    state = hass.states.get("climate.saunum_leil")
+    expect(state).not_.to_be(None)
+    expect(state.state).to_equal(HVACMode.HEAT)
+    expect(state.attributes.get(ATTR_HVAC_ACTION)).to_equal(expected_hvac_action)
 
 @test.skip("requires syrupy snapshot")
 async def temperature_attributes() -> None:
