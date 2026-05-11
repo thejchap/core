@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_humidifier.py - large file (519 LOC) - port deferred."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.homekit_controller.humidifier module imports cleanly."""
+    from homeassistant.components.homekit_controller import humidifier  # noqa: PLC0415
+    expect(humidifier).not_.to_be(None)
+
 
 @test.skip("large file (519 LOC) - port deferred")
 async def humidifier_active_state() -> None:

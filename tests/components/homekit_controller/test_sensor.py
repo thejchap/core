@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_sensor.py - large file (516 LOC) - port deferred."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.homekit_controller.sensor module imports cleanly."""
+    from homeassistant.components.homekit_controller import sensor  # noqa: PLC0415
+    expect(sensor).not_.to_be(None)
+
 
 @test.skip("large file (516 LOC) - port deferred")
 async def temperature_sensor_read_state() -> None:

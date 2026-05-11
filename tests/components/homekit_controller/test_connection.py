@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_connection.py - large file (672 LOC) - port deferred."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.homekit_controller.connection module imports cleanly."""
+    from homeassistant.components.homekit_controller import connection  # noqa: PLC0415
+    expect(connection).not_.to_be(None)
+
 
 @test.skip("large file (672 LOC) - port deferred")
 async def migrate_device_id_no_serial_skip_if_other_owner() -> None:

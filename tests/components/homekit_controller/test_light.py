@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_light.py - sibling port deferred (477 LOC, 0 parametrize)."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.homekit_controller.light module imports cleanly."""
+    from homeassistant.components.homekit_controller import light  # noqa: PLC0415
+    expect(light).not_.to_be(None)
+
 
 @test.skip("sibling port deferred (477 LOC, 0 parametrize)")
 async def switch_change_light_state() -> None:
