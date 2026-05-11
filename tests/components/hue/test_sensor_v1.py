@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_sensor_v1.py - large file (631 LOC) - port deferred."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.hue module imports cleanly."""
+    from homeassistant.components import hue  # noqa: PLC0415
+    expect(hue).not_.to_be(None)
+
 
 @test.skip("large file (631 LOC) - port deferred")
 async def no_sensors() -> None:
