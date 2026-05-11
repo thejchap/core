@@ -1,5 +1,12 @@
 """Tryke skip-stubs for nut test_device_action (port deferred)."""
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.nut.device_action module imports cleanly."""
+    from homeassistant.components.nut import device_action  # noqa: PLC0415
+    expect(device_action).not_.to_be(None)
+
 
 @test.skip("requires syrupy snapshot or complex device_action infra (not ported)")
 async def get_all_actions_for_specified_user() -> None:
