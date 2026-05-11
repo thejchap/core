@@ -1,6 +1,13 @@
 """Tryke skip stub for test_init.py."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.azure_data_explorer module imports cleanly."""
+    from homeassistant.components import azure_data_explorer  # noqa: PLC0415
+    expect(azure_data_explorer).not_.to_be(None)
 
 
 @test.skip("sibling test pending fixture migration to _fixtures.py")
