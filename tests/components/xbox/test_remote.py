@@ -1,11 +1,18 @@
 """Tryke skip-stubs for test_remote.py - sibling test pending tryke port."""
 
-from tryke import fixture, test
+from tryke import expect, fixture, test
 
 
 @fixture
 def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.xbox.remote module imports cleanly."""
+    from homeassistant.components.xbox import remote  # noqa: PLC0415
+    expect(remote).not_.to_be(None)
 
 
 @test.skip("xbox: sibling test pending tryke port")
