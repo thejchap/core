@@ -1,6 +1,13 @@
 """Tryke skip stub for test_lock.py."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.group.lock module imports cleanly."""
+    from homeassistant.components.group import lock  # noqa: PLC0415
+    expect(lock).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")

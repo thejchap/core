@@ -1,6 +1,13 @@
 """Tryke skip stub for test_valve.py - all tests use indirect parametrize via config_count fixture."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.group.valve module imports cleanly."""
+    from homeassistant.components.group import valve  # noqa: PLC0415
+    expect(valve).not_.to_be(None)
 
 
 @test.skip("indirect parametrize via config_count -> setup_comp - unsupported")
