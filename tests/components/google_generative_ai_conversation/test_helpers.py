@@ -1,26 +1,28 @@
-"""Tryke skip stub for test_helpers.py with one passing smoke test."""
+"""Tests for the Google Generative AI Conversation helpers."""
 
 from tryke import expect, test
 
+from homeassistant.components.google_generative_ai_conversation.helpers import (
+    _parse_audio_mime_type,
+)
+from homeassistant.exceptions import HomeAssistantError
+
 
 @test
-def module_importable() -> None:
-    """Smoke test: the google_generative_ai_conversation.helpers module imports cleanly."""
-    from homeassistant.components.google_generative_ai_conversation import helpers  # noqa: PLC0415
-    expect(helpers).not_.to_be(None)
+def parse_audio_mime_type_uppercase() -> None:
+    """Test parsing uppercase MIME type audio/L16;rate=24000."""
+    result = _parse_audio_mime_type("audio/L16;rate=24000")
+    expect(result).to_equal({"bits_per_sample": 16, "rate": 24000})
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
-async def parse_audio_mime_type_uppercase() -> None:
-    """Stub for test_parse_audio_mime_type_uppercase."""
+@test
+def parse_audio_mime_type_lowercase() -> None:
+    """Test parsing lowercase MIME type audio/l16; rate=24000; channels=1."""
+    result = _parse_audio_mime_type("audio/l16; rate=24000; channels=1")
+    expect(result).to_equal({"bits_per_sample": 16, "rate": 24000})
 
 
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
-async def parse_audio_mime_type_lowercase() -> None:
-    """Stub for test_parse_audio_mime_type_lowercase."""
-
-
-@test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
-async def parse_audio_mime_type_unsupported_raises() -> None:
-    """Stub for test_parse_audio_mime_type_unsupported_raises."""
-
+@test
+def parse_audio_mime_type_unsupported_raises() -> None:
+    """Test that an unsupported MIME type raises HomeAssistantError."""
+    expect(lambda: _parse_audio_mime_type("video/mp4")).to_raise(HomeAssistantError)

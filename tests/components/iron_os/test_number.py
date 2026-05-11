@@ -2,22 +2,22 @@
 
 from tryke import test
 
-@test.skip("snapshot_platform diverged - needs pytest --snapshot-update")
+@test.skip("snapshot test — out of scope")
 async def state() -> None:
     """Stub for test_state."""
 
-@test.skip("snapshot_platform diverged - needs pytest --snapshot-update")
+@test.skip("snapshot test — out of scope")
 async def state_fahrenheit() -> None:
     """Stub for test_state_fahrenheit."""
 
-@test.skip("snapshot_platform diverged - needs pytest --snapshot-update")
+@test.skip("snapshot test — out of scope")
 async def set_value() -> None:
     """Stub for test_set_value."""
 
-@test.skip("snapshot_platform diverged - needs pytest --snapshot-update")
+@test.skip("snapshot test — out of scope")
 async def set_value_exception() -> None:
     """Stub for test_set_value_exception."""
 
-@test.skip("snapshot_platform diverged - needs pytest --snapshot-update")
+@test.skip("snapshot test — out of scope")
 async def boost_temp_unavailable() -> None:
     """Stub for test_boost_temp_unavailable."""
