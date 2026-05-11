@@ -68,11 +68,36 @@ async def flow_user_works(
     expect(mock_api.auth.call_count).to_equal(1)
 
 
-@test.skip("multiple-flow-progress test not yet ported")
+@test
 async def flow_user_already_in_progress(
     _trigger: HomeAssistant = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test we do not accept more than one config flow per device."""
+    device = get_device("Living Room")
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(DEVICE_HELLO, return_value=device.get_mock_api()):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"host": device.host, "timeout": device.timeout},
+        )
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(DEVICE_HELLO, return_value=device.get_mock_api()):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"host": device.host, "timeout": device.timeout},
+        )
+
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("already_in_progress")
 
 
 @test.skip("invalid_host_test not yet ported")
