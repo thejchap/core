@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_sensor.py - snapshot_platform diverged - needs pytest --snapshot-update."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.libre_hardware_monitor.sensor module imports cleanly."""
+    from homeassistant.components.libre_hardware_monitor import sensor  # noqa: PLC0415
+    expect(sensor).not_.to_be(None)
+
 
 @test.skip("snapshot_platform diverged - needs pytest --snapshot-update")
 async def sensors_are_created() -> None:
