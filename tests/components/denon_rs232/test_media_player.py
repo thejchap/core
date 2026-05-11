@@ -1,6 +1,13 @@
 """Tryke skip stub for test_media_player.py: uses syrupy snapshot — needs pytest --snapshot-update first."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.denon_rs232.media_player module imports cleanly."""
+    from homeassistant.components.denon_rs232 import media_player  # noqa: PLC0415
+    expect(media_player).not_.to_be(None)
 
 
 @test.skip("uses syrupy snapshot — needs pytest --snapshot-update first")
