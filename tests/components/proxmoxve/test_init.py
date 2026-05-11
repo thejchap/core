@@ -1,11 +1,18 @@
 """Tests for the Proxmox VE integration initialization. (tryke skip stub)."""
 
-from tryke import fixture, test
+from tryke import expect, fixture, test
 
 
 @fixture
 def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.proxmoxve module imports cleanly."""
+    from homeassistant.components import proxmoxve  # noqa: PLC0415
+    expect(proxmoxve).not_.to_be(None)
 
 
 @test.skip("conftest fixtures need migration to _fixtures.py")
