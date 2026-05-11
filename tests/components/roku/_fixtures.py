@@ -88,3 +88,17 @@ def mock_roku_config_flow_rokutv(
         client.app_icon_url.side_effect = app_icon_url
         client.update.return_value = device
         yield client
+
+
+@fixture
+def mock_roku(
+    device: RokuDevice = Depends(mock_device),
+) -> Generator[MagicMock]:
+    """Return a mocked Roku client (coordinator)."""
+    with patch(
+        "homeassistant.components.roku.coordinator.Roku", autospec=True
+    ) as roku_mock:
+        client = roku_mock.return_value
+        client.app_icon_url.side_effect = app_icon_url
+        client.update.return_value = device
+        yield client
