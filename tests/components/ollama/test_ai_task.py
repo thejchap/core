@@ -1,5 +1,12 @@
 """Tryke skip-stubs for ollama test_ai_task (port deferred)."""
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.ollama.ai_task module imports cleanly."""
+    from homeassistant.components.ollama import ai_task  # noqa: PLC0415
+    expect(ai_task).not_.to_be(None)
+
 
 @test.skip("requires ollama AsyncClient mocks + conversation infra (not ported)")
 async def generate_data_with_unsupported_file_format() -> None:
