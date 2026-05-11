@@ -6,10 +6,15 @@ from unittest.mock import MagicMock
 from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.climate import (
+    ATTR_FAN_MODE,
     ATTR_HVAC_ACTION,
     ATTR_HVAC_MODE,
+    ATTR_PRESET_MODE,
     DOMAIN as CLIMATE_DOMAIN,
+    FAN_LOW,
+    SERVICE_SET_FAN_MODE,
     SERVICE_SET_HVAC_MODE,
+    SERVICE_SET_PRESET_MODE,
     SERVICE_SET_TEMPERATURE,
     HVACAction,
     HVACMode,
@@ -165,13 +170,48 @@ async def entity_unavailable_on_update_failure() -> None:
 async def service_error_handling() -> None:
     """Stub for test_service_error_handling (port deferred)."""
 
-@test.skip("indirect parametrize - port deferred")
-async def fan_mode_service_call() -> None:
-    """Stub for test_fan_mode_service_call (port deferred)."""
+@test
+async def fan_mode_service_call(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    config_entry: MockConfigEntry = Depends(mock_config_entry),
+    saunum_client: MagicMock = Depends(mock_saunum_client),
+) -> None:
+    """Test setting fan mode."""
+    saunum_client.async_get_data.return_value = replace(
+        saunum_client.async_get_data.return_value, session_active=True
+    )
 
-@test.skip("indirect parametrize - port deferred")
-async def preset_mode_service_call() -> None:
-    """Stub for test_preset_mode_service_call (port deferred)."""
+    config_entry.add_to_hass(hass)
+    expect(await hass.config_entries.async_setup(config_entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
+
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_FAN_MODE,
+        {ATTR_ENTITY_ID: "climate.saunum_leil", ATTR_FAN_MODE: FAN_LOW},
+        blocking=True,
+    )
+
+    saunum_client.async_set_fan_speed.assert_called_once_with(1)
+
+
+@test
+async def preset_mode_service_call(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    saunum_client: MagicMock = Depends(mock_saunum_client),
+    entry: MockConfigEntry = Depends(init_integration),
+) -> None:
+    """Test setting preset mode."""
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_PRESET_MODE,
+        {ATTR_ENTITY_ID: "climate.saunum_leil", ATTR_PRESET_MODE: "type_2"},
+        blocking=True,
+    )
+
+    saunum_client.async_set_sauna_type.assert_called_once_with(1)
 
 @test.skip("requires syrupy snapshot")
 async def fan_mode_attributes() -> None:
