@@ -6,7 +6,7 @@ from unittest.mock import patch
 from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.xiaomi_ble.const import DOMAIN
-from homeassistant.const import ATTR_FRIENDLY_NAME, STATE_OFF
+from homeassistant.const import ATTR_FRIENDLY_NAME, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 
 from . import make_advertisement
@@ -71,34 +71,215 @@ async def door_problem_sensors(
     await hass.async_block_till_done()
 
 
-@test.skip("xiaomi_ble: sibling test pending tryke port")
-async def light_motion() -> None:
-    """Stub for test_light_motion."""
+@test
+async def light_motion(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setting up a light and motion binary sensor."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="58:2D:34:35:93:21",
+    )
+    entry.add_to_hass(hass)
+
+    expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
+
+    expect(len(hass.states.async_all())).to_equal(0)
+    inject_bluetooth_service_info_bleak(
+        hass,
+        make_advertisement(
+            "58:2D:34:35:93:21",
+            b"P \xf6\x07\xda!\x9354-X\x0f\x00\x03\x01\x00\x00",
+        ),
+    )
+    await hass.async_block_till_done()
+    expect(len(hass.states.async_all())).to_equal(2)
+
+    states = hass.states.async_all("binary_sensor")
+    on_states = [s for s in states if s.state == STATE_ON]
+    off_states = [s for s in states if s.state == STATE_OFF]
+    expect(len(on_states)).to_equal(1)
+    expect(len(off_states)).to_equal(1)
+
+    expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
 
 
-@test.skip("xiaomi_ble: sibling test pending tryke port")
-async def moisture() -> None:
-    """Stub for test_moisture."""
+@test
+async def moisture(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setting up a moisture binary sensor."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="C4:7C:8D:6A:3E:7A",
+    )
+    entry.add_to_hass(hass)
+
+    expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
+
+    expect(len(hass.states.async_all())).to_equal(0)
+    inject_bluetooth_service_info_bleak(
+        hass,
+        make_advertisement(
+            "C4:7C:8D:6A:3E:7A", b"q \x5d\x01iz>j\x8d|\xc4\r\x14\x10\x02\xf4\x00"
+        ),
+    )
+
+    await hass.async_block_till_done()
+    expect(len(hass.states.async_all())).to_equal(1)
+
+    states = hass.states.async_all("binary_sensor")
+    expect(len(states)).to_equal(1)
+    expect(states[0].state).to_equal(STATE_ON)
+
+    expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
 
 
-@test.skip("xiaomi_ble: sibling test pending tryke port")
-async def opening() -> None:
-    """Stub for test_opening."""
+@test
+async def opening(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setting up an opening binary sensor."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="A4:C1:38:66:E5:67",
+        data={"bindkey": "0fdcc30fe9289254876b5ef7c11ef1f0"},
+    )
+    entry.add_to_hass(hass)
+
+    expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
+
+    expect(len(hass.states.async_all())).to_equal(0)
+    inject_bluetooth_service_info_bleak(
+        hass,
+        make_advertisement(
+            "A4:C1:38:66:E5:67",
+            b"XY\x89\x18\x9ag\xe5f8\xc1\xa4\x9d\xd9z\xf3&\x00\x00\xc8\xa6\x0b\xd5",
+        ),
+    )
+    await hass.async_block_till_done()
+    expect(len(hass.states.async_all())).to_equal(1)
+
+    states = hass.states.async_all("binary_sensor")
+    expect(len(states)).to_equal(1)
+    expect(states[0].state).to_equal(STATE_ON)
+
+    expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
 
 
-@test.skip("xiaomi_ble: sibling test pending tryke port")
-async def opening_problem_sensors() -> None:
-    """Stub for test_opening_problem_sensors."""
+@test
+async def opening_problem_sensors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setting up an opening binary sensor with additional problem sensors."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="A4:C1:38:66:E5:67",
+        data={"bindkey": "0fdcc30fe9289254876b5ef7c11ef1f0"},
+    )
+    entry.add_to_hass(hass)
+
+    expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
+
+    expect(len(hass.states.async_all())).to_equal(0)
+    inject_bluetooth_service_info_bleak(
+        hass,
+        make_advertisement(
+            "A4:C1:38:66:E5:67",
+            b"XY\x89\x18ug\xe5f8\xc1\xa4i\xdd\xf3\xa1&\x00\x00\xa2J\x1bE",
+        ),
+    )
+    await hass.async_block_till_done()
+    expect(len(hass.states.async_all())).to_equal(3)
+
+    states = hass.states.async_all("binary_sensor")
+    expect(len(states)).to_equal(3)
+    for s in states:
+        expect(s.state).to_equal(STATE_OFF)
+
+    expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
 
 
-@test.skip("xiaomi_ble: sibling test pending tryke port")
-async def smoke() -> None:
-    """Stub for test_smoke."""
+@test
+async def smoke(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setting up a smoke binary sensor."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="54:EF:44:E3:9C:BC",
+        data={"bindkey": "5b51a7c91cde6707c9ef18dfda143a58"},
+    )
+    entry.add_to_hass(hass)
+
+    expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
+
+    expect(len(hass.states.async_all())).to_equal(0)
+    inject_bluetooth_service_info_bleak(
+        hass,
+        make_advertisement(
+            "54:EF:44:E3:9C:BC",
+            b"XY\x97\tf\xbc\x9c\xe3D\xefT\x01\x08\x12\x05\x00\x00\x00q^\xbe\x90",
+        ),
+    )
+    await hass.async_block_till_done()
+    expect(len(hass.states.async_all())).to_equal(1)
+
+    states = hass.states.async_all("binary_sensor")
+    expect(len(states)).to_equal(1)
+    expect(states[0].state).to_equal(STATE_ON)
+
+    expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
 
 
-@test.skip("xiaomi_ble: sibling test pending tryke port")
-async def power() -> None:
-    """Stub for test_power."""
+@test
+async def power(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setting up a power binary sensor."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="F8:24:41:E9:50:74",
+    )
+    entry.add_to_hass(hass)
+
+    expect(await hass.config_entries.async_setup(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
+
+    expect(len(hass.states.async_all())).to_equal(0)
+    inject_bluetooth_service_info_bleak(
+        hass,
+        make_advertisement(
+            "F8:24:41:E9:50:74",
+            b"P0S\x01?tP\xe9A$\xf8\x01\x10\x03\x01\x00\x00",
+        ),
+    )
+    await hass.async_block_till_done()
+    expect(len(hass.states.async_all())).to_equal(2)
+
+    states = hass.states.async_all("binary_sensor")
+    # power binary_sensor + a sibling sensor
+    power_states = [s for s in states if s.state == STATE_OFF]
+    expect(len(power_states) >= 1).to_be(True)
+
+    expect(await hass.config_entries.async_unload(entry.entry_id)).to_be(True)
+    await hass.async_block_till_done()
 
 
 @test.skip("xiaomi_ble: sibling test pending tryke port")
