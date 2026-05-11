@@ -3,7 +3,14 @@
 Original tests use OAuth2 application credentials flow; full port deferred.
 """
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.onedrive_for_business.config_flow module imports cleanly."""
+    from homeassistant.components.onedrive_for_business import config_flow  # noqa: PLC0415
+    expect(config_flow).not_.to_be(None)
+
 
 @test.skip("OAuth2 application credentials flow")
 async def full_flow() -> None:
