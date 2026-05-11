@@ -12,6 +12,13 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.lifx.config_flow module imports cleanly."""
+    from homeassistant.components.lifx import config_flow  # noqa: PLC0415
+    expect(config_flow).not_.to_be(None)
+
+
 @test.skip("requires aiolifx + zeroconf discovery chain (not in tryke shim)")
 async def discovery(
     _trigger: None = Depends(_trigger_executor),
