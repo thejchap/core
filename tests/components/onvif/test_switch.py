@@ -3,7 +3,14 @@
 Original tests use ONVIF camera mocks + zeroconf discovery; full port deferred.
 """
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.onvif.switch module imports cleanly."""
+    from homeassistant.components.onvif import switch  # noqa: PLC0415
+    expect(switch).not_.to_be(None)
+
 
 @test.skip("ONVIF camera mocks + zeroconf discovery")
 async def wiper_switch() -> None:
