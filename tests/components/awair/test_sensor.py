@@ -1,6 +1,13 @@
 """Tryke skip stub for test_sensor.py: uses syrupy snapshot — needs pytest --snapshot-update first."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.awair.sensor module imports cleanly."""
+    from homeassistant.components.awair import sensor  # noqa: PLC0415
+    expect(sensor).not_.to_be(None)
 
 
 @test.skip("uses syrupy snapshot — needs pytest --snapshot-update first")
