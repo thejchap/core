@@ -1,6 +1,13 @@
 """Test the Reolink config flow."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.reolink.config_flow module imports cleanly."""
+    from homeassistant.components.reolink import config_flow  # noqa: PLC0415
+    expect(config_flow).not_.to_be(None)
 
 
 @test.skip("complex camera mock + zeroconf/SSDP fixtures")
