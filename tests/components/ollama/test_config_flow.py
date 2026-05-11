@@ -1,7 +1,9 @@
 """Test the Ollama config flow."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
+from httpx import ConnectError
+from ollama import ResponseError
 from tryke import Depends, expect, fixture, test
 
 from homeassistant import config_entries
