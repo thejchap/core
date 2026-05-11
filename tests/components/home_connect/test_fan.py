@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_fan.py - indirect parametrize unsupported."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.home_connect.fan module imports cleanly."""
+    from homeassistant.components.home_connect import fan  # noqa: PLC0415
+    expect(fan).not_.to_be(None)
+
 
 @test.skip("indirect parametrize unsupported")
 async def paired_depaired_devices_flow() -> None:
