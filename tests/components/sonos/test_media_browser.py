@@ -1,11 +1,18 @@
 """Tests for the Sonos Media Browser. (tryke skip stub)."""
 
-from tryke import fixture, test
+from tryke import expect, fixture, test
 
 
 @fixture
 def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.sonos.media_browser module imports cleanly."""
+    from homeassistant.components.sonos import media_browser  # noqa: PLC0415
+    expect(media_browser).not_.to_be(None)
 
 
 @test.skip("syrupy snapshot")

@@ -1,11 +1,18 @@
 """Tests for the Sonos battery sensor platform. (tryke skip stub)."""
 
-from tryke import fixture, test
+from tryke import expect, fixture, test
 
 
 @fixture
 def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.sonos.sensor module imports cleanly."""
+    from homeassistant.components.sonos import sensor  # noqa: PLC0415
+    expect(sensor).not_.to_be(None)
 
 
 @test.skip("conftest fixtures need migration to _fixtures.py")
