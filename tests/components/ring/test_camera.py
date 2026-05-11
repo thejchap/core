@@ -1,11 +1,18 @@
 """The tests for the Ring switch platform. (tryke skip stub)."""
 
-from tryke import fixture, test
+from tryke import expect, fixture, test
 
 
 @fixture
 def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.ring.camera module imports cleanly."""
+    from homeassistant.components.ring import camera  # noqa: PLC0415
+    expect(camera).not_.to_be(None)
 
 
 @test.skip("syrupy snapshot")
