@@ -2,8 +2,13 @@
 
 from unittest.mock import AsyncMock
 
+from nrgkick_api import NRGkickAPIDisabledError, NRGkickConnectionError
 from tryke import Depends, expect, fixture, test
 
+from homeassistant.components.nrgkick.api import (
+    NRGkickApiClientError,
+    NRGkickApiClientInvalidResponseError,
+)
 from homeassistant.components.nrgkick.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.const import CONF_HOST
@@ -105,12 +110,57 @@ async def form_invalid_response_when_serial_missing(
     """Stub for test_form_invalid_response_when_serial_missing."""
 
 
-@test.skip("indirect parametrize not in tryke 0.0.27")
+@test.cases(
+    test.case(
+        "json_api_disabled",
+        exception=NRGkickAPIDisabledError,
+        error="json_api_disabled",
+    ),
+    test.case(
+        "invalid_response",
+        exception=NRGkickApiClientInvalidResponseError,
+        error="invalid_response",
+    ),
+    test.case(
+        "cannot_connect",
+        exception=NRGkickConnectionError,
+        error="cannot_connect",
+    ),
+    test.case(
+        "unknown",
+        exception=NRGkickApiClientError,
+        error="unknown",
+    ),
+)
 async def user_flow_errors(
+    exception: type[Exception],
+    error: str,
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
+    nrgkick_api: AsyncMock = Depends(mock_nrgkick_api),
 ) -> None:
-    """Stub for test_user_flow_errors."""
+    """Test errors are handled and the flow can recover to CREATE_ENTRY."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    nrgkick_api.test_connection.side_effect = exception
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: "192.168.1.100"}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.FORM)
+    expect(result["step_id"]).to_equal("user")
+    expect(result["errors"]).to_equal({"base": error})
+
+    nrgkick_api.test_connection.side_effect = None
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_HOST: "192.168.1.100"}
+    )
+
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
 
 
 @test.skip("requires zeroconf flow — port deferred")
