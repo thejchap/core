@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_device_trigger.py - large file (506 LOC) - port deferred."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.lcn.device_trigger module imports cleanly."""
+    from homeassistant.components.lcn import device_trigger  # noqa: PLC0415
+    expect(device_trigger).not_.to_be(None)
+
 
 @test.skip("large file (506 LOC) - port deferred")
 async def get_triggers_module_device() -> None:

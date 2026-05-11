@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_websocket.py - sibling port deferred (330 LOC, 3 parametrize)."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.lcn.websocket module imports cleanly."""
+    from homeassistant.components.lcn import websocket  # noqa: PLC0415
+    expect(websocket).not_.to_be(None)
+
 
 @test.skip("sibling port deferred (330 LOC, 3 parametrize)")
 async def lcn_devices_command() -> None:

@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_services.py - large file (507 LOC) - port deferred."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.lcn.services module imports cleanly."""
+    from homeassistant.components.lcn import services  # noqa: PLC0415
+    expect(services).not_.to_be(None)
+
 
 @test.skip("large file (507 LOC) - port deferred")
 async def service_output_abs() -> None:

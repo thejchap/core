@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_init.py - snapshot fixture coupling - needs pytest --snapshot-update."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.lcn module imports cleanly."""
+    from homeassistant.components import lcn  # noqa: PLC0415
+    expect(lcn).not_.to_be(None)
+
 
 @test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
 async def async_setup_entry() -> None:
