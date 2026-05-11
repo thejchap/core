@@ -1,6 +1,13 @@
 """Tryke skip stub for test_services.py."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.easyenergy.services module imports cleanly."""
+    from homeassistant.components.easyenergy import services  # noqa: PLC0415
+    expect(services).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
