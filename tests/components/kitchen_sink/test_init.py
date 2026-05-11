@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_init.py - recorder_mock fixture coupling."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.kitchen_sink module imports cleanly."""
+    from homeassistant.components import kitchen_sink  # noqa: PLC0415
+    expect(kitchen_sink).not_.to_be(None)
+
 
 @test.skip("recorder_mock fixture coupling")
 async def demo_statistics() -> None:
