@@ -1,6 +1,13 @@
 """Tryke skip stub for test_init.py."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.devolo_home_control module imports cleanly."""
+    from homeassistant.components import devolo_home_control  # noqa: PLC0415
+    expect(devolo_home_control).not_.to_be(None)
 
 
 @test.skip("sibling test pending fixture migration to _fixtures.py")
