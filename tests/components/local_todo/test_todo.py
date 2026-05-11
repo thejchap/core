@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_todo.py - snapshot fixture coupling - needs pytest --snapshot-update."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.local_todo.todo module imports cleanly."""
+    from homeassistant.components.local_todo import todo  # noqa: PLC0415
+    expect(todo).not_.to_be(None)
+
 
 @test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
 async def add_item() -> None:
