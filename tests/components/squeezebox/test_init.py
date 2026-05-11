@@ -1,11 +1,18 @@
 """Test squeezebox initialization. (tryke skip stub)."""
 
-from tryke import fixture, test
+from tryke import expect, fixture, test
 
 
 @fixture
 def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.squeezebox module imports cleanly."""
+    from homeassistant.components import squeezebox  # noqa: PLC0415
+    expect(squeezebox).not_.to_be(None)
 
 
 @test.skip("syrupy snapshot")
