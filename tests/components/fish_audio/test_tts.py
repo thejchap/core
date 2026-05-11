@@ -1,6 +1,13 @@
 """Tryke skip stub for test_tts.py."""
 
-from tryke import test
+from tryke import expect, test
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.fish_audio.tts module imports cleanly."""
+    from homeassistant.components.fish_audio import tts  # noqa: PLC0415
+    expect(tts).not_.to_be(None)
 
 
 @test.skip("pending tryke port - pytest fixtures need migration to _fixtures.py")
