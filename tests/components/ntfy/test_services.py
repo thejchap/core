@@ -1,5 +1,12 @@
 """Tryke skip-stubs for ntfy test_services (port deferred)."""
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.ntfy.services module imports cleanly."""
+    from homeassistant.components.ntfy import services  # noqa: PLC0415
+    expect(services).not_.to_be(None)
+
 
 @test.skip("requires aiontfy + Notification/Account/Event mocks (not ported)")
 async def delete_exception() -> None:
