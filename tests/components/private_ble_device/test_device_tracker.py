@@ -3,7 +3,14 @@
 Original tests use habluetooth advertisement injection + entity registry autouse; full port deferred.
 """
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.private_ble_device.device_tracker module imports cleanly."""
+    from homeassistant.components.private_ble_device import device_tracker  # noqa: PLC0415
+    expect(device_tracker).not_.to_be(None)
+
 
 @test.skip("habluetooth advertisement injection + entity registry autouse")
 async def tracker_created() -> None:
