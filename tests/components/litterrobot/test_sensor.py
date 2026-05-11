@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_sensor.py - sibling port deferred (156 LOC, 0 parametrize)."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.litterrobot.sensor module imports cleanly."""
+    from homeassistant.components.litterrobot import sensor  # noqa: PLC0415
+    expect(sensor).not_.to_be(None)
+
 
 @test.skip("sibling port deferred (156 LOC, 0 parametrize)")
 async def waste_drawer_sensor() -> None:
