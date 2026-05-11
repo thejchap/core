@@ -1,11 +1,18 @@
 """Tests for the Risco binary sensors. (tryke skip stub)."""
 
-from tryke import fixture, test
+from tryke import expect, fixture, test
 
 
 @fixture
 def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.risco.binary_sensor module imports cleanly."""
+    from homeassistant.components.risco import binary_sensor  # noqa: PLC0415
+    expect(binary_sensor).not_.to_be(None)
 
 
 @test.skip("conftest fixtures need migration to _fixtures.py")
