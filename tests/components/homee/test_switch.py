@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_switch.py - snapshot_platform diverged - needs pytest --snapshot-update."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.homee.switch module imports cleanly."""
+    from homeassistant.components.homee import switch  # noqa: PLC0415
+    expect(switch).not_.to_be(None)
+
 
 @test.skip("snapshot_platform diverged - needs pytest --snapshot-update")
 async def switch_state() -> None:

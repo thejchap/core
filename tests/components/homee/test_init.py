@@ -1,6 +1,13 @@
 """Tryke skip-stubs for test_init.py - snapshot fixture coupling - needs pytest --snapshot-update."""
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.homee module imports cleanly."""
+    from homeassistant.components import homee  # noqa: PLC0415
+    expect(homee).not_.to_be(None)
+
 
 @test.skip("snapshot fixture coupling - needs pytest --snapshot-update")
 async def connection_errors() -> None:
