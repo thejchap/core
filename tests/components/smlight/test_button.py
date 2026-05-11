@@ -1,11 +1,18 @@
 """Tests for SMLIGHT SLZB-06 button entities. (tryke skip stub)."""
 
-from tryke import fixture, test
+from tryke import expect, fixture, test
 
 
 @fixture
 def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.smlight.button module imports cleanly."""
+    from homeassistant.components.smlight import button  # noqa: PLC0415
+    expect(button).not_.to_be(None)
 
 
 @test.skip("conftest fixtures need migration to _fixtures.py")
