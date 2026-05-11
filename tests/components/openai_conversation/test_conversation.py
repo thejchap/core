@@ -3,7 +3,14 @@
 Original tests use OpenAI API mocks + conversation pipeline; full port deferred.
 """
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.openai_conversation.conversation module imports cleanly."""
+    from homeassistant.components.openai_conversation import conversation  # noqa: PLC0415
+    expect(conversation).not_.to_be(None)
+
 
 @test.skip("OpenAI API mocks + conversation pipeline")
 async def entity() -> None:
