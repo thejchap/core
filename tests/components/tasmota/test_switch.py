@@ -14,6 +14,7 @@ from ._fixtures import mqtt_mock as mqtt_mock_fixture, setup_tasmota
 from .test_common import DEFAULT_CONFIG
 
 from tests.common import async_fire_mqtt_message
+from tests.components.switch import common
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
@@ -60,10 +61,61 @@ async def controlling_state_via_mqtt(
     state = hass.states.get("switch.tasmota_test")
     expect(state.state).to_equal(STATE_OFF)
 
+    async_fire_mqtt_message(hass, "tasmota_49A3BC/stat/RESULT", '{"POWER":"ON"}')
+    state = hass.states.get("switch.tasmota_test")
+    expect(state.state).to_equal(STATE_ON)
 
-@test.skip("requires paho mqtt mid bookkeeping — port deferred")
-async def sending_mqtt_commands() -> None:
-    """Stub for test_sending_mqtt_commands (publish-mid plumbing)."""
+    async_fire_mqtt_message(hass, "tasmota_49A3BC/stat/RESULT", '{"POWER":"OFF"}')
+    state = hass.states.get("switch.tasmota_test")
+    expect(state.state).to_equal(STATE_OFF)
+
+
+@test
+async def sending_mqtt_commands(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    _setup: None = Depends(setup_tasmota),
+) -> None:
+    """Test the sending MQTT commands."""
+    config = copy.deepcopy(DEFAULT_CONFIG)
+    config["rl"][0] = 1
+    mac = config["mac"]
+
+    async_fire_mqtt_message(
+        hass,
+        f"{DEFAULT_PREFIX}/{mac}/config",
+        json.dumps(config),
+    )
+    await hass.async_block_till_done()
+
+    async_fire_mqtt_message(hass, "tasmota_49A3BC/tele/LWT", "Online")
+    await hass.async_block_till_done()
+    state = hass.states.get("switch.tasmota_test")
+    expect(state.state).to_equal(STATE_OFF)
+    await hass.async_block_till_done()
+    await hass.async_block_till_done()
+    mqtt_mock.async_publish.reset_mock()
+
+    # Turn the switch on and verify MQTT message is sent
+    await common.async_turn_on(hass, "switch.tasmota_test")
+    mqtt_mock.async_publish.assert_called_once_with(
+        "tasmota_49A3BC/cmnd/Power1", "ON", 0, False
+    )
+    mqtt_mock.async_publish.reset_mock()
+
+    # Tasmota is not optimistic, the state should still be off
+    state = hass.states.get("switch.tasmota_test")
+    expect(state.state).to_equal(STATE_OFF)
+
+    # Turn the switch off and verify MQTT message is sent
+    await common.async_turn_off(hass, "switch.tasmota_test")
+    mqtt_mock.async_publish.assert_called_once_with(
+        "tasmota_49A3BC/cmnd/Power1", "OFF", 0, False
+    )
+
+    state = hass.states.get("switch.tasmota_test")
+    expect(state.state).to_equal(STATE_OFF)
 
 
 @test
