@@ -1,13 +1,39 @@
 """Test for SQL component Init."""
 
+from unittest.mock import patch
+
+import voluptuous as vol
+
 from tryke import Depends, expect, fixture, test
 
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.components.recorder import CONF_DB_URL
+from homeassistant.components.sensor import (
+    CONF_STATE_CLASS,
+    SensorDeviceClass,
+    SensorStateClass,
+)
+from homeassistant.components.sql.const import (
+    CONF_ADVANCED_OPTIONS,
+    CONF_COLUMN_NAME,
+    CONF_QUERY,
+    DOMAIN,
+)
+from homeassistant.components.sql.util import validate_sql_select
+from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
+from homeassistant.const import (
+    CONF_DEVICE_CLASS,
+    CONF_NAME,
+    CONF_UNIT_OF_MEASUREMENT,
+    CONF_VALUE_TEMPLATE,
+)
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.template import Template
+from homeassistant.setup import async_setup_component
 
-from . import init_integration
+from . import YAML_CONFIG_INVALID, YAML_CONFIG_NO_DB, init_integration
 from ._fixtures import recorder_mock
 
+from tests.common import MockConfigEntry
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
@@ -43,41 +69,168 @@ async def unload_entry(
     expect(config_entry.state).to_be(ConfigEntryState.NOT_LOADED)
 
 
-@test.skip("requires recorder + YAML import flow — port deferred")
-async def setup_config() -> None:
-    """Stub for test_setup_config."""
+@test
+async def setup_config(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setup from yaml config."""
+    with patch(
+        "homeassistant.components.sql.config_flow.sqlalchemy.create_engine",
+    ):
+        expect(
+            await async_setup_component(hass, DOMAIN, YAML_CONFIG_NO_DB)
+        ).to_be(True)
+        await hass.async_block_till_done()
 
 
-@test.skip("requires recorder + invalid-config flow — port deferred")
-async def setup_invalid_config() -> None:
-    """Stub for test_setup_invalid_config."""
+@test
+async def setup_invalid_config(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test setup from yaml with invalid config."""
+    with patch(
+        "homeassistant.components.sql.config_flow.sqlalchemy.create_engine",
+    ):
+        expect(
+            await async_setup_component(hass, DOMAIN, YAML_CONFIG_INVALID)
+        ).to_be(False)
+        await hass.async_block_till_done()
 
 
-@test.skip("requires schema validation context — port deferred")
-async def invalid_query() -> None:
-    """Stub for test_invalid_query."""
+@test
+async def invalid_query(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test invalid query."""
+    expect(
+        lambda: validate_sql_select(Template("DROP TABLE *", hass))
+    ).to_raise(vol.Invalid, match="SQL query must be of type SELECT")
+    expect(
+        lambda: validate_sql_select(Template("SELECT5 as value", hass))
+    ).to_raise(vol.Invalid, match="SQL query is empty or unknown type")
+    expect(
+        lambda: validate_sql_select(Template(";;", hass))
+    ).to_raise(vol.Invalid, match="SQL query is empty or unknown type")
 
 
-@test.skip("requires schema validation context — port deferred")
-async def query_no_read_only() -> None:
-    """Stub for test_query_no_read_only."""
+@test
+async def query_no_read_only(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test query no read only."""
+    expect(
+        lambda: validate_sql_select(
+            Template("UPDATE states SET state = 999999 WHERE state_id = 11125", hass)
+        )
+    ).to_raise(vol.Invalid, match="SQL query must be of type SELECT")
 
 
-@test.skip("requires schema validation context — port deferred")
-async def query_no_read_only_cte() -> None:
-    """Stub for test_query_no_read_only_cte."""
+@test
+async def query_no_read_only_cte(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test query no read only CTE."""
+    expect(
+        lambda: validate_sql_select(
+            Template(
+                "WITH test AS (SELECT state FROM states) "
+                "UPDATE states SET states.state = test.state;",
+                hass,
+            )
+        )
+    ).to_raise(vol.Invalid, match="SQL query must be of type SELECT")
 
 
-@test.skip("requires schema validation context — port deferred")
-async def multiple_queries() -> None:
-    """Stub for test_multiple_queries."""
+@test
+async def multiple_queries(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test multiple queries."""
+    expect(
+        lambda: validate_sql_select(
+            Template("SELECT 5 as value; UPDATE states SET state = 10;", hass)
+        )
+    ).to_raise(vol.Invalid, match="Multiple SQL statements are not allowed")
 
 
-@test.skip("requires recorder + schema migration — port deferred")
-async def migration_from_future() -> None:
-    """Stub for test_migration_from_future."""
+@test
+async def migration_from_future(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test migration from future version fails."""
+    config_entry = MockConfigEntry(
+        title="Test future",
+        domain=DOMAIN,
+        source=SOURCE_USER,
+        data={},
+        options={
+            CONF_QUERY: "SELECT 5.01 as value",
+            CONF_COLUMN_NAME: "value",
+            CONF_ADVANCED_OPTIONS: {},
+        },
+        entry_id="1",
+        version=3,
+    )
+
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    expect(config_entry.state).to_be(ConfigEntryState.MIGRATION_ERROR)
 
 
-@test.skip("requires recorder + schema migration — port deferred")
-async def migration_from_v1_to_v2() -> None:
-    """Stub for test_migration_from_v1_to_v2."""
+@test
+async def migration_from_v1_to_v2(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test migration from version 1 to 2."""
+    config_entry = MockConfigEntry(
+        title="Test migration",
+        domain=DOMAIN,
+        source=SOURCE_USER,
+        data={},
+        options={
+            CONF_DB_URL: "sqlite://",
+            CONF_NAME: "Test migration",
+            CONF_QUERY: "SELECT 5.01 as value",
+            CONF_COLUMN_NAME: "value",
+            CONF_VALUE_TEMPLATE: "{{ value | int }}",
+            CONF_UNIT_OF_MEASUREMENT: "MiB",
+            CONF_DEVICE_CLASS: SensorDeviceClass.DATA_SIZE,
+            CONF_STATE_CLASS: SensorStateClass.MEASUREMENT,
+        },
+        entry_id="1",
+        version=1,
+    )
+
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    expect(config_entry.state).to_be(ConfigEntryState.LOADED)
+
+    expect(config_entry.data).to_equal({})
+    expect(config_entry.options).to_equal(
+        {
+            CONF_QUERY: "SELECT 5.01 as value",
+            CONF_COLUMN_NAME: "value",
+            CONF_ADVANCED_OPTIONS: {
+                CONF_VALUE_TEMPLATE: "{{ value | int }}",
+                CONF_UNIT_OF_MEASUREMENT: "MiB",
+                CONF_DEVICE_CLASS: SensorDeviceClass.DATA_SIZE,
+                CONF_STATE_CLASS: SensorStateClass.MEASUREMENT,
+            },
+        }
+    )
+
+    state = hass.states.get("sensor.test_migration")
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal("5")
