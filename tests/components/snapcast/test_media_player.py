@@ -1,11 +1,18 @@
 """Test the snapcast media player implementation. (tryke skip stub)."""
 
-from tryke import fixture, test
+from tryke import expect, fixture, test
 
 
 @fixture
 def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.snapcast.media_player module imports cleanly."""
+    from homeassistant.components.snapcast import media_player  # noqa: PLC0415
+    expect(media_player).not_.to_be(None)
 
 
 @test.skip("syrupy snapshot")
