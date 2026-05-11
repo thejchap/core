@@ -1,9 +1,10 @@
 """Tryke fixtures for the Fully Kiosk Browser integration."""
 
 from collections.abc import Generator
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from tryke import fixture
+from tryke import Depends, fixture
 
 from homeassistant.components.fully_kiosk.const import DOMAIN
 from homeassistant.const import (
@@ -13,8 +14,10 @@ from homeassistant.const import (
     CONF_SSL,
     CONF_VERIFY_SSL,
 )
+from homeassistant.core import HomeAssistant
 
-from tests.common import MockConfigEntry
+from tests.common import MockConfigEntry, load_fixture
+from tests.hass_fixtures import hass as hass_fixture
 
 
 @fixture
@@ -57,3 +60,35 @@ def mock_fully_kiosk_config_flow() -> Generator[MagicMock]:
             "Mac": "AA:BB:CC:DD:EE:FF",
         }
         yield client
+
+
+@fixture
+def mock_fully_kiosk() -> Generator[MagicMock]:
+    """Return a mocked Fully Kiosk client."""
+    with patch(
+        "homeassistant.components.fully_kiosk.coordinator.FullyKiosk",
+        autospec=True,
+    ) as client_mock:
+        client = client_mock.return_value
+        client.getDeviceInfo.return_value = json.loads(
+            load_fixture("deviceinfo.json", DOMAIN)
+        )
+        client.getSettings.return_value = json.loads(
+            load_fixture("listsettings.json", DOMAIN)
+        )
+        yield client
+
+
+@fixture
+async def init_integration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_fully_kiosk: MagicMock = Depends(mock_fully_kiosk),
+) -> MockConfigEntry:
+    """Set up the Fully Kiosk Browser integration for testing."""
+    mock_config_entry.add_to_hass(hass)
+
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    return mock_config_entry
