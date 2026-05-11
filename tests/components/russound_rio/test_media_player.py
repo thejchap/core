@@ -1,11 +1,18 @@
 """Tests for the Russound RIO media player. (tryke skip stub)."""
 
-from tryke import fixture, test
+from tryke import expect, fixture, test
 
 
 @fixture
 def _ensure_executor() -> None:
     """Force a HookExecutor for this module (tryke discovery quirk)."""
+
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.russound_rio.media_player module imports cleanly."""
+    from homeassistant.components.russound_rio import media_player  # noqa: PLC0415
+    expect(media_player).not_.to_be(None)
 
 
 @test.skip("conftest fixtures need migration to _fixtures.py")
