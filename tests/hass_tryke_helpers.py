@@ -331,14 +331,27 @@ async def setup_mqtt_mock(
     (those checks are integration-internal). The returned mock supports
     ``async_publish`` / ``async_subscribe`` / ``connected`` / ``mock_calls``
     for assertion patterns.
+
+    The paho-client mock wires ``on_publish`` / ``on_subscribe`` /
+    ``on_unsubscribe`` callbacks via ``hass.loop.call_soon`` (mirroring the
+    pytest ``mqtt_client_mock`` fixture in ``tests/conftest.py``) so the
+    integration's ``_pending_operations`` mid-future bookkeeping resolves
+    each publish/subscribe round-trip. Without this, repeated publishes
+    raise ``KeyError`` when the integration tries to delete the same
+    pending-operation mid twice.
     """
-    from unittest.mock import AsyncMock, MagicMock, Mock, patch  # noqa: PLC0415
+    from unittest.mock import MagicMock, Mock, patch  # noqa: PLC0415
 
     from homeassistant.components import mqtt  # noqa: PLC0415
     from homeassistant.config_entries import ConfigEntryState  # noqa: PLC0415
+    from homeassistant.core import callback as _ha_callback  # noqa: PLC0415
     from homeassistant.setup import async_setup_component  # noqa: PLC0415
 
-    from .common import MockConfigEntry  # noqa: PLC0415
+    from .common import (  # noqa: PLC0415
+        MockConfigEntry,
+        MockMqttReasonCode,
+        async_fire_mqtt_message,
+    )
 
     if config_entry_data is None:
         config_entry_data = {
@@ -348,12 +361,30 @@ async def setup_mqtt_mock(
     if config_entry_options is None:
         config_entry_options = {mqtt.CONF_BIRTH_MESSAGE: {}}
 
+    # Per-publish/subscribe message-id counter. The integration's
+    # ``_pending_operations`` dict keys on this and deletes the entry once
+    # the matching ``on_publish``/``on_subscribe`` callback fires, so we
+    # must hand out a fresh mid for each call (NOT a constant).
+    _mid: int = 0
+
+    def _next_mid() -> int:
+        nonlocal _mid
+        _mid += 1
+        return _mid
+
+    class _FakePublishInfo:
+        """Stand-in for ``paho.mqtt.client.MQTTMessageInfo``."""
+
+        def __init__(self, mid: int) -> None:
+            self.mid = mid
+            self.rc = 0
+
+        def is_published(self) -> bool:
+            return True
+
     # Build a paho-client mock with the methods MQTT integration calls.
     paho_client_mock = MagicMock()
     paho_client_mock.connect = MagicMock(return_value=0)
-    paho_client_mock.subscribe = MagicMock(return_value=(0, 1))
-    paho_client_mock.unsubscribe = MagicMock(return_value=(0, 2))
-    paho_client_mock.publish = MagicMock(return_value=Mock(rc=0, mid=3, is_published=lambda: True))
     paho_client_mock.loop_start = MagicMock()
     paho_client_mock.loop_stop = MagicMock()
     paho_client_mock.disconnect = MagicMock()
@@ -364,6 +395,56 @@ async def setup_mqtt_mock(
     paho_client_mock.username_pw_set = MagicMock()
     paho_client_mock.will_set = MagicMock()
     paho_client_mock.connect_async = MagicMock()
+    paho_client_mock.loop_read = MagicMock(return_value=0)
+
+    # publish/subscribe/unsubscribe must schedule the matching ack
+    # callback so the integration's mid-future resolves. ``call_soon``
+    # mimics the asynchronous broker round-trip — by the time the
+    # integration awaits the future, the loop has run the callback and
+    # the future is set.
+    @_ha_callback
+    def _publish_side_effect(
+        topic: str, payload: Any, qos: int, retain: bool
+    ) -> _FakePublishInfo:
+        async_fire_mqtt_message(hass, topic, payload or b"", qos, retain)
+        mid = _next_mid()
+        hass.loop.call_soon(
+            paho_client_mock.on_publish,
+            Mock(),
+            0,
+            mid,
+            MockMqttReasonCode(),
+            None,
+        )
+        return _FakePublishInfo(mid)
+
+    def _subscribe_side_effect(topic: str, qos: int = 0) -> tuple[int, int]:
+        mid = _next_mid()
+        hass.loop.call_soon(
+            paho_client_mock.on_subscribe,
+            Mock(),
+            0,
+            mid,
+            [MockMqttReasonCode()],
+            None,
+        )
+        return (0, mid)
+
+    def _unsubscribe_side_effect(topic: str) -> tuple[int, int]:
+        mid = _next_mid()
+        hass.loop.call_soon(
+            paho_client_mock.on_unsubscribe,
+            Mock(),
+            0,
+            mid,
+            [MockMqttReasonCode()],
+            None,
+        )
+        return (0, mid)
+
+    paho_client_mock.publish = MagicMock(side_effect=_publish_side_effect)
+    paho_client_mock.subscribe = MagicMock(side_effect=_subscribe_side_effect)
+    paho_client_mock.unsubscribe = MagicMock(side_effect=_unsubscribe_side_effect)
 
     entry = MockConfigEntry(
         data=config_entry_data,
@@ -380,6 +461,14 @@ async def setup_mqtt_mock(
         return_value=paho_client_mock,
     ):
         assert await async_setup_component(hass, mqtt.DOMAIN, {})
+        await hass.async_block_till_done()
+
+        # Drive the on_connect callback once so the integration's
+        # connection-state future resolves and ``connected = True`` —
+        # mirrors the dev ``_setup_mqtt_entry`` behavior.
+        paho_client_mock.on_connect(
+            paho_client_mock, None, 0, MockMqttReasonCode()
+        )
         await hass.async_block_till_done()
 
     # Return the mqtt component's HA-side client (used by tests for
