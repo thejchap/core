@@ -170,9 +170,77 @@ async def ssl_migrate_entry(
     expect(entry.data).to_equal(MOCK_CONFIG_V1_2)
 
 
-@test.skip("indirect parametrize via sensor_domain/sensor_name/mock_id — keep skipped")
-async def uid_migrate_entry() -> None:
-    """Stub for test_uid_migrate_entry."""
+@test.cases(
+    test.case(
+        "binary_sensor",
+        sensor_domain=BINARY_SENSOR_DOMAIN,
+        sensor_name="port_forwarding",
+        mock_id="device_id_12345",
+    ),
+    test.case(
+        "sensor",
+        sensor_domain=SENSOR_DOMAIN,
+        sensor_name="antenna_gain",
+        mock_id="01:23:45:67:89:ab",
+    ),
+)
+async def uid_migrate_entry(
+    sensor_domain: str,
+    sensor_name: str,
+    mock_id: str,
+    hass: HomeAssistant = Depends(hass_fixture),
+    device_registry: dr.DeviceRegistry = Depends(device_registry_fixture),
+    mock_airos_client: MagicMock = Depends(mock_airos_client),
+    mock_async_get_firmware_data: AsyncMock = Depends(mock_async_get_firmware_data),
+) -> None:
+    """Test migrate entry unique id."""
+    entity_registry = er.async_get(hass)
+
+    MOCK_MAC = dr.format_mac("01:23:45:67:89:AB")
+    MOCK_ID = "device_id_12345"
+    old_unique_id = f"{mock_id}_{sensor_name}"
+    new_unique_id = f"{MOCK_MAC}_{sensor_name}"
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        source=SOURCE_USER,
+        data=MOCK_CONFIG_V1_2,
+        entry_id="1",
+        unique_id=mock_id,
+        version=1,
+        minor_version=2,
+    )
+    entry.add_to_hass(hass)
+
+    device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, MOCK_ID)},
+        connections={
+            (dr.CONNECTION_NETWORK_MAC, MOCK_MAC),
+        },
+    )
+    await hass.async_block_till_done()
+
+    old_entity_entry = entity_registry.async_get_or_create(
+        DOMAIN, sensor_domain, old_unique_id, config_entry=entry
+    )
+    original_entity_id = old_entity_entry.entity_id
+
+    hass.config_entries.async_update_entry(entry, unique_id=MOCK_MAC)
+    await hass.async_block_till_done()
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    updated_entity_entry = entity_registry.async_get(original_entity_id)
+
+    expect(entry.state).to_be(ConfigEntryState.LOADED)
+    expect(entry.version).to_equal(2)
+    expect(entry.minor_version).to_equal(1)
+    expect(
+        entity_registry.async_get_entity_id(sensor_domain, DOMAIN, old_unique_id)
+    ).to_be(None)
+    expect(updated_entity_entry.unique_id).to_equal(new_unique_id)
 
 
 @test
