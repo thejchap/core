@@ -1,18 +1,20 @@
 """Tryke fixtures for the Kaleidescape integration."""
 
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 from unittest.mock import MagicMock, patch
 
 from kaleidescape import Dispatcher
 from kaleidescape.device import Automation, Movie, Power, System
-from tryke import fixture
+from tryke import Depends, fixture
 
 from homeassistant.components.kaleidescape.const import DOMAIN
 from homeassistant.const import CONF_HOST
+from homeassistant.core import HomeAssistant
 
 from . import MOCK_HOST, MOCK_SERIAL
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
 
 
 @fixture
@@ -58,3 +60,16 @@ def mock_config_entry() -> MockConfigEntry:
         version=1,
         data={CONF_HOST: MOCK_HOST},
     )
+
+
+@fixture
+async def mock_integration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_device: MagicMock = Depends(mock_device),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+) -> MockConfigEntry:
+    """Return a mock ConfigEntry setup for Kaleidescape integration."""
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    return mock_config_entry
