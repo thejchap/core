@@ -87,6 +87,17 @@ def mock_room() -> Mock:
 
 
 @fixture
+def mock_scene() -> Mock:
+    """Fixture for an individual scene."""
+    scene = Mock()
+    scene.fibaro_id = 1
+    scene.name = "Test scene"
+    scene.room_id = 1
+    scene.visible = True
+    return scene
+
+
+@fixture
 def mock_light() -> Mock:
     """Fixture for a dimmable light."""
     light = Mock()
