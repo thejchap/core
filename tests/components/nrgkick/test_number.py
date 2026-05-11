@@ -1,5 +1,12 @@
 """Tryke skip-stubs for nrgkick test_number (port deferred)."""
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.nrgkick.number module imports cleanly."""
+    from homeassistant.components.nrgkick import number  # noqa: PLC0415
+    expect(number).not_.to_be(None)
+
 
 @test.skip("requires snapshot_platform + entity_registry_enabled_by_default (not ported)")
 async def number_entities() -> None:
