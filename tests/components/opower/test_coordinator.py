@@ -3,7 +3,14 @@
 Original tests use opower API mocks + recorder + statistics; full port deferred.
 """
 
-from tryke import test
+from tryke import expect, test
+
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.opower.coordinator module imports cleanly."""
+    from homeassistant.components.opower import coordinator  # noqa: PLC0415
+    expect(coordinator).not_.to_be(None)
+
 
 @test.skip("opower API mocks + recorder + statistics")
 async def coordinator_first_run() -> None:
