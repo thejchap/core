@@ -12,6 +12,13 @@ def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
 
 
+@test
+def module_importable() -> None:
+    """Smoke test: the homeassistant.components.mcp.config_flow module imports cleanly."""
+    from homeassistant.components.mcp import config_flow  # noqa: PLC0415
+    expect(config_flow).not_.to_be(None)
+
+
 @test.skip("requires respx pytest plugin (not available in tryke 0.0.27)")
 async def form(
     _trigger: None = Depends(_trigger_executor),
