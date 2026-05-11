@@ -1,14 +1,16 @@
 """Tryke fixtures for the Anthem AV integration."""
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from tryke import Depends, fixture
 
 from homeassistant.components.anthemav.const import DOMAIN
 from homeassistant.const import CONF_HOST, CONF_MAC, CONF_MODEL, CONF_PORT
+from homeassistant.core import HomeAssistant
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
 
 
 def get_zone() -> MagicMock:
@@ -59,3 +61,24 @@ def mock_config_entry() -> MockConfigEntry:
         },
         unique_id="00:00:00:00:00:01",
     )
+
+
+@fixture
+def update_callback(
+    mock_connection_create: AsyncMock = Depends(mock_connection_create),
+) -> Callable[[str], None]:
+    """Return the update_callback used when creating the connection."""
+    return mock_connection_create.call_args[1]["update_callback"]
+
+
+@fixture
+async def init_integration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_connection_create: AsyncMock = Depends(mock_connection_create),
+) -> MockConfigEntry:
+    """Set up the AnthemAv integration for testing."""
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    return mock_config_entry
