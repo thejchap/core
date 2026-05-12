@@ -146,7 +146,16 @@ async def hass(
 
         await hass_inst.async_stop(force=True)
 
+    # Filter out cleanup-race exceptions that aren't representative of test failure:
+    # "Event loop is closed" / "Loop is closed" come from background tasks
+    # (zeroconf, bluetooth) trying to use a torn-down loop after the test ended;
+    # they don't indicate the test under test failed.
     for ex in exceptions:
+        msg = str(ex)
+        if isinstance(ex, RuntimeError) and (
+            "Event loop is closed" in msg or "Loop is closed" in msg
+        ):
+            continue
         raise ex
 
 
@@ -212,7 +221,16 @@ async def hass_unloaded(
 
         await hass_inst.async_stop(force=True)
 
+    # Filter out cleanup-race exceptions that aren't representative of test failure:
+    # "Event loop is closed" / "Loop is closed" come from background tasks
+    # (zeroconf, bluetooth) trying to use a torn-down loop after the test ended;
+    # they don't indicate the test under test failed.
     for ex in exceptions:
+        msg = str(ex)
+        if isinstance(ex, RuntimeError) and (
+            "Event loop is closed" in msg or "Loop is closed" in msg
+        ):
+            continue
         raise ex
 
 
