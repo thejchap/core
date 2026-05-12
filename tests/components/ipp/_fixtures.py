@@ -17,8 +17,10 @@ from homeassistant.const import (
     CONF_UUID,
     CONF_VERIFY_SSL,
 )
+from homeassistant.core import HomeAssistant
 
 from tests.common import MockConfigEntry, load_fixture
+from tests.hass_fixtures import hass as hass_fixture
 
 
 @fixture
@@ -78,3 +80,16 @@ def mock_ipp(
         client = ipp_mock.return_value
         client.printer.return_value = mock_printer
         yield client
+
+
+@fixture
+async def init_integration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _ipp: MagicMock = Depends(mock_ipp),
+) -> MockConfigEntry:
+    """Set up the IPP integration for testing."""
+    mock_config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    return mock_config_entry
