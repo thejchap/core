@@ -98,3 +98,24 @@ async def init_integration_button(
     """Set up OctoPrint with the button platform for tryke."""
     async for entry in setup_octoprint_integration(hass, Platform.BUTTON):
         yield entry
+
+
+STANDARD_JOB = {
+    "job": {
+        "averagePrintTime": 6500,
+        "estimatedPrintTime": 6000,
+        "filament": {"tool0": {"length": 3000, "volume": 7}},
+        "file": {
+            "date": 1577836800,
+            "display": "Test File Name",
+            "name": "Test_File_Name.gcode",
+            "origin": "local",
+            "path": "Folder1/Folder2/Test_File_Name.gcode",
+            "size": 123456789,
+        },
+        "lastPrintTime": 12345.678,
+        "user": "testUser",
+    },
+    "progress": {"completion": 50, "printTime": 600, "printTimeLeft": 6000},
+    "state": "Printing",
+}
