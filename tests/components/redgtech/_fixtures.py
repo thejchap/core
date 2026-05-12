@@ -38,6 +38,18 @@ def mock_redgtech_api() -> Generator[MagicMock]:
                         "value": False,
                         "displayCategories": ["SWITCH"],
                     },
+                    {
+                        "endpointId": "switch_002",
+                        "friendlyName": "Kitchen Switch",
+                        "value": True,
+                        "displayCategories": ["SWITCH"],
+                    },
+                    {
+                        "endpointId": "light_switch_001",
+                        "friendlyName": "Bedroom Light Switch",
+                        "value": False,
+                        "displayCategories": ["LIGHT", "SWITCH"],
+                    },
                 ]
             }
         )
