@@ -1,8 +1,93 @@
-"""Tryke skip stub (pending port)."""
+"""The tests for the dhcp WebSocket API."""
 
-from tryke import test
+import asyncio
+from collections.abc import Callable
+from unittest.mock import patch
+
+import aiodhcpwatcher
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.dhcp import DOMAIN
+from homeassistant.core import EVENT_HOMEASSISTANT_STARTED, HomeAssistant
+from homeassistant.setup import async_setup_component
+
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    hass as hass_fixture,
+    hass_ws_client as hass_ws_client_fixture,
+)
 
 
-@test.skip("pending tryke port")
-async def subscribe_discovery() -> None:
-    """Stub for test_subscribe_discovery (port deferred)."""
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@test
+async def subscribe_discovery(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    hass_ws_client: ClientSessionGenerator = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test dhcp subscribe_discovery."""
+    saved_callback: Callable[[aiodhcpwatcher.DHCPRequest], None] | None = None
+
+    async def mock_start(
+        callback: Callable[[aiodhcpwatcher.DHCPRequest], None],
+        if_indexes: list[int] | None = None,
+    ) -> None:
+        """Mock start."""
+        nonlocal saved_callback
+        saved_callback = callback
+
+    with (
+        patch("homeassistant.components.dhcp.aiodhcpwatcher.async_start", mock_start),
+        patch("homeassistant.components.dhcp.DiscoverHosts"),
+    ):
+        await async_setup_component(hass, DOMAIN, {})
+        await hass.async_block_till_done()
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+        await hass.async_block_till_done()
+
+    saved_callback(aiodhcpwatcher.DHCPRequest("4.3.2.2", "happy", "44:44:33:11:23:12"))
+    client = await hass_ws_client()
+    await client.send_json(
+        {
+            "id": 1,
+            "type": "dhcp/subscribe_discovery",
+        }
+    )
+    async with asyncio.timeout(1):
+        response = await client.receive_json()
+    expect(response["success"]).to_be(True)
+
+    async with asyncio.timeout(1):
+        response = await client.receive_json()
+    expect(response["event"]).to_equal(
+        {
+            "add": [
+                {
+                    "hostname": "happy",
+                    "ip_address": "4.3.2.2",
+                    "mac_address": "44:44:33:11:23:12",
+                }
+            ]
+        }
+    )
+
+    saved_callback(aiodhcpwatcher.DHCPRequest("4.3.2.1", "sad", "44:44:33:11:23:13"))
+
+    async with asyncio.timeout(1):
+        response = await client.receive_json()
+    expect(response["event"]).to_equal(
+        {
+            "add": [
+                {
+                    "hostname": "sad",
+                    "ip_address": "4.3.2.1",
+                    "mac_address": "44:44:33:11:23:13",
+                }
+            ]
+        }
+    )
