@@ -1,15 +1,25 @@
 """Test reproduce state for Remote."""
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.state import async_reproduce_state
 
 from tests.common import async_mock_service
+from tests.hass_fixtures import LogCapture, caplog as caplog_fixture, hass as hass_fixture
 
 
-async def test_reproducing_states(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@test
+async def reproducing_states(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    caplog: LogCapture = Depends(caplog_fixture),
 ) -> None:
     """Test reproducing Remote states."""
     hass.states.async_set("remote.entity_off", "off", {})
@@ -24,15 +34,15 @@ async def test_reproducing_states(
         [State("remote.entity_off", "off"), State("remote.entity_on", "on")],
     )
 
-    assert len(turn_on_calls) == 0
-    assert len(turn_off_calls) == 0
+    expect(len(turn_on_calls)).to_equal(0)
+    expect(len(turn_off_calls)).to_equal(0)
 
     # Test invalid state is handled
     await async_reproduce_state(hass, [State("remote.entity_off", "not_supported")])
 
-    assert "not_supported" in caplog.text
-    assert len(turn_on_calls) == 0
-    assert len(turn_off_calls) == 0
+    expect("not_supported" in caplog.text).to_be(True)
+    expect(len(turn_on_calls)).to_equal(0)
+    expect(len(turn_off_calls)).to_equal(0)
 
     # Make sure correct services are called
     await async_reproduce_state(
@@ -45,12 +55,10 @@ async def test_reproducing_states(
         ],
     )
 
-    assert len(turn_on_calls) == 1
-    assert turn_on_calls[0].domain == "remote"
-    assert turn_on_calls[0].data == {
-        "entity_id": "remote.entity_off",
-    }
+    expect(len(turn_on_calls)).to_equal(1)
+    expect(turn_on_calls[0].domain).to_equal("remote")
+    expect(turn_on_calls[0].data).to_equal({"entity_id": "remote.entity_off"})
 
-    assert len(turn_off_calls) == 1
-    assert turn_off_calls[0].domain == "remote"
-    assert turn_off_calls[0].data == {"entity_id": "remote.entity_on"}
+    expect(len(turn_off_calls)).to_equal(1)
+    expect(turn_off_calls[0].domain).to_equal("remote")
+    expect(turn_off_calls[0].data).to_equal({"entity_id": "remote.entity_on"})
