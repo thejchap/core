@@ -1,6 +1,6 @@
 """Test the Humidifier significant change platform."""
 
-import pytest
+from tryke import expect, test
 
 from homeassistant.components.humidifier import (
     ATTR_ACTION,
@@ -13,42 +13,96 @@ from homeassistant.components.humidifier.significant_change import (
 )
 
 
-async def test_significant_state_change() -> None:
+@test
+async def significant_state_change() -> None:
     """Detect Humidifier significant state changes."""
-    attrs = {}
-    assert not async_check_significant_change(None, "on", attrs, "on", attrs)
-    assert async_check_significant_change(None, "on", attrs, "off", attrs)
+    attrs: dict = {}
+    expect(
+        async_check_significant_change(None, "on", attrs, "on", attrs)
+    ).to_be_falsy()
+    expect(
+        async_check_significant_change(None, "on", attrs, "off", attrs)
+    ).to_be_truthy()
 
 
-@pytest.mark.parametrize(
-    ("old_attrs", "new_attrs", "expected_result"),
-    [
-        ({ATTR_ACTION: "old_value"}, {ATTR_ACTION: "old_value"}, False),
-        ({ATTR_ACTION: "old_value"}, {ATTR_ACTION: "new_value"}, True),
-        ({ATTR_MODE: "old_value"}, {ATTR_MODE: "new_value"}, True),
-        # multiple attributes
-        (
-            {ATTR_ACTION: "old_value", ATTR_MODE: "old_value"},
-            {ATTR_ACTION: "new_value", ATTR_MODE: "old_value"},
-            True,
-        ),
-        # float attributes
-        ({ATTR_CURRENT_HUMIDITY: 60.0}, {ATTR_CURRENT_HUMIDITY: 61}, True),
-        ({ATTR_CURRENT_HUMIDITY: 60.0}, {ATTR_CURRENT_HUMIDITY: 60.9}, False),
-        ({ATTR_CURRENT_HUMIDITY: "invalid"}, {ATTR_CURRENT_HUMIDITY: 60.0}, True),
-        ({ATTR_CURRENT_HUMIDITY: 60.0}, {ATTR_CURRENT_HUMIDITY: "invalid"}, False),
-        ({ATTR_HUMIDITY: 62.0}, {ATTR_HUMIDITY: 63.0}, True),
-        ({ATTR_HUMIDITY: 62.0}, {ATTR_HUMIDITY: 62.9}, False),
-        # insignificant attributes
-        ({"unknown_attr": "old_value"}, {"unknown_attr": "old_value"}, False),
-        ({"unknown_attr": "old_value"}, {"unknown_attr": "new_value"}, False),
-    ],
+@test.cases(
+    test.case(
+        "action_same",
+        old_attrs={ATTR_ACTION: "old_value"},
+        new_attrs={ATTR_ACTION: "old_value"},
+        expected_result=False,
+    ),
+    test.case(
+        "action_diff",
+        old_attrs={ATTR_ACTION: "old_value"},
+        new_attrs={ATTR_ACTION: "new_value"},
+        expected_result=True,
+    ),
+    test.case(
+        "mode_diff",
+        old_attrs={ATTR_MODE: "old_value"},
+        new_attrs={ATTR_MODE: "new_value"},
+        expected_result=True,
+    ),
+    test.case(
+        "multiple_attrs",
+        old_attrs={ATTR_ACTION: "old_value", ATTR_MODE: "old_value"},
+        new_attrs={ATTR_ACTION: "new_value", ATTR_MODE: "old_value"},
+        expected_result=True,
+    ),
+    test.case(
+        "current_humidity_int_diff",
+        old_attrs={ATTR_CURRENT_HUMIDITY: 60.0},
+        new_attrs={ATTR_CURRENT_HUMIDITY: 61},
+        expected_result=True,
+    ),
+    test.case(
+        "current_humidity_small_diff",
+        old_attrs={ATTR_CURRENT_HUMIDITY: 60.0},
+        new_attrs={ATTR_CURRENT_HUMIDITY: 60.9},
+        expected_result=False,
+    ),
+    test.case(
+        "current_humidity_invalid_to_float",
+        old_attrs={ATTR_CURRENT_HUMIDITY: "invalid"},
+        new_attrs={ATTR_CURRENT_HUMIDITY: 60.0},
+        expected_result=True,
+    ),
+    test.case(
+        "current_humidity_float_to_invalid",
+        old_attrs={ATTR_CURRENT_HUMIDITY: 60.0},
+        new_attrs={ATTR_CURRENT_HUMIDITY: "invalid"},
+        expected_result=False,
+    ),
+    test.case(
+        "humidity_diff",
+        old_attrs={ATTR_HUMIDITY: 62.0},
+        new_attrs={ATTR_HUMIDITY: 63.0},
+        expected_result=True,
+    ),
+    test.case(
+        "humidity_small_diff",
+        old_attrs={ATTR_HUMIDITY: 62.0},
+        new_attrs={ATTR_HUMIDITY: 62.9},
+        expected_result=False,
+    ),
+    test.case(
+        "unknown_attr_same",
+        old_attrs={"unknown_attr": "old_value"},
+        new_attrs={"unknown_attr": "old_value"},
+        expected_result=False,
+    ),
+    test.case(
+        "unknown_attr_diff",
+        old_attrs={"unknown_attr": "old_value"},
+        new_attrs={"unknown_attr": "new_value"},
+        expected_result=False,
+    ),
 )
-async def test_significant_atributes_change(
-    old_attrs: dict, new_attrs: dict, expected_result: bool
+async def significant_attributes_change(
+    *, old_attrs: dict, new_attrs: dict, expected_result: bool
 ) -> None:
     """Detect Humidifier significant attribute changes."""
-    assert (
+    expect(
         async_check_significant_change(None, "state", old_attrs, "state", new_attrs)
-        == expected_result
-    )
+    ).to_equal(expected_result)
