@@ -1,13 +1,19 @@
-"""Tryke skip stub for test_utils.py - sibling test pending tryke port."""
+"""Test ViCare utils."""
 
-from tryke import fixture, test
+from tryke import expect, test
 
-
-@fixture
-def _ensure_executor() -> None:
-    """Force a HookExecutor for this module (tryke discovery quirk)."""
+from homeassistant.components.vicare.utils import filter_state
 
 
-@test.skip("vicare: sibling test pending tryke port — needs: complex parametrize")
-async def utils() -> None:
-    """Placeholder skipped sibling tests."""
+@test.cases(
+    test.case("none", state=None, expected_result=None),
+    test.case("unknown", state="unknown", expected_result=None),
+    test.case("nothing", state="nothing", expected_result=None),
+    test.case("levelOne", state="levelOne", expected_result="levelOne"),
+)
+async def filter_state_cases(
+    state: str | None,
+    expected_result: str | None,
+) -> None:
+    """Test filter_state."""
+    expect(filter_state(state)).to_equal(expected_result)

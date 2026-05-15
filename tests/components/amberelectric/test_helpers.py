@@ -1,13 +1,19 @@
-"""Tryke skip stub for test_helpers.py - sibling test pending fixture port."""
+"""Test formatters."""
 
-from tryke import fixture, test
+from amberelectric.models.price_descriptor import PriceDescriptor
+from tryke import expect, test
 
-
-@fixture
-def _ensure_executor() -> None:
-    """Force a HookExecutor for this module (tryke discovery quirk)."""
+from homeassistant.components.amberelectric.helpers import normalize_descriptor
 
 
-@test.skip("amberelectric conftest fixtures (mock_amber_client, general_channel_config_entry, general_channel_and_controlled_load_config_entry, etc.) need _fixtures.py port")
-async def placeholder() -> None:
-    """Placeholder skipped sibling tests."""
+@test
+def normalize_descriptor_returns_expected_values() -> None:
+    """Test normalizing descriptors works correctly."""
+    expect(normalize_descriptor(None)).to_be_none()
+    expect(normalize_descriptor(PriceDescriptor.NEGATIVE)).to_equal("negative")
+    expect(normalize_descriptor(PriceDescriptor.EXTREMELYLOW)).to_equal("extremely_low")
+    expect(normalize_descriptor(PriceDescriptor.VERYLOW)).to_equal("very_low")
+    expect(normalize_descriptor(PriceDescriptor.LOW)).to_equal("low")
+    expect(normalize_descriptor(PriceDescriptor.NEUTRAL)).to_equal("neutral")
+    expect(normalize_descriptor(PriceDescriptor.HIGH)).to_equal("high")
+    expect(normalize_descriptor(PriceDescriptor.SPIKE)).to_equal("spike")
