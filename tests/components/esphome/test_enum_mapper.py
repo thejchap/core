@@ -3,6 +3,7 @@
 from enum import StrEnum
 
 from aioesphomeapi import APIIntEnum
+from tryke import expect, test
 
 from homeassistant.components.esphome.enum_mapper import EsphomeEnumMapper
 
@@ -29,15 +30,15 @@ MOCK_MAPPING: EsphomeEnumMapper[MockEnum, MockStrEnum] = EsphomeEnumMapper(
 )
 
 
-async def test_map_esphome_to_ha() -> None:
+@test
+async def map_esphome_to_ha() -> None:
     """Test mapping from ESPHome to HA."""
+    expect(MOCK_MAPPING.from_esphome(MockEnum.ESPHOME_FOO)).to_equal(MockStrEnum.HA_FOO)
+    expect(MOCK_MAPPING.from_esphome(MockEnum.ESPHOME_BAR)).to_equal(MockStrEnum.HA_BAR)
 
-    assert MOCK_MAPPING.from_esphome(MockEnum.ESPHOME_FOO) == MockStrEnum.HA_FOO
-    assert MOCK_MAPPING.from_esphome(MockEnum.ESPHOME_BAR) == MockStrEnum.HA_BAR
 
-
-async def test_map_ha_to_esphome() -> None:
+@test
+async def map_ha_to_esphome() -> None:
     """Test mapping from HA to ESPHome."""
-
-    assert MOCK_MAPPING.from_hass(MockStrEnum.HA_FOO) == MockEnum.ESPHOME_FOO
-    assert MOCK_MAPPING.from_hass(MockStrEnum.HA_BAR) == MockEnum.ESPHOME_BAR
+    expect(MOCK_MAPPING.from_hass(MockStrEnum.HA_FOO)).to_equal(MockEnum.ESPHOME_FOO)
+    expect(MOCK_MAPPING.from_hass(MockStrEnum.HA_BAR)).to_equal(MockEnum.ESPHOME_BAR)
