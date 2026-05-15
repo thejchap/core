@@ -1,17 +1,36 @@
 """The tests for assist_pipeline logbook."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components import assist_pipeline, logbook
 from homeassistant.const import ATTR_DEVICE_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.setup import async_setup_component
 
+from ._fixtures import init_components
+
 from tests.common import MockConfigEntry
 from tests.components.logbook.common import MockRow, mock_humanify
+from tests.hass_fixtures import (
+    device_registry as device_registry_fixture,
+    hass as hass_fixture,
+)
 
 
-async def test_recording_event(
-    hass: HomeAssistant, init_components, device_registry: dr.DeviceRegistry
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _init: None = Depends(init_components),
+) -> HomeAssistant:
+    """Anchor cross-module fixtures so tryke resolves hass before the test body."""
+    return hass
+
+
+@test
+async def recording_event(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    device_registry: dr.DeviceRegistry = Depends(device_registry_fixture),
 ) -> None:
     """Test recording event."""
     hass.config.components.add("recorder")
@@ -37,8 +56,8 @@ async def test_recording_event(
         ],
     )[0]
 
-    assert event[logbook.LOGBOOK_ENTRY_NAME] == "My Satellite"
-    assert event[logbook.LOGBOOK_ENTRY_DOMAIN] == assist_pipeline.DOMAIN
-    assert (
-        event[logbook.LOGBOOK_ENTRY_MESSAGE] == "My Satellite captured an audio sample"
+    expect(event[logbook.LOGBOOK_ENTRY_NAME]).to_equal("My Satellite")
+    expect(event[logbook.LOGBOOK_ENTRY_DOMAIN]).to_equal(assist_pipeline.DOMAIN)
+    expect(event[logbook.LOGBOOK_ENTRY_MESSAGE]).to_equal(
+        "My Satellite captured an audio sample"
     )
