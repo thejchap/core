@@ -55,6 +55,27 @@ from .common import (
 from .test_util.aiohttp import AiohttpClientMocker, mock_aiohttp_client
 
 
+# Neuter ``install_multiple_zeroconf_catcher`` at module-import time.
+#
+# The real implementation permanently overwrites ``zeroconf.Zeroconf.__new__``
+# and ``zeroconf.Zeroconf.__init__`` to bind to the first instance ever
+# created. In a test suite, the "first" instance is typically a mock from
+# whichever test runs first — leaking that mock into every later test's
+# zeroconf construction (causing ``MagicMock can't be awaited`` during
+# hass teardown of zeroconf).
+#
+# The pytest setup neuters this via a session-autouse fixture in
+# ``tests/components/conftest.py``; Tryke has no conftest plumbing, so we
+# do it as a module-level side effect that runs once the test harness
+# imports this file.
+try:
+    import homeassistant.components.zeroconf as _zc_pkg
+
+    _zc_pkg.install_multiple_zeroconf_catcher = lambda zc: None
+except ImportError:
+    pass
+
+
 @fixture
 def hass_storage() -> Generator[dict[str, Any]]:
     """Mock the Home Assistant storage layer for the duration of a test."""
