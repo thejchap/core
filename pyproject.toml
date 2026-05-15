@@ -930,13 +930,14 @@ property-decorators = ["propcache.api.cached_property"]
 # Mirror [tool.pytest.ini_options] testpaths/norecursedirs as Tryke's exclude
 # list. Tryke walks the import graph from the project root so we exclude paths
 # that aren't tests (or that aren't supposed to be discovered).
+# Use leading "./" anchors so e.g. "./script" doesn't also match "tests/script/".
 exclude = [
     ".git",
     ".venv",
     "build",
     "dist",
     "homeassistant",
-    "script",
+    "./script",
     "tests/testing_config",
 ]
 src = ["."]
