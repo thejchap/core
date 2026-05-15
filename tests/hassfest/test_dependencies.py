@@ -1,36 +1,162 @@
-"""Tryke skip stub (pending port)."""
+"""Tests for hassfest dependency finder."""
 
-from tryke import test
+import ast
+from pathlib import Path
+
+from tryke import Depends, expect, fixture, test
+
+from script.hassfest.dependencies import (
+    CORE_INTEGRATIONS,
+    ImportCollector,
+    _validate_dependencies,
+)
+from script.hassfest.model import Config
+
+from . import get_integration
 
 
-@test.skip("pending tryke port")
-async def child_import() -> None:
-    """Stub for test_child_import (port deferred)."""
+@fixture
+def mock_collector() -> ImportCollector:
+    """Fixture with import collector that adds all referenced nodes."""
+    collector = ImportCollector(None)
+    collector.unfiltered_referenced = set()
+    collector._add_reference = collector.unfiltered_referenced.add
+    return collector
 
-@test.skip("pending tryke port")
-async def subimport() -> None:
-    """Stub for test_subimport (port deferred)."""
 
-@test.skip("pending tryke port")
-async def child_import_field() -> None:
-    """Stub for test_child_import_field (port deferred)."""
+@fixture
+def config() -> Config:
+    """Fixture for hassfest Config."""
+    return Config(
+        root=Path(".").absolute(),
+        specific_integrations=None,
+        action="validate",
+        requirements=True,
+    )
 
-@test.skip("pending tryke port")
-async def renamed_absolute() -> None:
-    """Stub for test_renamed_absolute (port deferred)."""
 
-@test.skip("pending tryke port")
-async def all_imports() -> None:
-    """Stub for test_all_imports (port deferred)."""
+@test
+def child_import(mock_collector: ImportCollector = Depends(mock_collector)) -> None:
+    """Test detecting a child_import reference."""
+    mock_collector.visit(
+        ast.parse(
+            """
+from homeassistant.components import child_import
+"""
+        )
+    )
+    expect(mock_collector.unfiltered_referenced).to_equal({"child_import"})
 
-@test.skip("pending tryke port")
-async def dependency_on_core_integration_rejected() -> None:
-    """Stub for test_dependency_on_core_integration_rejected (port deferred)."""
 
-@test.skip("pending tryke port")
-async def dependency_on_non_core_integration_allowed() -> None:
-    """Stub for test_dependency_on_non_core_integration_allowed (port deferred)."""
+@test
+def subimport(mock_collector: ImportCollector = Depends(mock_collector)) -> None:
+    """Test detecting a subimport reference."""
+    mock_collector.visit(
+        ast.parse(
+            """
+from homeassistant.components.subimport.smart_home import EVENT_ALEXA_SMART_HOME
+"""
+        )
+    )
+    expect(mock_collector.unfiltered_referenced).to_equal({"subimport"})
 
-@test.skip("pending tryke port")
-async def core_integrations_in_sync_with_bootstrap() -> None:
-    """Stub for test_core_integrations_in_sync_with_bootstrap (port deferred)."""
+
+@test
+def child_import_field(
+    mock_collector: ImportCollector = Depends(mock_collector),
+) -> None:
+    """Test detecting a child_import_field reference."""
+    mock_collector.visit(
+        ast.parse(
+            """
+from homeassistant.components.child_import_field import bla
+"""
+        )
+    )
+    expect(mock_collector.unfiltered_referenced).to_equal({"child_import_field"})
+
+
+@test
+def renamed_absolute(
+    mock_collector: ImportCollector = Depends(mock_collector),
+) -> None:
+    """Test detecting a renamed_absolute reference."""
+    mock_collector.visit(
+        ast.parse(
+            """
+import homeassistant.components.renamed_absolute as hue
+"""
+        )
+    )
+    expect(mock_collector.unfiltered_referenced).to_equal({"renamed_absolute"})
+
+
+@test
+def all_imports(mock_collector: ImportCollector = Depends(mock_collector)) -> None:
+    """Test all imports together."""
+    mock_collector.visit(
+        ast.parse(
+            """
+from homeassistant.components import child_import
+
+from homeassistant.components.subimport.smart_home import EVENT_ALEXA_SMART_HOME
+
+from homeassistant.components.child_import_field import bla
+
+import homeassistant.components.renamed_absolute as hue
+"""
+        )
+    )
+    expect(mock_collector.unfiltered_referenced).to_equal(
+        {"child_import", "subimport", "child_import_field", "renamed_absolute"}
+    )
+
+
+@test
+def dependency_on_core_integration_rejected(
+    config: Config = Depends(config),
+) -> None:
+    """Test that depending on a core integration is rejected."""
+    consumer = get_integration("consumer", config)
+    consumer.manifest["dependencies"] = ["persistent_notification"]
+
+    integrations = {
+        "consumer": consumer,
+        "persistent_notification": get_integration("persistent_notification", config),
+    }
+
+    _validate_dependencies(integrations)
+
+    expect(len(consumer.errors)).to_equal(1)
+    expect(
+        "Dependency persistent_notification is a core integration"
+        in consumer.errors[0].error
+    ).to_be(True)
+
+
+@test
+def dependency_on_non_core_integration_allowed(
+    config: Config = Depends(config),
+) -> None:
+    """Test that depending on a non-core integration is not rejected."""
+    consumer = get_integration("consumer", config)
+    consumer.manifest["dependencies"] = ["other"]
+
+    integrations = {
+        "consumer": consumer,
+        "other": get_integration("other", config),
+    }
+
+    _validate_dependencies(integrations)
+
+    expect(consumer.errors).to_equal([])
+
+
+@test
+def core_integrations_in_sync_with_bootstrap() -> None:
+    """Test the duplicated CORE_INTEGRATIONS stays aligned with bootstrap."""
+    from homeassistant.bootstrap import (  # noqa: PLC0415
+        CORE_INTEGRATIONS as bootstrap_core_integrations,
+    )
+
+    expect(bootstrap_core_integrations).to_equal(CORE_INTEGRATIONS)
