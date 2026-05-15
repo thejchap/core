@@ -4,14 +4,28 @@ from contextvars import ContextVar
 from http import HTTPStatus
 
 from aiohttp import web
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.http.request_context import setup_request_context
 
+from tests.hass_fixtures import (
+    aiohttp_client as aiohttp_client_fixture,
+    mock_network,
+)
 from tests.typing import ClientSessionGenerator
 
 
-async def test_request_context_middleware(
-    aiohttp_client: ClientSessionGenerator,
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test
+async def request_context_middleware(
+    _trigger: None = Depends(_trigger_executor),
+    aiohttp_client: ClientSessionGenerator = Depends(aiohttp_client_fixture),
 ) -> None:
     """Test that request context is set from middleware."""
     context = ContextVar("request", default=None)
@@ -30,10 +44,9 @@ async def test_request_context_middleware(
     mock_api_client = await aiohttp_client(app)
 
     resp = await mock_api_client.get("/")
-    assert resp.status == HTTPStatus.OK
+    expect(resp.status).to_equal(HTTPStatus.OK)
 
     text = await resp.text()
-    assert text == "hi!"
+    expect(text).to_equal("hi!")
 
-    # We are outside of the context here, should be None
-    assert context.get() is None
+    expect(context.get() is None).to_be(True)
