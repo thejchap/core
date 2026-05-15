@@ -1,20 +1,19 @@
 """The tests for the Apache Kafka component."""
 
-from asyncio import AbstractEventLoop
-from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import patch
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components import apache_kafka
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
-APACHE_KAFKA_PATH = "homeassistant.components.apache_kafka"
-PRODUCER_PATH = f"{APACHE_KAFKA_PATH}.AIOKafkaProducer"
+from ._fixtures import MockKafkaClient, mock_client
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
+
 MIN_CONFIG = {
     "ip_address": "localhost",
     "port": 8080,
@@ -30,44 +29,32 @@ class FilterTest:
     should_pass: bool
 
 
-@dataclass
-class MockKafkaClient:
-    """Mock of the Apache Kafka client for testing."""
-
-    init: Callable[[type[AbstractEventLoop], str, str], None]
-    start: Callable[[], None]
-    send_and_wait: Callable[[str, str], None]
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
 
 
-@pytest.fixture(name="mock_client")
-def mock_client_fixture() -> Generator[MockKafkaClient]:
-    """Mock the apache kafka client."""
-    with (
-        patch(f"{PRODUCER_PATH}.start") as start,
-        patch(f"{PRODUCER_PATH}.send_and_wait") as send_and_wait,
-        patch(f"{PRODUCER_PATH}.__init__", return_value=None) as init,
-    ):
-        yield MockKafkaClient(init, start, send_and_wait)
-
-
-@pytest.fixture(autouse=True, scope="module")
-def mock_client_stop():
-    """Mock client stop at module scope for teardown."""
-    with patch(f"{PRODUCER_PATH}.stop") as stop:
-        yield stop
-
-
-async def test_minimal_config(
-    hass: HomeAssistant, mock_client: MockKafkaClient
+@test
+async def minimal_config(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MockKafkaClient = Depends(mock_client),
 ) -> None:
     """Test the minimal config and defaults of component."""
     config = {apache_kafka.DOMAIN: MIN_CONFIG}
-    assert await async_setup_component(hass, apache_kafka.DOMAIN, config)
+    expect(await async_setup_component(hass, apache_kafka.DOMAIN, config)).to_be(True)
     await hass.async_block_till_done()
-    mock_client.start.assert_called_once()
+    client.start.assert_called_once()
 
 
-async def test_full_config(hass: HomeAssistant, mock_client: MockKafkaClient) -> None:
+@test
+async def full_config(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MockKafkaClient = Depends(mock_client),
+) -> None:
     """Test the full config of component."""
     config = {
         apache_kafka.DOMAIN: {
@@ -83,9 +70,9 @@ async def test_full_config(hass: HomeAssistant, mock_client: MockKafkaClient) ->
     }
     config[apache_kafka.DOMAIN].update(MIN_CONFIG)
 
-    assert await async_setup_component(hass, apache_kafka.DOMAIN, config)
+    expect(await async_setup_component(hass, apache_kafka.DOMAIN, config)).to_be(True)
     await hass.async_block_till_done()
-    mock_client.start.assert_called_once()
+    client.start.assert_called_once()
 
 
 async def _setup(hass: HomeAssistant, filter_config: dict[str, Any]) -> None:
@@ -98,21 +85,26 @@ async def _setup(hass: HomeAssistant, filter_config: dict[str, Any]) -> None:
 
 
 async def _run_filter_tests(
-    hass: HomeAssistant, tests: list[FilterTest], mock_client: MockKafkaClient
+    hass: HomeAssistant, tests: list[FilterTest], client: MockKafkaClient
 ) -> None:
     """Run a series of filter tests on apache kafka."""
-    for test in tests:
-        hass.states.async_set(test.id, STATE_ON)
+    for case in tests:
+        hass.states.async_set(case.id, STATE_ON)
         await hass.async_block_till_done()
 
-        if test.should_pass:
-            mock_client.send_and_wait.assert_called_once()
-            mock_client.send_and_wait.reset_mock()
+        if case.should_pass:
+            client.send_and_wait.assert_called_once()
+            client.send_and_wait.reset_mock()
         else:
-            mock_client.send_and_wait.assert_not_called()
+            client.send_and_wait.assert_not_called()
 
 
-async def test_allowlist(hass: HomeAssistant, mock_client: MockKafkaClient) -> None:
+@test
+async def allowlist(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MockKafkaClient = Depends(mock_client),
+) -> None:
     """Test an allowlist only config."""
     await _setup(
         hass,
@@ -132,10 +124,15 @@ async def test_allowlist(hass: HomeAssistant, mock_client: MockKafkaClient) -> N
         FilterTest("binary_sensor.excluded", False),
     ]
 
-    await _run_filter_tests(hass, tests, mock_client)
+    await _run_filter_tests(hass, tests, client)
 
 
-async def test_denylist(hass: HomeAssistant, mock_client: MockKafkaClient) -> None:
+@test
+async def denylist(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MockKafkaClient = Depends(mock_client),
+) -> None:
     """Test a denylist only config."""
     await _setup(
         hass,
@@ -155,11 +152,14 @@ async def test_denylist(hass: HomeAssistant, mock_client: MockKafkaClient) -> No
         FilterTest("binary_sensor.excluded", False),
     ]
 
-    await _run_filter_tests(hass, tests, mock_client)
+    await _run_filter_tests(hass, tests, client)
 
 
-async def test_filtered_allowlist(
-    hass: HomeAssistant, mock_client: MockKafkaClient
+@test
+async def filtered_allowlist(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MockKafkaClient = Depends(mock_client),
 ) -> None:
     """Test an allowlist config with a filtering denylist."""
     await _setup(
@@ -181,11 +181,14 @@ async def test_filtered_allowlist(
         FilterTest("climate.included_test", True),
     ]
 
-    await _run_filter_tests(hass, tests, mock_client)
+    await _run_filter_tests(hass, tests, client)
 
 
-async def test_filtered_denylist(
-    hass: HomeAssistant, mock_client: MockKafkaClient
+@test
+async def filtered_denylist(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    client: MockKafkaClient = Depends(mock_client),
 ) -> None:
     """Test a denylist config with a filtering allowlist."""
     await _setup(
@@ -207,4 +210,7 @@ async def test_filtered_denylist(
         FilterTest("light.included", True),
     ]
 
-    await _run_filter_tests(hass, tests, mock_client)
+    await _run_filter_tests(hass, tests, client)
+
+
+_ = (mock_client,)
