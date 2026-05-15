@@ -1,47 +1,59 @@
 """Tests for bosch alarm integration init."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 
-from . import setup_integration
-
 from tests.common import MockConfigEntry
+from tests.components.bosch_alarm import setup_integration
+from tests.components.bosch_alarm._fixtures import (
+    disable_platform_only,
+    mock_config_entry_solution_3000,
+    mock_panel_solution_3000,
+)
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@pytest.fixture(autouse=True)
-def disable_platform_only():
-    """Disable platforms to speed up tests."""
-    with patch("homeassistant.components.bosch_alarm.PLATFORMS", []):
-        yield
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _disable_platforms: None = Depends(disable_platform_only),
+) -> None:
+    """Anchor for tryke fixture resolution."""
 
 
-@pytest.mark.parametrize("model", ["solution_3000"])
-@pytest.mark.parametrize("exception", [PermissionError()])
-async def test_incorrect_auth(
-    hass: HomeAssistant,
-    mock_panel: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test.cases(
+    test.case("permission_error", exception=PermissionError()),
+)
+async def incorrect_auth(
+    *,
     exception: Exception,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_panel: AsyncMock = Depends(mock_panel_solution_3000),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_solution_3000),
 ) -> None:
     """Test errors with incorrect auth."""
     mock_panel.connect.side_effect = exception
     await setup_integration(hass, mock_config_entry)
-    assert mock_config_entry.state is ConfigEntryState.SETUP_ERROR
+    expect(mock_config_entry.state is ConfigEntryState.SETUP_ERROR).to_be(True)
 
 
-@pytest.mark.parametrize("model", ["solution_3000"])
-@pytest.mark.parametrize("exception", [TimeoutError()])
-async def test_connection_error(
-    hass: HomeAssistant,
-    mock_panel: AsyncMock,
-    mock_config_entry: MockConfigEntry,
+@test.cases(
+    test.case("timeout_error", exception=TimeoutError()),
+)
+async def connection_error(
+    *,
     exception: Exception,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_panel: AsyncMock = Depends(mock_panel_solution_3000),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry_solution_3000),
 ) -> None:
     """Test errors with incorrect auth."""
     mock_panel.connect.side_effect = exception
     await setup_integration(hass, mock_config_entry)
-    assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
+    expect(mock_config_entry.state is ConfigEntryState.SETUP_RETRY).to_be(True)
