@@ -1,6 +1,6 @@
 """The tests for the Air Quality component."""
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.air_quality import ATTR_N2O, ATTR_OZONE, ATTR_PM_10
 from homeassistant.const import (
@@ -11,41 +11,51 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
+from tests.hass_fixtures import hass as hass_fixture
 
-@pytest.fixture(autouse=True)
-async def setup_homeassistant(hass: HomeAssistant):
-    """Set up the homeassistant integration."""
+
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
     await async_setup_component(hass, "homeassistant", {})
+    return hass
 
 
-async def test_state(hass: HomeAssistant) -> None:
+@test
+async def state(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
     """Test Air Quality state."""
     config = {"air_quality": {"platform": "demo"}}
 
-    assert await async_setup_component(hass, "air_quality", config)
+    expect(await async_setup_component(hass, "air_quality", config)).to_be_truthy()
     await hass.async_block_till_done()
 
     state = hass.states.get("air_quality.demo_air_quality_home")
-    assert state is not None
+    expect(state is not None).to_be(True)
 
-    assert state.state == "14"
+    expect(state.state).to_equal("14")
 
 
-async def test_attributes(hass: HomeAssistant) -> None:
+@test
+async def attributes(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
     """Test Air Quality attributes."""
     config = {"air_quality": {"platform": "demo"}}
 
-    assert await async_setup_component(hass, "air_quality", config)
+    expect(await async_setup_component(hass, "air_quality", config)).to_be_truthy()
     await hass.async_block_till_done()
 
     state = hass.states.get("air_quality.demo_air_quality_office")
-    assert state is not None
+    expect(state is not None).to_be(True)
 
     data = state.attributes
-    assert data.get(ATTR_PM_10) == 16
-    assert data.get(ATTR_N2O) is None
-    assert data.get(ATTR_OZONE) is None
-    assert data.get(ATTR_ATTRIBUTION) == "Powered by Home Assistant"
-    assert (
-        data.get(ATTR_UNIT_OF_MEASUREMENT) == CONCENTRATION_MICROGRAMS_PER_CUBIC_METER
+    expect(data.get(ATTR_PM_10)).to_equal(16)
+    expect(data.get(ATTR_N2O)).to_be(None)
+    expect(data.get(ATTR_OZONE)).to_be(None)
+    expect(data.get(ATTR_ATTRIBUTION)).to_equal("Powered by Home Assistant")
+    expect(data.get(ATTR_UNIT_OF_MEASUREMENT)).to_equal(
+        CONCENTRATION_MICROGRAMS_PER_CUBIC_METER
     )
