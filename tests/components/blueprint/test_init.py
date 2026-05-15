@@ -1,1 +1,1 @@
-"""Tryke skip stub (pending port)."""
+"""Tests for the blueprint init."""
