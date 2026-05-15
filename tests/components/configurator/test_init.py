@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components import configurator
 from homeassistant.const import ATTR_FRIENDLY_NAME
@@ -11,33 +11,47 @@ from homeassistant.exceptions import Unauthorized
 from homeassistant.util import dt as dt_util
 
 from tests.common import MockUser, async_fire_time_changed
-
-
-@pytest.mark.parametrize(
-    "ignore_missing_translations", ["component.configurator.services.configure."]
+from tests.hass_fixtures import (
+    hass as hass_fixture,
+    hass_read_only_user as hass_read_only_user_fixture,
+    mock_network,
 )
-async def test_request_least_info(hass: HomeAssistant) -> None:
+from tests.hass_tryke_helpers import expect_raises_async
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test
+async def request_least_info(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test request config with least amount of data."""
     request_id = configurator.async_request_config(hass, "Test Request", lambda _: None)
 
-    assert len(hass.services.async_services().get(configurator.DOMAIN, [])) == 1, (
-        "No new service registered"
-    )
+    expect(
+        len(hass.services.async_services().get(configurator.DOMAIN, [])),
+        "registered service count",
+    ).to_equal(1)
 
     states = hass.states.async_all()
-
-    assert len(states) == 1, "Expected a new state registered"
+    expect(len(states), "state count").to_equal(1)
 
     state = states[0]
+    expect(state.state).to_equal(configurator.STATE_CONFIGURE)
+    expect(state.attributes.get(configurator.ATTR_CONFIGURE_ID)).to_equal(request_id)
 
-    assert state.state == configurator.STATE_CONFIGURE
-    assert state.attributes.get(configurator.ATTR_CONFIGURE_ID) == request_id
 
-
-@pytest.mark.parametrize(
-    "ignore_missing_translations", ["component.configurator.services.configure."]
-)
-async def test_request_all_info(hass: HomeAssistant) -> None:
+@test
+async def request_all_info(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test request config with all possible info."""
     exp_attr = {
         ATTR_FRIENDLY_NAME: "Test Request",
@@ -64,17 +78,18 @@ async def test_request_all_info(hass: HomeAssistant) -> None:
     }
 
     states = hass.states.async_all()
-    assert len(states) == 1
+    expect(len(states)).to_equal(1)
     state = states[0]
 
-    assert state.state == configurator.STATE_CONFIGURE
-    assert state.attributes == exp_attr
+    expect(state.state).to_equal(configurator.STATE_CONFIGURE)
+    expect(state.attributes).to_equal(exp_attr)
 
 
-@pytest.mark.parametrize(
-    "ignore_missing_translations", ["component.configurator.services.configure."]
-)
-async def test_callback_called_on_configure(hass: HomeAssistant) -> None:
+@test
+async def callback_called_on_configure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test if our callback gets called when configure service called."""
     calls = []
     request_id = configurator.async_request_config(
@@ -88,61 +103,67 @@ async def test_callback_called_on_configure(hass: HomeAssistant) -> None:
     )
 
     await hass.async_block_till_done()
-    assert len(calls) == 1, "Callback not called"
+    expect(len(calls), "callback invocations").to_equal(1)
 
 
-@pytest.mark.parametrize(
-    "ignore_missing_translations", ["component.configurator.services.configure."]
-)
-async def test_state_change_on_notify_errors(hass: HomeAssistant) -> None:
+@test
+async def state_change_on_notify_errors(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test state change on notify errors."""
     request_id = configurator.async_request_config(hass, "Test Request", lambda _: None)
     error = "Oh no bad bad bad"
     configurator.async_notify_errors(hass, request_id, error)
 
     states = hass.states.async_all()
-    assert len(states) == 1
+    expect(len(states)).to_equal(1)
     state = states[0]
-    assert state.attributes.get(configurator.ATTR_ERRORS) == error
+    expect(state.attributes.get(configurator.ATTR_ERRORS)).to_equal(error)
 
 
-async def test_notify_errors_fail_silently_on_bad_request_id(
-    hass: HomeAssistant,
+@test
+async def notify_errors_fail_silently_on_bad_request_id(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test if notify errors fails silently with a bad request id."""
     configurator.async_notify_errors(hass, 2015, "Try this error")
 
 
-@pytest.mark.parametrize(
-    "ignore_missing_translations", ["component.configurator.services.configure."]
-)
-async def test_request_done_works(hass: HomeAssistant) -> None:
+@test
+async def request_done_works(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test if calling request done works."""
     request_id = configurator.async_request_config(hass, "Test Request", lambda _: None)
     configurator.async_request_done(hass, request_id)
-    assert len(hass.states.async_all()) == 1
+    expect(len(hass.states.async_all())).to_equal(1)
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=1))
     await hass.async_block_till_done()
-    assert len(hass.states.async_all()) == 0
+    expect(len(hass.states.async_all())).to_equal(0)
 
 
-async def test_request_done_fail_silently_on_bad_request_id(
-    hass: HomeAssistant,
+@test
+async def request_done_fail_silently_on_bad_request_id(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test that request_done fails silently with a bad request id."""
     configurator.async_request_done(hass, 2016)
 
 
-@pytest.mark.parametrize(
-    "ignore_missing_translations", ["component.configurator.services.configure."]
-)
-async def test_configure_service_requires_admin(
-    hass: HomeAssistant, hass_read_only_user: MockUser
+@test
+async def configure_service_requires_admin(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_read_only_user: MockUser = Depends(hass_read_only_user_fixture),
 ) -> None:
     """Test the configure service requires admin."""
     request_id = configurator.async_request_config(hass, "Test Request", lambda _: None)
 
-    with pytest.raises(Unauthorized):
+    async with expect_raises_async(Unauthorized):
         await hass.services.async_call(
             configurator.DOMAIN,
             configurator.SERVICE_CONFIGURE,
