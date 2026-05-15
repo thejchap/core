@@ -1,13 +1,20 @@
 """Test the sensor significant change platform."""
 
+from tryke import expect, test
+
 from homeassistant.components.switch.significant_change import (
     async_check_significant_change,
 )
 
 
-async def test_significant_change() -> None:
+@test
+async def significant_change() -> None:
     """Detect Switch significant change."""
-    attrs = {}
-    assert not async_check_significant_change(None, "on", attrs, "on", attrs)
-    assert not async_check_significant_change(None, "off", attrs, "off", attrs)
-    assert async_check_significant_change(None, "on", attrs, "off", attrs)
+    attrs: dict = {}
+    expect(async_check_significant_change(None, "on", attrs, "on", attrs)).to_be_falsy()
+    expect(
+        async_check_significant_change(None, "off", attrs, "off", attrs)
+    ).to_be_falsy()
+    expect(
+        async_check_significant_change(None, "on", attrs, "off", attrs)
+    ).to_be_truthy()
