@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.aurora_abb_powerone.const import (
     ATTR_FIRMWARE,
     ATTR_MODEL,
@@ -12,9 +14,18 @@ from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
 
 
-async def test_unload_entry(hass: HomeAssistant) -> None:
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@test
+async def unload_entry(hass: HomeAssistant = Depends(_trigger_executor)) -> None:
     """Test unloading the aurora_abb_powerone entry."""
 
     with (
@@ -47,7 +58,9 @@ async def test_unload_entry(hass: HomeAssistant) -> None:
             },
         )
         mock_entry.add_to_hass(hass)
-        assert await async_setup_component(hass, DOMAIN, {})
+        expect(await async_setup_component(hass, DOMAIN, {})).to_be_truthy()
         await hass.async_block_till_done()
-        assert await hass.config_entries.async_unload(mock_entry.entry_id)
+        expect(
+            await hass.config_entries.async_unload(mock_entry.entry_id)
+        ).to_be_truthy()
         await hass.async_block_till_done()

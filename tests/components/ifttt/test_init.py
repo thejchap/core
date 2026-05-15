@@ -1,16 +1,33 @@
 """Test the init file of IFTTT."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components import ifttt
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.core_config import async_process_ha_core_config
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.hass_fixtures import (
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
+)
 from tests.typing import ClientSessionGenerator
 
 
-async def test_config_flow_registers_webhook(
-    hass: HomeAssistant, hass_client_no_auth: ClientSessionGenerator
+@fixture
+async def _trigger_executor(
+    _network: None = Depends(mock_network),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@test
+async def config_flow_registers_webhook(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    hass_client_no_auth: ClientSessionGenerator = Depends(hass_client_no_auth),
 ) -> None:
     """Test setting up IFTTT and sending webhook."""
     await async_process_ha_core_config(
@@ -21,10 +38,10 @@ async def test_config_flow_registers_webhook(
     result = await hass.config_entries.flow.async_init(
         "ifttt", context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM, result
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     webhook_id = result["result"].data["webhook_id"]
 
     ifttt_events = []
@@ -39,14 +56,12 @@ async def test_config_flow_registers_webhook(
     client = await hass_client_no_auth()
     await client.post(f"/api/webhook/{webhook_id}", json={"hello": "ifttt"})
 
-    assert len(ifttt_events) == 1
-    assert ifttt_events[0].data["webhook_id"] == webhook_id
-    assert ifttt_events[0].data["hello"] == "ifttt"
+    expect(len(ifttt_events)).to_equal(1)
+    expect(ifttt_events[0].data["webhook_id"]).to_equal(webhook_id)
+    expect(ifttt_events[0].data["hello"]).to_equal("ifttt")
 
-    # Invalid JSON
     await client.post(f"/api/webhook/{webhook_id}", data="not a dict")
-    assert len(ifttt_events) == 1
+    expect(len(ifttt_events)).to_equal(1)
 
-    # Not a dict
     await client.post(f"/api/webhook/{webhook_id}", json="not a dict")
-    assert len(ifttt_events) == 1
+    expect(len(ifttt_events)).to_equal(1)
