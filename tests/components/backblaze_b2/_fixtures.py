@@ -95,6 +95,13 @@ def b2_fixture() -> Generator[BackblazeFixture]:
     }
     account_info = AccountInfo(allowed)
 
+    # Set these on the class permanently. HA's backblaze repair check runs
+    # during hass shutdown, which happens after this fixture's ``with`` block
+    # has exited — so we can't rely on patch.object to keep them alive.
+    # All tests use compatible values; per-test variations use patch() of
+    # the deeper ``account_info.get_allowed`` attribute instead.
+    RawSimulator.account_info = account_info
+    RawSimulator.get_bucket_by_name = RawSimulator._get_bucket_by_name
     with (
         patch("b2sdk.v2.B2Api", return_value=sim) as mock_client,
         patch(
@@ -105,13 +112,6 @@ def b2_fixture() -> Generator[BackblazeFixture]:
             "homeassistant.components.backblaze_b2.config_flow.B2Api",
             return_value=sim,
         ),
-        patch.object(
-            RawSimulator,
-            "get_bucket_by_name",
-            RawSimulator._get_bucket_by_name,
-            create=True,
-        ),
-        patch.object(RawSimulator, "account_info", account_info, create=True),
     ):
         sim = mock_client.return_value
         account_id, application_key = sim.create_account()

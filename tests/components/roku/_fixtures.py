@@ -102,3 +102,22 @@ def mock_roku(
         client.app_icon_url.side_effect = app_icon_url
         client.update.return_value = device
         yield client
+
+
+@fixture
+async def init_integration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_device: RokuDevice = Depends(mock_device),
+    mock_roku: MagicMock = Depends(mock_roku),
+) -> MockConfigEntry:
+    """Set up the Roku integration for testing."""
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(
+        mock_config_entry, unique_id=mock_device.info.serial_number
+    )
+
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    return mock_config_entry

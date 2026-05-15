@@ -93,6 +93,7 @@ def mock_async_zeroconf() -> Generator[MagicMock]:
         zc.zeroconf.async_wait_for_start = AsyncMock()
         zc.zeroconf.cache = DNSCache()
         zc.async_close = AsyncMock()
+        zc.ha_async_close = AsyncMock()
         yield mock_aiozc
 
 

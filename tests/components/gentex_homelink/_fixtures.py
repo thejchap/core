@@ -4,6 +4,8 @@ from collections.abc import Generator
 from http import HTTPStatus
 from unittest.mock import AsyncMock, patch
 
+from homelink.model.button import Button
+import homelink.model.device
 from tryke import Depends, fixture
 
 from homeassistant.components.gentex_homelink.const import DOMAIN, OAUTH2_TOKEN_URL
@@ -77,3 +79,31 @@ def mock_setup_entry() -> Generator[AsyncMock]:
         "homeassistant.components.gentex_homelink.async_setup_entry", return_value=True
     ) as mock_setup_entry:
         yield mock_setup_entry
+
+
+@fixture
+def mock_device() -> AsyncMock:
+    """Mock Device instance."""
+    device = AsyncMock(spec=homelink.model.device.Device, autospec=True)
+    buttons = [
+        Button(id="1", name="Button 1", device=device),
+        Button(id="2", name="Button 2", device=device),
+        Button(id="3", name="Button 3", device=device),
+    ]
+    device.id = "TestDevice"
+    device.name = "TestDevice"
+    device.buttons = buttons
+    return device
+
+
+@fixture
+def mock_mqtt_provider(
+    mock_device: AsyncMock = Depends(mock_device),
+) -> Generator[AsyncMock]:
+    """Mock MQTT provider."""
+    with patch(
+        "homeassistant.components.gentex_homelink.MQTTProvider", autospec=True
+    ) as mock_mqtt_provider:
+        instance = mock_mqtt_provider.return_value
+        instance.discover.return_value = [mock_device]
+        yield instance

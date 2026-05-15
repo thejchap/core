@@ -22,6 +22,7 @@ from . import (
 from ._fixtures import (
     aioclient_mock_post_token,
     mock_config_entry,
+    mock_mqtt_provider,
     mock_setup_entry,
     mock_srp_auth,
 )
@@ -175,6 +176,7 @@ async def reauth_successful(
     hass: HomeAssistant = Depends(hass_fixture),
     _srp: AsyncMock = Depends(mock_srp_auth),
     _aio: AiohttpClientMocker = Depends(aioclient_mock_post_token),
+    _mqtt: AsyncMock = Depends(mock_mqtt_provider),
     config_entry: MockConfigEntry = Depends(mock_config_entry),
 ) -> None:
     """Test the reauth flow."""

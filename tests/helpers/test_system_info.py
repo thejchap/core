@@ -66,6 +66,10 @@ async def get_system_info_supervisor_not_loaded(
         patch("platform.system", return_value="Linux"),
         patch("homeassistant.helpers.system_info.is_docker_env", return_value=True),
         patch("homeassistant.helpers.system_info.is_official_image", return_value=True),
+        patch(
+            "homeassistant.helpers.system_info.cached_get_user",
+            return_value="hass",
+        ),
         patch.object(hassio, "get_info", return_value=None),
         patch.dict(os.environ, {"SUPERVISOR": "127.0.0.1"}),
     ):
