@@ -572,7 +572,9 @@ def mock_network() -> Generator[None]:
     from aiohttp.resolver import AsyncResolver  # noqa: PLC0415
 
     def _make_resolver(*_args: Any, **_kwargs: Any) -> AsyncResolver:
-        return AsyncResolver()
+        resolver = AsyncResolver()
+        resolver.real_close = resolver.close
+        return resolver
 
     with (
         patch(
