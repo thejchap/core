@@ -3,7 +3,7 @@
 from unittest.mock import patch
 
 from aiobafi6.exceptions import DeviceUUIDMismatchError
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.baf.const import DOMAIN
 from homeassistant.config_entries import ConfigEntryState
@@ -14,6 +14,7 @@ from homeassistant.setup import async_setup_component
 from . import MOCK_UUID, MockBAFDevice
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import LogCapture, caplog, hass as hass_fixture
 
 
 def _patch_device_init(side_effect=None):
@@ -25,8 +26,17 @@ def _patch_device_init(side_effect=None):
     return patch("homeassistant.components.baf.Device", _create_mock_baf)
 
 
-async def test_config_entry_wrong_uuid(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@fixture
+def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@test
+async def config_entry_wrong_uuid(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    caplog_capture: LogCapture = Depends(caplog),
 ) -> None:
     """Test config entry enters setup retry when uuid mismatches."""
     mismatched_uuid = MOCK_UUID + "0"
@@ -37,8 +47,8 @@ async def test_config_entry_wrong_uuid(
     with _patch_device_init(DeviceUUIDMismatchError):
         await async_setup_component(hass, DOMAIN, {DOMAIN: {}})
         await hass.async_block_till_done()
-    assert already_migrated_config_entry.state is ConfigEntryState.SETUP_RETRY
-    assert (
+    expect(already_migrated_config_entry.state).to_be(ConfigEntryState.SETUP_RETRY)
+    expect(
         "Unexpected device found at 127.0.0.1; expected 12340, found 1234"
-        in caplog.text
-    )
+        in caplog_capture.text
+    ).to_be(True)
