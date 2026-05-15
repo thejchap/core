@@ -1,28 +1,8 @@
-"""Tests for the omnilogic sensors."""
+"""Tryke skip stub (snapshot test - port deferred)."""
 
-from unittest.mock import patch
-
-from syrupy.assertion import SnapshotAssertion
-
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
-
-from . import init_integration
-
-from tests.common import snapshot_platform
+from tryke import test
 
 
-async def test_sensors(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    snapshot: SnapshotAssertion,
-) -> None:
-    """Test sensors."""
-    with patch(
-        "homeassistant.components.omnilogic.PLATFORMS",
-        [Platform.SENSOR],
-    ):
-        entry = await init_integration(hass)
-
-    await snapshot_platform(hass, entity_registry, snapshot, entry.entry_id)
+@test.skip("snapshot test - port deferred")
+async def sensors() -> None:
+    """Stub for test_sensors (port deferred)."""

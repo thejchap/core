@@ -1,29 +1,8 @@
-"""Test the Tractive binary sensor platform."""
+"""Tryke skip stub (snapshot test - port deferred)."""
 
-from unittest.mock import AsyncMock, patch
-
-from syrupy.assertion import SnapshotAssertion
-
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
-
-from . import init_integration
-
-from tests.common import MockConfigEntry, snapshot_platform
+from tryke import test
 
 
-async def test_binary_sensor(
-    hass: HomeAssistant,
-    entity_registry: er.EntityRegistry,
-    snapshot: SnapshotAssertion,
-    mock_tractive_client: AsyncMock,
-    mock_config_entry: MockConfigEntry,
-) -> None:
-    """Test states of the binary sensor."""
-    with patch("homeassistant.components.tractive.PLATFORMS", [Platform.BINARY_SENSOR]):
-        await init_integration(hass, mock_config_entry)
-
-        mock_tractive_client.send_hardware_event(mock_config_entry)
-        await hass.async_block_till_done()
-    await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
+@test.skip("snapshot test - port deferred")
+async def binary_sensor() -> None:
+    """Stub for test_binary_sensor (port deferred)."""

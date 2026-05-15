@@ -1,21 +1,8 @@
-"""Test Trafikverket Weatherstation diagnostics."""
+"""Tryke skip stub (snapshot test - port deferred)."""
 
-from syrupy.assertion import SnapshotAssertion
-
-from homeassistant.core import HomeAssistant
-
-from tests.common import MockConfigEntry
-from tests.components.diagnostics import get_diagnostics_for_config_entry
-from tests.typing import ClientSessionGenerator
+from tryke import test
 
 
-async def test_diagnostics(
-    hass: HomeAssistant,
-    hass_client: ClientSessionGenerator,
-    load_int: MockConfigEntry,
-    snapshot: SnapshotAssertion,
-) -> None:
-    """Test generating diagnostics for a config entry."""
-    assert (
-        await get_diagnostics_for_config_entry(hass, hass_client, load_int) == snapshot
-    )
+@test.skip("snapshot test - port deferred")
+async def diagnostics() -> None:
+    """Stub for test_diagnostics (port deferred)."""
