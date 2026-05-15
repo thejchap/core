@@ -35,13 +35,16 @@ async def canceling_debouncer_normal(
     cap: LogCapture = Depends(caplog),
 ) -> None:
     """Test canceling the debouncer before completion."""
+    job_started = asyncio.Event()
+    job_unblock = asyncio.Event()
 
     async def _async_myjob() -> None:
-        await asyncio.sleep(1.0)
+        job_started.set()
+        await job_unblock.wait()
 
     debouncer = EnsureJobAfterCooldown(0.0, _async_myjob)
     debouncer.async_schedule()
-    await asyncio.sleep(0.01)
+    await asyncio.wait_for(job_started.wait(), timeout=1)
     expect(debouncer._task is not None).to_be(True)
     await debouncer.async_cleanup()
     expect(debouncer._task is None).to_be(True)
@@ -54,13 +57,16 @@ async def canceling_debouncer_throws(
     cap: LogCapture = Depends(caplog),
 ) -> None:
     """Test canceling the debouncer when HA shuts down."""
+    job_started = asyncio.Event()
+    job_unblock = asyncio.Event()
 
     async def _async_myjob() -> None:
-        await asyncio.sleep(1.0)
+        job_started.set()
+        await job_unblock.wait()
 
     debouncer = EnsureJobAfterCooldown(0.0, _async_myjob)
     debouncer.async_schedule()
-    await asyncio.sleep(0.01)
+    await asyncio.wait_for(job_started.wait(), timeout=1)
     expect(debouncer._task is not None).to_be(True)
     # let debouncer._task fail by mocking it
     with patch.object(debouncer, "_task") as task:

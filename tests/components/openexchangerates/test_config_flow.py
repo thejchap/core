@@ -171,7 +171,7 @@ async def currencies_timeout(
     """Test we abort if the service times out retrieving currencies."""
 
     async def currencies_side_effect():
-        await asyncio.sleep(1)
+        await asyncio.Event().wait()
         return {"USD": "United States Dollar", "EUR": "Euro"}
 
     currencies_mock.side_effect = currencies_side_effect
@@ -195,7 +195,7 @@ async def latest_rates_timeout(
     """Test we abort if the service times out retrieving latest rates."""
 
     async def latest_rates_side_effect(*args: Any, **kwargs: Any) -> dict[str, float]:
-        await asyncio.sleep(1)
+        await asyncio.Event().wait()
         return {"EUR": 1.0}
 
     latest.side_effect = latest_rates_side_effect

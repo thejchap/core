@@ -126,7 +126,7 @@ async def user_flow_token_polling_error(
     expect(result["step_id"]).to_equal("connection_error")
 
     async def successful_poll_for_token(device_code: str) -> dict[str, str]:
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0)
         return {
             "access_token": "test_access_token",
             "refresh_token": "test_refresh_token",
@@ -277,7 +277,7 @@ async def user_flow_timeout(
     expect(result["step_id"]).to_equal("timeout")
 
     async def successful_poll_for_token(device_code: str) -> dict[str, str]:
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0)
         return {
             "access_token": "test_access_token",
             "refresh_token": "test_refresh_token",
