@@ -1,26 +1,42 @@
 """The tests for the geolocation component."""
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components import geo_location
 from homeassistant.components.geo_location import GeolocationEvent
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-async def test_setup_component(hass: HomeAssistant) -> None:
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test
+async def setup_component(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Simple test setup of component."""
     result = await async_setup_component(hass, geo_location.DOMAIN, {})
-    assert result
+    expect(bool(result)).to_be(True)
 
 
-async def test_event(hass: HomeAssistant) -> None:
+@test
+async def event(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Simple test of the geolocation event class."""
     entity = GeolocationEvent()
 
-    assert entity.state is None
-    assert entity.distance is None
-    assert entity.latitude is None
-    assert entity.longitude is None
-    with pytest.raises(AttributeError):
-        assert entity.source is None
+    expect(entity.state).to_be(None)
+    expect(entity.distance).to_be(None)
+    expect(entity.latitude).to_be(None)
+    expect(entity.longitude).to_be(None)
+    expect(lambda: entity.source).to_raise(AttributeError)
