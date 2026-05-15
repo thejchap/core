@@ -1,16 +1,36 @@
 """Tests for analytics platform."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.analytics import async_devices_payload
 from homeassistant.components.mobile_app import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.setup import async_setup_component
 
+from ._fixtures import setup_ws as setup_ws_fixture
+
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    device_registry as device_registry_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
 
 
-async def test_analytics(
-    hass: HomeAssistant, device_registry: dr.DeviceRegistry
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test
+async def analytics(
+    _trigger: None = Depends(_trigger_executor),
+    _ws: None = Depends(setup_ws_fixture),
+    hass: HomeAssistant = Depends(hass_fixture),
+    device_registry: dr.DeviceRegistry = Depends(device_registry_fixture),
 ) -> None:
     """Test the analytics platform."""
     await async_setup_component(hass, "analytics", {})
@@ -25,4 +45,4 @@ async def test_analytics(
     )
 
     result = await async_devices_payload(hass)
-    assert DOMAIN not in result["integrations"]
+    expect(DOMAIN not in result["integrations"]).to_be(True)
