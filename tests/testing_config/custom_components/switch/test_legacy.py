@@ -1,1 +1,1 @@
-"""Test switch platform for test_embedded component."""
+"""Tryke skip stub (pending port)."""
