@@ -2,10 +2,13 @@
 
 from unittest.mock import MagicMock
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.kira import remote as kira
 from homeassistant.core import HomeAssistant
 
 from tests.common import MockEntityPlatform
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 SERVICE_SEND_COMMAND = "send_command"
 
@@ -21,19 +24,31 @@ def add_entities(devices):
     DEVICES.extend(devices)
 
 
-def test_service_call(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test
+async def service_call(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test Kira's ability to send commands."""
+    DEVICES.clear()
     mock_kira = MagicMock()
     hass.data[kira.DOMAIN] = {kira.CONF_REMOTE: {}}
     hass.data[kira.DOMAIN][kira.CONF_REMOTE]["kira"] = mock_kira
 
     kira.setup_platform(hass, TEST_CONFIG, add_entities, DISCOVERY_INFO)
-    assert len(DEVICES) == 1
+    expect(len(DEVICES)).to_equal(1)
     remote = DEVICES[0]
     remote.hass = hass
     remote.platform = MockEntityPlatform(hass)
 
-    assert remote.name == "kira"
+    expect(remote.name).to_equal("kira")
 
     command = ["FAKE_COMMAND"]
     device = "FAKE_DEVICE"
