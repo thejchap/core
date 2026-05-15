@@ -1,14 +1,37 @@
 """The tests for the Open Hardware Monitor platform."""
 
-import requests_mock
+from collections.abc import Generator
+
+import requests_mock as requests_mock_lib
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
 from tests.common import async_load_fixture
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_setup(hass: HomeAssistant, requests_mock: requests_mock.Mocker) -> None:
+@fixture
+def requests_mocker() -> Generator[requests_mock_lib.Mocker]:
+    """Provide a requests_mock.Mocker."""
+    with requests_mock_lib.Mocker() as mock:
+        yield mock
+
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test
+async def setup(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    requests_mock: requests_mock_lib.Mocker = Depends(requests_mocker),
+) -> None:
     """Test for successfully setting up the platform."""
     config = {
         "sensor": {
@@ -29,14 +52,18 @@ async def test_setup(hass: HomeAssistant, requests_mock: requests_mock.Mocker) -
     await hass.async_block_till_done()
 
     entities = hass.states.async_entity_ids("sensor")
-    assert len(entities) == 38
+    expect(len(entities)).to_equal(38)
 
-    state = hass.states.get("sensor.test_pc_intel_core_i7_7700_temperatures_cpu_core_1")
+    state = hass.states.get(
+        "sensor.test_pc_intel_core_i7_7700_temperatures_cpu_core_1"
+    )
 
-    assert state is not None
-    assert state.state == "31.0"
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal("31.0")
 
-    state = hass.states.get("sensor.test_pc_intel_core_i7_7700_temperatures_cpu_core_2")
+    state = hass.states.get(
+        "sensor.test_pc_intel_core_i7_7700_temperatures_cpu_core_2"
+    )
 
-    assert state is not None
-    assert state.state == "30.0"
+    expect(state is not None).to_be(True)
+    expect(state.state).to_equal("30.0")
