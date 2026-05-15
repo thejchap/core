@@ -1,6 +1,6 @@
 """Test reproduce state for Text entities."""
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.text.const import (
     ATTR_MAX,
@@ -14,13 +14,23 @@ from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.state import async_reproduce_state
 
 from tests.common import async_mock_service
+from tests.hass_fixtures import LogCapture, caplog as caplog_fixture, hass as hass_fixture
 
 VALID_TEXT1 = "Hello"
 VALID_TEXT2 = "World"
 
 
-async def test_reproducing_states(
-    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@test
+async def reproducing_states(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    caplog: LogCapture = Depends(caplog_fixture),
 ) -> None:
     """Test reproducing Text states."""
 
@@ -40,7 +50,7 @@ async def test_reproducing_states(
         ],
     )
 
-    assert hass.states.get("text.test_text").state == VALID_TEXT1
+    expect(hass.states.get("text.test_text").state).to_equal(VALID_TEXT1)
 
     # Test reproducing with different state
     calls = async_mock_service(hass, DOMAIN, SERVICE_SET_VALUE)
@@ -53,6 +63,6 @@ async def test_reproducing_states(
         ],
     )
 
-    assert len(calls) == 1
-    assert calls[0].domain == DOMAIN
-    assert calls[0].data == {"entity_id": "text.test_text", "value": VALID_TEXT2}
+    expect(len(calls)).to_equal(1)
+    expect(calls[0].domain).to_equal(DOMAIN)
+    expect(calls[0].data).to_equal({"entity_id": "text.test_text", "value": VALID_TEXT2})
