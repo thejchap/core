@@ -1,16 +1,33 @@
 """Test the init file of Twilio."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant import config_entries
 from homeassistant.components import twilio
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.core_config import async_process_ha_core_config
 from homeassistant.data_entry_flow import FlowResultType
 
+from tests.hass_fixtures import (
+    hass as hass_fixture,
+    hass_client_no_auth,
+    mock_network,
+)
 from tests.typing import ClientSessionGenerator
 
 
-async def test_config_flow_registers_webhook(
-    hass: HomeAssistant, hass_client_no_auth: ClientSessionGenerator
+@fixture
+async def _trigger_executor(
+    _network: None = Depends(mock_network),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@test
+async def config_flow_registers_webhook(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    hass_client_no_auth: ClientSessionGenerator = Depends(hass_client_no_auth),
 ) -> None:
     """Test setting up Twilio and sending webhook."""
     await async_process_ha_core_config(
@@ -20,10 +37,10 @@ async def test_config_flow_registers_webhook(
     result = await hass.config_entries.flow.async_init(
         "twilio", context={"source": config_entries.SOURCE_USER}
     )
-    assert result["type"] is FlowResultType.FORM, result
+    expect(result["type"]).to_be(FlowResultType.FORM)
 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    expect(result["type"]).to_be(FlowResultType.CREATE_ENTRY)
     webhook_id = result["result"].data["webhook_id"]
 
     twilio_events = []
@@ -38,6 +55,6 @@ async def test_config_flow_registers_webhook(
     client = await hass_client_no_auth()
     await client.post(f"/api/webhook/{webhook_id}", data={"hello": "twilio"})
 
-    assert len(twilio_events) == 1
-    assert twilio_events[0].data["webhook_id"] == webhook_id
-    assert twilio_events[0].data["hello"] == "twilio"
+    expect(len(twilio_events)).to_equal(1)
+    expect(twilio_events[0].data["webhook_id"]).to_equal(webhook_id)
+    expect(twilio_events[0].data["hello"]).to_equal("twilio")
