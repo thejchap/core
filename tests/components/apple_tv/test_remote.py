@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock
 
-import pytest
+from tryke import expect, test
 
 from homeassistant.components.apple_tv.remote import AppleTVRemote
 from homeassistant.components.remote import (
@@ -12,30 +12,42 @@ from homeassistant.components.remote import (
 )
 
 
-@pytest.mark.parametrize(
-    ("command", "method", "hold_secs"),
-    [
-        ("up", "remote_control.up", 0.0),
-        ("wakeup", "power.turn_on", 0.0),
-        ("volume_up", "audio.volume_up", 0.0),
-        ("home", "remote_control.home", 1.0),
-        ("select", "remote_control.select", 1.0),
-    ],
-    ids=["up", "wakeup", "volume_up", "home", "select"],
+@test.cases(
+    test.case("up", command="up", method="remote_control.up", hold_secs=0.0),
+    test.case("wakeup", command="wakeup", method="power.turn_on", hold_secs=0.0),
+    test.case(
+        "volume_up", command="volume_up", method="audio.volume_up", hold_secs=0.0
+    ),
 )
-async def test_send_command(command: str, method: str, hold_secs: float) -> None:
-    """Test "send_command" method."""
+async def send_command_short_press(
+    *, command: str, method: str, hold_secs: float
+) -> None:
+    """Test "send_command" method without hold."""
     remote = AppleTVRemote("test", "test", None)
     remote.atv = AsyncMock()
     await remote.async_send_command(
         [command],
         **{ATTR_NUM_REPEATS: 1, ATTR_DELAY_SECS: 0, ATTR_HOLD_SECS: hold_secs},
     )
-    assert len(remote.atv.method_calls) == 1
-    if hold_secs >= 1:
-        assert (
-            str(remote.atv.method_calls[0])
-            == f"call.{method}(action=<InputAction.Hold: 2>)"
-        )
-    else:
-        assert str(remote.atv.method_calls[0]) == f"call.{method}()"
+    expect(len(remote.atv.method_calls)).to_equal(1)
+    expect(str(remote.atv.method_calls[0])).to_equal(f"call.{method}()")
+
+
+@test.cases(
+    test.case("home", command="home", method="remote_control.home", hold_secs=1.0),
+    test.case(
+        "select", command="select", method="remote_control.select", hold_secs=1.0
+    ),
+)
+async def send_command_hold(*, command: str, method: str, hold_secs: float) -> None:
+    """Test "send_command" method with hold."""
+    remote = AppleTVRemote("test", "test", None)
+    remote.atv = AsyncMock()
+    await remote.async_send_command(
+        [command],
+        **{ATTR_NUM_REPEATS: 1, ATTR_DELAY_SECS: 0, ATTR_HOLD_SECS: hold_secs},
+    )
+    expect(len(remote.atv.method_calls)).to_equal(1)
+    expect(str(remote.atv.method_calls[0])).to_equal(
+        f"call.{method}(action=<InputAction.Hold: 2>)"
+    )
