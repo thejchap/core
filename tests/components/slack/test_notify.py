@@ -1,24 +1,117 @@
-"""Tryke skip stub (pending port)."""
+"""Test slack notifications."""
 
-from tryke import test
+from unittest.mock import AsyncMock, Mock
+
+from tryke import expect, test
+
+from homeassistant.components import notify
+from homeassistant.components.slack import DOMAIN
+from homeassistant.components.slack.notify import (
+    ATTR_THREAD_TS,
+    CONF_DEFAULT_CHANNEL,
+    SlackNotificationService,
+)
+from homeassistant.const import ATTR_ICON, CONF_API_KEY, CONF_NAME, CONF_PLATFORM
+
+from . import CONF_DATA
+
+SERVICE_NAME = f"notify_{DOMAIN}"
+
+DEFAULT_CONFIG = {
+    notify.DOMAIN: [
+        {
+            CONF_PLATFORM: DOMAIN,
+            CONF_NAME: SERVICE_NAME,
+            CONF_API_KEY: "12345",
+            CONF_DEFAULT_CHANNEL: "channel",
+        }
+    ]
+}
 
 
-@test.skip("pending tryke port")
+@test
 async def message_includes_default_emoji() -> None:
-    """Stub for test_message_includes_default_emoji (port deferred)."""
+    """Tests that default icon is used when no message icon is given."""
+    mock_client = Mock()
+    mock_client.chat_postMessage = AsyncMock()
+    expected_icon = ":robot_face:"
+    service = SlackNotificationService(
+        None, mock_client, CONF_DATA | {ATTR_ICON: expected_icon}
+    )
 
-@test.skip("pending tryke port")
+    await service.async_send_message("test")
+
+    mock_fn = mock_client.chat_postMessage
+    mock_fn.assert_called_once()
+    _, kwargs = mock_fn.call_args
+    expect(kwargs["icon_emoji"]).to_equal(expected_icon)
+
+
+@test
 async def message_emoji_overrides_default() -> None:
-    """Stub for test_message_emoji_overrides_default (port deferred)."""
+    """Tests that overriding the default icon emoji when sending a message works."""
+    mock_client = Mock()
+    mock_client.chat_postMessage = AsyncMock()
+    service = SlackNotificationService(
+        None, mock_client, CONF_DATA | {ATTR_ICON: "default_icon"}
+    )
 
-@test.skip("pending tryke port")
+    expected_icon = ":new:"
+    await service.async_send_message("test", data={"icon": expected_icon})
+
+    mock_fn = mock_client.chat_postMessage
+    mock_fn.assert_called_once()
+    _, kwargs = mock_fn.call_args
+    expect(kwargs["icon_emoji"]).to_equal(expected_icon)
+
+
+@test
 async def message_includes_default_icon_url() -> None:
-    """Stub for test_message_includes_default_icon_url (port deferred)."""
+    """Tests that overriding the default icon url when sending a message works."""
+    mock_client = Mock()
+    mock_client.chat_postMessage = AsyncMock()
+    expected_icon = "https://example.com/hass.png"
+    service = SlackNotificationService(
+        None, mock_client, CONF_DATA | {ATTR_ICON: expected_icon}
+    )
 
-@test.skip("pending tryke port")
+    await service.async_send_message("test")
+
+    mock_fn = mock_client.chat_postMessage
+    mock_fn.assert_called_once()
+    _, kwargs = mock_fn.call_args
+    expect(kwargs["icon_url"]).to_equal(expected_icon)
+
+
+@test
 async def message_icon_url_overrides_default() -> None:
-    """Stub for test_message_icon_url_overrides_default (port deferred)."""
+    """Tests that overriding the default icon url when sending a message works."""
+    mock_client = Mock()
+    mock_client.chat_postMessage = AsyncMock()
+    service = SlackNotificationService(
+        None, mock_client, CONF_DATA | {ATTR_ICON: "default_icon"}
+    )
 
-@test.skip("pending tryke port")
+    expected_icon = "https://example.com/hass.png"
+    await service.async_send_message("test", data={ATTR_ICON: expected_icon})
+
+    mock_fn = mock_client.chat_postMessage
+    mock_fn.assert_called_once()
+    _, kwargs = mock_fn.call_args
+    expect(kwargs["icon_url"]).to_equal(expected_icon)
+
+
+@test
 async def message_as_reply() -> None:
-    """Stub for test_message_as_reply (port deferred)."""
+    """Tests that a message pointer will be passed to Slack if specified."""
+    mock_client = Mock()
+    mock_client.chat_postMessage = AsyncMock()
+    service = SlackNotificationService(None, mock_client, CONF_DATA)
+
+    expected_ts = "1624146685.064129"
+    await service.async_send_message("test", data={ATTR_THREAD_TS: expected_ts})
+
+    mock_fn = mock_client.chat_postMessage
+    mock_fn.assert_called_once()
+    _, kwargs = mock_fn.call_args
+    expect(kwargs["thread_ts"]).to_equal(expected_ts)
