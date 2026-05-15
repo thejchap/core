@@ -1,5 +1,7 @@
 """Intent tests for the fan platform."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.fan import (
     ATTR_PERCENTAGE,
     DOMAIN,
@@ -11,9 +13,18 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import intent
 
 from tests.common import async_mock_service
+from tests.hass_fixtures import hass as hass_fixture
 
 
-async def test_set_speed_intent(hass: HomeAssistant) -> None:
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@test
+async def set_speed_intent(hass: HomeAssistant = Depends(_trigger_executor)) -> None:
     """Test set speed intent for fans."""
     await fan_intent.async_setup_intents(hass)
 
@@ -29,9 +40,9 @@ async def test_set_speed_intent(hass: HomeAssistant) -> None:
     )
     await hass.async_block_till_done()
 
-    assert response.response_type == intent.IntentResponseType.ACTION_DONE
-    assert len(calls) == 1
+    expect(response.response_type).to_equal(intent.IntentResponseType.ACTION_DONE)
+    expect(len(calls)).to_equal(1)
     call = calls[0]
-    assert call.domain == DOMAIN
-    assert call.service == SERVICE_TURN_ON
-    assert call.data == {"entity_id": entity_id, "percentage": 50}
+    expect(call.domain).to_equal(DOMAIN)
+    expect(call.service).to_equal(SERVICE_TURN_ON)
+    expect(call.data).to_equal({"entity_id": entity_id, "percentage": 50})

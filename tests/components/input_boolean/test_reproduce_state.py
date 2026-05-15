@@ -1,22 +1,36 @@
 """Test reproduce state for input boolean."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.state import async_reproduce_state
 from homeassistant.setup import async_setup_component
 
+from tests.hass_fixtures import hass as hass_fixture
 
-async def test_reproducing_states(hass: HomeAssistant) -> None:
+
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@test
+async def reproducing_states(hass: HomeAssistant = Depends(_trigger_executor)) -> None:
     """Test reproducing input_boolean states."""
-    assert await async_setup_component(
-        hass,
-        "input_boolean",
-        {
-            "input_boolean": {
-                "initial_on": {"initial": True},
-                "initial_off": {"initial": False},
-            }
-        },
-    )
+    expect(
+        await async_setup_component(
+            hass,
+            "input_boolean",
+            {
+                "input_boolean": {
+                    "initial_on": {"initial": True},
+                    "initial_off": {"initial": False},
+                }
+            },
+        )
+    ).to_be_truthy()
     await async_reproduce_state(
         hass,
         [
@@ -26,8 +40,8 @@ async def test_reproducing_states(hass: HomeAssistant) -> None:
             State("input_boolean.non_existing", "on"),
         ],
     )
-    assert hass.states.get("input_boolean.initial_off").state == "on"
-    assert hass.states.get("input_boolean.initial_on").state == "off"
+    expect(hass.states.get("input_boolean.initial_off").state).to_equal("on")
+    expect(hass.states.get("input_boolean.initial_on").state).to_equal("off")
 
     await async_reproduce_state(
         hass,
@@ -39,5 +53,5 @@ async def test_reproducing_states(hass: HomeAssistant) -> None:
         ],
     )
 
-    assert hass.states.get("input_boolean.initial_on").state == "off"
-    assert hass.states.get("input_boolean.initial_off").state == "on"
+    expect(hass.states.get("input_boolean.initial_on").state).to_equal("off")
+    expect(hass.states.get("input_boolean.initial_off").state).to_equal("on")
