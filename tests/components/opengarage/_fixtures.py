@@ -1,18 +1,19 @@
-"""Fixtures for the OpenGarage integration tests."""
+"""Tryke fixtures for the OpenGarage integration tests."""
 
 from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
-import pytest
+from tryke import Depends, fixture
 
 from homeassistant.components.opengarage.const import CONF_DEVICE_KEY, DOMAIN
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
 
 
-@pytest.fixture
+@fixture
 def mock_config_entry() -> MockConfigEntry:
     """Return the default mocked config entry."""
     return MockConfigEntry(
@@ -28,7 +29,7 @@ def mock_config_entry() -> MockConfigEntry:
     )
 
 
-@pytest.fixture
+@fixture
 def mock_opengarage() -> Generator[MagicMock]:
     """Return a mocked OpenGarage client."""
     with patch(
@@ -45,9 +46,11 @@ def mock_opengarage() -> Generator[MagicMock]:
         yield client
 
 
-@pytest.fixture
+@fixture
 async def init_integration(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_opengarage: MagicMock
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_opengarage: MagicMock = Depends(mock_opengarage),
 ) -> MockConfigEntry:
     """Set up the OpenGarage integration for testing."""
     mock_config_entry.add_to_hass(hass)
