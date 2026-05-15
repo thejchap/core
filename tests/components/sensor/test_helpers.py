@@ -1,46 +1,60 @@
 """The test for sensor helpers."""
 
-import pytest
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.components.sensor.helpers import async_parse_date_datetime
 
+from tests.hass_fixtures import LogCapture, caplog as caplog_fixture
 
-@pytest.mark.parametrize(
-    "device_class",
-    [SensorDeviceClass.TIMESTAMP, SensorDeviceClass.UPTIME],
+
+@fixture
+def _caplog_trigger(caplog: LogCapture = Depends(caplog_fixture)) -> LogCapture:
+    return caplog
+
+
+@test.cases(
+    test.case("timestamp", device_class=SensorDeviceClass.TIMESTAMP),
+    test.case("uptime", device_class=SensorDeviceClass.UPTIME),
 )
-def test_async_parse_datetime(
-    caplog: pytest.LogCaptureFixture, device_class: SensorDeviceClass
+def async_parse_datetime(
+    *,
+    device_class: SensorDeviceClass,
+    caplog: LogCapture = Depends(_caplog_trigger),
 ) -> None:
     """Test async_parse_date_datetime."""
     entity_id = "sensor.timestamp"
-    assert (
+    expect(
         async_parse_date_datetime(
             "2021-12-12 12:12Z", entity_id, device_class
         ).isoformat()
-        == "2021-12-12T12:12:00+00:00"
+    ).to_equal("2021-12-12T12:12:00+00:00")
+    expect(caplog.text).to_be_falsy()
+
+    expect(
+        async_parse_date_datetime("2021-12-12 12:12", entity_id, device_class)
+    ).to_be(None)
+    expect(
+        "sensor.timestamp rendered timestamp without timezone" in caplog.text
+    ).to_be(True)
+
+    expect(async_parse_date_datetime("12 past 12", entity_id, device_class)).to_be(
+        None
     )
-    assert not caplog.text
+    expect(
+        "sensor.timestamp rendered invalid timestamp: 12 past 12" in caplog.text
+    ).to_be(True)
 
-    # No timezone
-    assert (
-        async_parse_date_datetime("2021-12-12 12:12", entity_id, device_class) is None
-    )
-    assert "sensor.timestamp rendered timestamp without timezone" in caplog.text
-
-    # Invalid timestamp
-    assert async_parse_date_datetime("12 past 12", entity_id, device_class) is None
-    assert "sensor.timestamp rendered invalid timestamp: 12 past 12" in caplog.text
-
-    device_class = SensorDeviceClass.DATE
+    date_class = SensorDeviceClass.DATE
     caplog.clear()
-    assert (
-        async_parse_date_datetime("2021-12-12", entity_id, device_class).isoformat()
-        == "2021-12-12"
-    )
-    assert not caplog.text
+    expect(
+        async_parse_date_datetime("2021-12-12", entity_id, date_class).isoformat()
+    ).to_equal("2021-12-12")
+    expect(caplog.text).to_be_falsy()
 
-    # Invalid date
-    assert async_parse_date_datetime("December 12th", entity_id, device_class) is None
-    assert "sensor.timestamp rendered invalid date December 12th" in caplog.text
+    expect(async_parse_date_datetime("December 12th", entity_id, date_class)).to_be(
+        None
+    )
+    expect(
+        "sensor.timestamp rendered invalid date December 12th" in caplog.text
+    ).to_be(True)
