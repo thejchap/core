@@ -1,5 +1,7 @@
 """Tests for flux_led sensor platform."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components import flux_led
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
@@ -11,9 +13,24 @@ from . import (
     _patch_discovery,
     _patch_wifibulb,
 )
+from ._fixtures import translations
+
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_paired_remotes_sensor(hass: HomeAssistant) -> None:
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+    _t: None = Depends(translations),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test
+async def paired_remotes_sensor(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test that the paired remotes sensor has the correct value."""
     _mock_config_entry_for_bulb(hass)
     bulb = _mocked_bulb()
@@ -23,4 +40,4 @@ async def test_paired_remotes_sensor(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
 
     entity_id = "sensor.bulb_rgbcw_ddeeff_paired_remotes"
-    assert hass.states.get(entity_id).state == "2"
+    expect(hass.states.get(entity_id).state).to_equal("2")
