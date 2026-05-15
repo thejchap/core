@@ -1,19 +1,27 @@
-"""The test for the Facebook notify module."""
+"""The test for the Clicksend TTS notify module."""
 
 import base64
 from http import HTTPStatus
 import logging
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
-import pytest
 import requests_mock
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components import notify
 from homeassistant.components.clicksend_tts import notify as cs_tts
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
+from ._fixtures import mock_clicksend_tts_notify
+
 from tests.common import assert_setup_component
+from tests.hass_fixtures import (
+    LogCapture,
+    caplog as caplog_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
 
 # Infos from https://developers.clicksend.com/docs/rest/v3/#testing
 TEST_USERNAME = "nocredit"
@@ -37,13 +45,11 @@ CONFIG = {
 }
 
 
-@pytest.fixture
-def mock_clicksend_tts_notify():
-    """Mock Clicksend TTS notify service."""
-    with patch(
-        "homeassistant.components.clicksend_tts.notify.get_service", autospec=True
-    ) as ns:
-        yield ns
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
 
 
 async def setup_notify(hass: HomeAssistant) -> None:
@@ -54,21 +60,30 @@ async def setup_notify(hass: HomeAssistant) -> None:
         await hass.async_block_till_done()
 
 
-async def test_no_notify_service(
-    hass: HomeAssistant, mock_clicksend_tts_notify, caplog: pytest.LogCaptureFixture
+@test
+async def no_notify_service(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_notify: MagicMock = Depends(mock_clicksend_tts_notify),
+    caplog: LogCapture = Depends(caplog_fixture),
 ) -> None:
     """Test missing platform notify service instance."""
     caplog.set_level(logging.ERROR)
-    mock_clicksend_tts_notify.return_value = None
+    mock_notify.return_value = None
     await setup_notify(hass)
     await hass.async_block_till_done()
-    assert mock_clicksend_tts_notify.called
-    assert "Failed to initialize notification service clicksend_tts" in caplog.text
+    expect(mock_notify.called).to_be(True)
+    expect(
+        "Failed to initialize notification service clicksend_tts" in caplog.text
+    ).to_be(True)
 
 
-async def test_send_simple_message(hass: HomeAssistant) -> None:
+@test
+async def send_simple_message(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test sending a simple message with success."""
-
     with requests_mock.Mocker() as mock:
         # Mocking authentication endpoint
         mock.get(
@@ -94,8 +109,8 @@ async def test_send_simple_message(hass: HomeAssistant) -> None:
         )
 
         # Checking if everything went well
-        assert mock.called
-        assert mock.call_count == 2
+        expect(mock.called).to_be(True)
+        expect(mock.call_count).to_equal(2)
 
         expected_body = {
             "messages": [
@@ -108,19 +123,20 @@ async def test_send_simple_message(hass: HomeAssistant) -> None:
                 }
             ]
         }
-        assert mock.last_request.json() == expected_body
+        expect(mock.last_request.json()).to_equal(expected_body)
 
         expected_content_type = "application/json"
-        assert (
-            "Content-Type" in mock.last_request.headers
-            and mock.last_request.headers["Content-Type"] == expected_content_type
+        expect("Content-Type" in mock.last_request.headers).to_be(True)
+        expect(mock.last_request.headers["Content-Type"]).to_equal(
+            expected_content_type
         )
 
         encoded_auth = base64.b64encode(
             f"{TEST_USERNAME}:{TEST_API_KEY}".encode()
         ).decode()
         expected_auth = f"Basic {encoded_auth}"
-        assert (
-            "Authorization" in mock.last_request.headers
-            and mock.last_request.headers["Authorization"] == expected_auth
-        )
+        expect("Authorization" in mock.last_request.headers).to_be(True)
+        expect(mock.last_request.headers["Authorization"]).to_equal(expected_auth)
+
+
+_ = (mock_clicksend_tts_notify,)
