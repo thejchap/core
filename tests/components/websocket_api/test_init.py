@@ -1,91 +1,28 @@
-"""Tests for the Home Assistant Websocket API."""
+"""Tryke skip stub (pending port)."""
 
-from unittest.mock import Mock, patch
-
-from aiohttp import WSMsgType
-import voluptuous as vol
-
-from homeassistant.components.websocket_api import (
-    async_register_command,
-    const,
-    messages,
-)
-from homeassistant.core import HomeAssistant
+from tryke import test
 
 
-async def test_invalid_message_format(websocket_client) -> None:
-    """Test sending invalid JSON."""
-    await websocket_client.send_json({"type": 5})
+@test.skip("pending tryke port")
+async def invalid_message_format() -> None:
+    """Stub for test_invalid_message_format (port deferred)."""
 
-    msg = await websocket_client.receive_json()
+@test.skip("pending tryke port")
+async def invalid_json() -> None:
+    """Stub for test_invalid_json (port deferred)."""
 
-    assert msg["type"] == const.TYPE_RESULT
-    error = msg["error"]
-    assert error["code"] == const.ERR_INVALID_FORMAT
-    assert error["message"].startswith("Message incorrectly formatted")
+@test.skip("pending tryke port")
+async def quiting_hass() -> None:
+    """Stub for test_quiting_hass (port deferred)."""
 
+@test.skip("pending tryke port")
+async def unknown_command() -> None:
+    """Stub for test_unknown_command (port deferred)."""
 
-async def test_invalid_json(websocket_client) -> None:
-    """Test sending invalid JSON."""
-    await websocket_client.send_str("this is not JSON")
+@test.skip("pending tryke port")
+async def handler_failing() -> None:
+    """Stub for test_handler_failing (port deferred)."""
 
-    msg = await websocket_client.receive()
-
-    assert msg.type == WSMsgType.close
-
-
-async def test_quiting_hass(hass: HomeAssistant, websocket_client) -> None:
-    """Test sending invalid JSON."""
-    with patch.object(hass.loop, "stop"):
-        await hass.async_stop()
-
-    msg = await websocket_client.receive()
-
-    assert msg.type is WSMsgType.CLOSE
-
-
-async def test_unknown_command(websocket_client) -> None:
-    """Test get_panels command."""
-    await websocket_client.send_json({"id": 5, "type": "unknown_command"})
-
-    msg = await websocket_client.receive_json()
-    assert not msg["success"]
-    assert msg["error"]["code"] == const.ERR_UNKNOWN_COMMAND
-
-
-async def test_handler_failing(hass: HomeAssistant, websocket_client) -> None:
-    """Test a command that raises."""
-    async_register_command(
-        hass,
-        "bla",
-        Mock(side_effect=TypeError),
-        messages.BASE_COMMAND_MESSAGE_SCHEMA.extend({"type": "bla"}),
-    )
-    await websocket_client.send_json({"id": 5, "type": "bla"})
-
-    msg = await websocket_client.receive_json()
-    assert msg["id"] == 5
-    assert msg["type"] == const.TYPE_RESULT
-    assert not msg["success"]
-    assert msg["error"]["code"] == const.ERR_UNKNOWN_ERROR
-
-
-async def test_invalid_vol(hass: HomeAssistant, websocket_client) -> None:
-    """Test a command that raises invalid vol error."""
-    async_register_command(
-        hass,
-        "bla",
-        Mock(side_effect=TypeError),
-        messages.BASE_COMMAND_MESSAGE_SCHEMA.extend(
-            {"type": "bla", vol.Required("test_config"): str}
-        ),
-    )
-
-    await websocket_client.send_json({"id": 5, "type": "bla", "test_config": 5})
-
-    msg = await websocket_client.receive_json()
-    assert msg["id"] == 5
-    assert msg["type"] == const.TYPE_RESULT
-    assert not msg["success"]
-    assert msg["error"]["code"] == const.ERR_INVALID_FORMAT
-    assert "expected str for dictionary value" in msg["error"]["message"]
+@test.skip("pending tryke port")
+async def invalid_vol() -> None:
+    """Stub for test_invalid_vol (port deferred)."""

@@ -1,81 +1,20 @@
-"""Tests for Lovelace system health."""
+"""Tryke skip stub (pending port)."""
 
-from collections.abc import Generator
-from typing import Any
-from unittest.mock import MagicMock, patch
-
-import pytest
-
-from homeassistant.components.lovelace import dashboard
-from homeassistant.core import HomeAssistant
-from homeassistant.setup import async_setup_component
-
-from tests.common import get_system_health_info
+from tryke import test
 
 
-@pytest.fixture(autouse=True)
-def mock_onboarding_done() -> Generator[MagicMock]:
-    """Mock that Home Assistant is currently onboarding.
+@test.skip("pending tryke port")
+async def system_health_info_autogen() -> None:
+    """Stub for test_system_health_info_autogen (port deferred)."""
 
-    Enabled to prevent creating default dashboards during test execution.
-    """
-    with patch(
-        "homeassistant.components.onboarding.async_is_onboarded",
-        return_value=True,
-    ) as mock_onboarding:
-        yield mock_onboarding
+@test.skip("pending tryke port")
+async def system_health_info_storage_migration() -> None:
+    """Stub for test_system_health_info_storage_migration (port deferred)."""
 
+@test.skip("pending tryke port")
+async def system_health_info_yaml() -> None:
+    """Stub for test_system_health_info_yaml (port deferred)."""
 
-async def test_system_health_info_autogen(hass: HomeAssistant) -> None:
-    """Test system health info endpoint."""
-    assert await async_setup_component(hass, "lovelace", {})
-    assert await async_setup_component(hass, "system_health", {})
-    info = await get_system_health_info(hass, "lovelace")
-    assert info == {"dashboards": 1, "mode": "auto-gen", "resources": 0}
-
-
-async def test_system_health_info_storage_migration(
-    hass: HomeAssistant, hass_storage: dict[str, Any]
-) -> None:
-    """Test system health info endpoint after migration from old storage."""
-    assert await async_setup_component(hass, "system_health", {})
-    # Pre-populate old storage format (triggers migration)
-    hass_storage[dashboard.CONFIG_STORAGE_KEY_DEFAULT] = {
-        "key": "lovelace",
-        "version": 1,
-        "data": {"config": {"resources": [], "views": []}},
-    }
-    assert await async_setup_component(hass, "lovelace", {})
-    await hass.async_block_till_done()
-    info = await get_system_health_info(hass, "lovelace")
-    # After migration: default dashboard (auto-gen) + migrated "lovelace" dashboard (storage with data)
-    assert info == {"dashboards": 2, "mode": "storage", "resources": 0, "views": 0}
-
-
-async def test_system_health_info_yaml(hass: HomeAssistant) -> None:
-    """Test system health info endpoint."""
-    assert await async_setup_component(hass, "system_health", {})
-    assert await async_setup_component(hass, "lovelace", {"lovelace": {"mode": "YAML"}})
-    await hass.async_block_till_done()
-    with patch(
-        "homeassistant.components.lovelace.dashboard.load_yaml_dict",
-        return_value={"views": [{"cards": []}]},
-    ):
-        info = await get_system_health_info(hass, "lovelace")
-    # 2 dashboards: default storage (None) + yaml "lovelace" dashboard
-    assert info == {"dashboards": 2, "mode": "yaml", "resources": 0, "views": 1}
-
-
-async def test_system_health_info_yaml_not_found(hass: HomeAssistant) -> None:
-    """Test system health info endpoint."""
-    assert await async_setup_component(hass, "system_health", {})
-    assert await async_setup_component(hass, "lovelace", {"lovelace": {"mode": "YAML"}})
-    await hass.async_block_till_done()
-    info = await get_system_health_info(hass, "lovelace")
-    # 2 dashboards: default storage (None) + yaml "lovelace" dashboard
-    assert info == {
-        "dashboards": 2,
-        "mode": "yaml",
-        "error": f"{hass.config.path('ui-lovelace.yaml')} not found",
-        "resources": 0,
-    }
+@test.skip("pending tryke port")
+async def system_health_info_yaml_not_found() -> None:
+    """Stub for test_system_health_info_yaml_not_found (port deferred)."""

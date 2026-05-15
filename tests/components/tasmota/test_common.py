@@ -1,1 +1,1 @@
-"""Tryke skip stub (requires unported fixture)."""
+"""Tryke skip stub (pending port)."""
