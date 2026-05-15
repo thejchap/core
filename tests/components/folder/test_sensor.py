@@ -2,9 +2,13 @@
 
 import os
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.folder.sensor import CONF_FOLDER_PATHS
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
+
+from tests.hass_fixtures import hass as hass_fixture
 
 CWD = os.path.join(os.path.dirname(__file__))
 TEST_FOLDER = "test_folder"
@@ -26,14 +30,23 @@ def remove_test_file():
         os.rmdir(TEST_DIR)
 
 
-async def test_invalid_path(hass: HomeAssistant) -> None:
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@test
+async def invalid_path(hass: HomeAssistant = Depends(_trigger_executor)) -> None:
     """Test that an invalid path is caught."""
     config = {"sensor": {"platform": "folder", CONF_FOLDER_PATHS: "invalid_path"}}
-    assert await async_setup_component(hass, "sensor", config)
-    assert len(hass.states.async_entity_ids("sensor")) == 0
+    expect(await async_setup_component(hass, "sensor", config)).to_be_truthy()
+    expect(len(hass.states.async_entity_ids("sensor"))).to_equal(0)
 
 
-async def test_valid_path(hass: HomeAssistant) -> None:
+@test
+async def valid_path(hass: HomeAssistant = Depends(_trigger_executor)) -> None:
     """Test for a valid path."""
     if not os.path.isdir(TEST_DIR):
         os.mkdir(TEST_DIR)
@@ -41,11 +54,11 @@ async def test_valid_path(hass: HomeAssistant) -> None:
 
     hass.config.allowlist_external_dirs = {TEST_DIR}
     config = {"sensor": {"platform": "folder", CONF_FOLDER_PATHS: TEST_DIR}}
-    assert await async_setup_component(hass, "sensor", config)
+    expect(await async_setup_component(hass, "sensor", config)).to_be_truthy()
     await hass.async_block_till_done()
-    assert len(hass.states.async_entity_ids()) == 1
+    expect(len(hass.states.async_entity_ids())).to_equal(1)
     state = hass.states.get("sensor.test_folder")
-    assert state.state == "0.0"
-    assert state.attributes.get("number_of_files") == 1
+    expect(state.state).to_equal("0.0")
+    expect(state.attributes.get("number_of_files")).to_equal(1)
 
     remove_test_file()
