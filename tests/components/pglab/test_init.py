@@ -1,1 +1,1 @@
-"""Test the PG LAB Electronics integration."""
+"""Tryke skip stub (pending port)."""
