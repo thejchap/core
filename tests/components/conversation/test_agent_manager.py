@@ -2,12 +2,31 @@
 
 from unittest.mock import patch
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components.conversation import ConversationResult, async_converse
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers.intent import IntentResponse
 
+from ._fixtures import init_components, mock_shopping_list_io
 
-async def test_async_converse(hass: HomeAssistant, init_components) -> None:
+from tests.hass_fixtures import hass as hass_fixture
+
+
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _shopping: None = Depends(mock_shopping_list_io),
+    _init: None = Depends(init_components),
+) -> HomeAssistant:
+    """Anchor cross-module fixtures so tryke resolves before the test body."""
+    return hass
+
+
+@test
+async def async_converse_test(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
     """Test the async_converse method."""
     context = Context()
     with patch(
@@ -25,12 +44,12 @@ async def test_async_converse(hass: HomeAssistant, init_components) -> None:
             extra_system_prompt="test extra prompt",
         )
 
-    assert mock_process.called
+    expect(mock_process.called).to_be(True)
     conversation_input = mock_process.call_args[0][0]
-    assert conversation_input.text == "test command"
-    assert conversation_input.conversation_id == "test id"
-    assert conversation_input.context is context
-    assert conversation_input.language == "test lang"
-    assert conversation_input.agent_id == "conversation.home_assistant"
-    assert conversation_input.device_id == "test device id"
-    assert conversation_input.extra_system_prompt == "test extra prompt"
+    expect(conversation_input.text).to_equal("test command")
+    expect(conversation_input.conversation_id).to_equal("test id")
+    expect(conversation_input.context is context).to_be(True)
+    expect(conversation_input.language).to_equal("test lang")
+    expect(conversation_input.agent_id).to_equal("conversation.home_assistant")
+    expect(conversation_input.device_id).to_equal("test device id")
+    expect(conversation_input.extra_system_prompt).to_equal("test extra prompt")
