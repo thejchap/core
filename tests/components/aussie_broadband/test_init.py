@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from aiohttp import ClientConnectionError
 from aussiebb.exceptions import AuthenticationException, UnrecognisedServiceType
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -11,16 +12,33 @@ from homeassistant.data_entry_flow import FlowResultType
 
 from .common import setup_platform
 
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
-async def test_unload(hass: HomeAssistant) -> None:
+
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test
+async def unload(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test unload."""
     entry = await setup_platform(hass)
-    assert await hass.config_entries.async_unload(entry.entry_id)
+    expect(bool(await hass.config_entries.async_unload(entry.entry_id))).to_be(True)
     await hass.async_block_till_done()
-    assert entry.state is ConfigEntryState.NOT_LOADED
+    expect(entry.state).to_be(ConfigEntryState.NOT_LOADED)
 
 
-async def test_auth_failure(hass: HomeAssistant) -> None:
+@test
+async def auth_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test init with an authentication failure."""
     with patch(
         "homeassistant.components.aussie_broadband.config_flow.AussieBroadbandConfigFlow.async_step_reauth",
@@ -36,13 +54,21 @@ async def test_auth_failure(hass: HomeAssistant) -> None:
         mock_async_step_reauth.assert_called_once()
 
 
-async def test_net_failure(hass: HomeAssistant) -> None:
+@test
+async def net_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test init with a network failure."""
     entry = await setup_platform(hass, side_effect=ClientConnectionError())
-    assert entry.state is ConfigEntryState.SETUP_RETRY
+    expect(entry.state).to_be(ConfigEntryState.SETUP_RETRY)
 
 
-async def test_service_failure(hass: HomeAssistant) -> None:
+@test
+async def service_failure(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
     """Test init with a invalid service."""
     entry = await setup_platform(hass, usage_effect=UnrecognisedServiceType())
-    assert entry.state is ConfigEntryState.SETUP_RETRY
+    expect(entry.state).to_be(ConfigEntryState.SETUP_RETRY)
