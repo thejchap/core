@@ -1,8 +1,20 @@
-"""Tryke skip stub (pending port)."""
+"""Test script init."""
 
-from tryke import test
+from unittest.mock import patch
+
+from tryke import expect, test
+
+from homeassistant import scripts
 
 
-@test.skip("pending tryke port")
-async def config_per_platform() -> None:
-    """Stub for test_config_per_platform (port deferred)."""
+@test
+def config_per_platform() -> None:
+    """Test config per platform method."""
+    with patch(
+        "homeassistant.scripts.get_default_config_dir", return_value="/default"
+    ):
+        expect(scripts.get_default_config_dir()).to_equal("/default")
+        expect(scripts.extract_config_dir()).to_equal("/default")
+        expect(scripts.extract_config_dir([""])).to_equal("/default")
+        expect(scripts.extract_config_dir(["-c", "/arg"])).to_equal("/arg")
+        expect(scripts.extract_config_dir(["--config", "/a"])).to_equal("/a")
