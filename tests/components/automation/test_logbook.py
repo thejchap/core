@@ -1,17 +1,30 @@
 """Test automation logbook."""
 
+from tryke import Depends, expect, fixture, test
+
 from homeassistant.components import automation
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.setup import async_setup_component
 
 from tests.components.logbook.common import MockRow, mock_humanify
+from tests.hass_fixtures import hass as hass_fixture
 
 
-async def test_humanify_automation_trigger_event(hass: HomeAssistant) -> None:
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@test
+async def humanify_automation_trigger_event(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
     """Test humanifying Shelly click event."""
     hass.config.components.add("recorder")
-    assert await async_setup_component(hass, "automation", {})
-    assert await async_setup_component(hass, "logbook", {})
+    expect(await async_setup_component(hass, "automation", {})).to_be_truthy()
+    expect(await async_setup_component(hass, "logbook", {})).to_be_truthy()
     await hass.async_block_till_done()
     context = Context()
 
@@ -38,14 +51,14 @@ async def test_humanify_automation_trigger_event(hass: HomeAssistant) -> None:
         ],
     )
 
-    assert event1["name"] == "Bla"
-    assert event1["message"] == "triggered by state change of input_boolean.yo"
-    assert event1["source"] == "state change of input_boolean.yo"
-    assert event1["context_id"] == context.id
-    assert event1["entity_id"] == "automation.bla"
+    expect(event1["name"]).to_equal("Bla")
+    expect(event1["message"]).to_equal("triggered by state change of input_boolean.yo")
+    expect(event1["source"]).to_equal("state change of input_boolean.yo")
+    expect(event1["context_id"]).to_equal(context.id)
+    expect(event1["entity_id"]).to_equal("automation.bla")
 
-    assert event2["name"] == "Bla"
-    assert event2["message"] == "triggered"
-    assert event2["source"] is None
-    assert event2["context_id"] == context.id
-    assert event2["entity_id"] == "automation.bla"
+    expect(event2["name"]).to_equal("Bla")
+    expect(event2["message"]).to_equal("triggered")
+    expect(event2["source"]).to_be(None)
+    expect(event2["context_id"]).to_equal(context.id)
+    expect(event2["entity_id"]).to_equal("automation.bla")
