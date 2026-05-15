@@ -3,41 +3,66 @@
 from unittest.mock import MagicMock
 
 import httpx
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
 from . import INPUT_SENSOR
+from ._fixtures import (
+    entry as entry_fixture,
+    mock_iotawatt as mock_iotawatt_fixture,
+)
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-async def test_setup_unload(
-    hass: HomeAssistant, mock_iotawatt: MagicMock, entry: MockConfigEntry
+@fixture
+def _trigger_executor(
+    _network: None = Depends(mock_network),
+) -> None:
+    """Anchor for tryke fixture resolution."""
+
+
+@test
+async def setup_unload(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_iotawatt: MagicMock = Depends(mock_iotawatt_fixture),
+    entry: MockConfigEntry = Depends(entry_fixture),
 ) -> None:
     """Test we can setup and unload an entry."""
     mock_iotawatt.getSensors.return_value["sensors"]["my_sensor_key"] = INPUT_SENSOR
-    assert await async_setup_component(hass, "iotawatt", {})
+    expect(bool(await async_setup_component(hass, "iotawatt", {}))).to_be(True)
     await hass.async_block_till_done()
-    assert await hass.config_entries.async_unload(entry.entry_id)
+    expect(bool(await hass.config_entries.async_unload(entry.entry_id))).to_be(True)
 
 
-async def test_setup_connection_failed(
-    hass: HomeAssistant, mock_iotawatt: MagicMock, entry: MockConfigEntry
+@test
+async def setup_connection_failed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_iotawatt: MagicMock = Depends(mock_iotawatt_fixture),
+    entry: MockConfigEntry = Depends(entry_fixture),
 ) -> None:
     """Test connection error during startup."""
     mock_iotawatt.connect.side_effect = httpx.ConnectError("")
-    assert await async_setup_component(hass, "iotawatt", {})
+    expect(bool(await async_setup_component(hass, "iotawatt", {}))).to_be(True)
     await hass.async_block_till_done()
-    assert entry.state is ConfigEntryState.SETUP_RETRY
+    expect(entry.state).to_be(ConfigEntryState.SETUP_RETRY)
 
 
-async def test_setup_auth_failed(
-    hass: HomeAssistant, mock_iotawatt: MagicMock, entry: MockConfigEntry
+@test
+async def setup_auth_failed(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mock_iotawatt: MagicMock = Depends(mock_iotawatt_fixture),
+    entry: MockConfigEntry = Depends(entry_fixture),
 ) -> None:
     """Test auth error during startup."""
     mock_iotawatt.connect.return_value = False
-    assert await async_setup_component(hass, "iotawatt", {})
+    expect(bool(await async_setup_component(hass, "iotawatt", {}))).to_be(True)
     await hass.async_block_till_done()
-    assert entry.state is ConfigEntryState.SETUP_RETRY
+    expect(entry.state).to_be(ConfigEntryState.SETUP_RETRY)
