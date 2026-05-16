@@ -1,6 +1,6 @@
 """Tryke fixtures for the Dropbox integration."""
 
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,6 +10,7 @@ from homeassistant.components.application_credentials import (
     ClientCredential,
     async_import_client_credential,
 )
+from homeassistant.components.backup import DOMAIN as BACKUP_DOMAIN
 from homeassistant.components.dropbox.const import DOMAIN, OAUTH2_SCOPES
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
@@ -22,6 +23,7 @@ CLIENT_SECRET = "5678"
 ACCOUNT_ID = "dbid:1234567890abcdef"
 ACCOUNT_EMAIL = "user@example.com"
 CONFIG_ENTRY_TITLE = "Dropbox test account"
+TEST_AGENT_ID = f"{DOMAIN}.{ACCOUNT_ID}"
 
 
 @fixture
@@ -106,3 +108,19 @@ def mock_dropbox_client(
         ),
     ):
         yield client
+
+
+@fixture
+async def setup_integration(
+    _creds: None = Depends(setup_credentials),
+    hass: HomeAssistant = Depends(hass_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    mock_dropbox_client: MagicMock = Depends(mock_dropbox_client),
+) -> AsyncGenerator[MagicMock]:
+    """Set up the Dropbox and Backup integrations for testing."""
+    mock_config_entry.add_to_hass(hass)
+    assert await async_setup_component(hass, BACKUP_DOMAIN, {BACKUP_DOMAIN: {}})
+    await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+    mock_dropbox_client.reset_mock()
+    yield mock_dropbox_client

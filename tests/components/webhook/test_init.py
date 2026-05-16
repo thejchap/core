@@ -34,12 +34,17 @@ def _trigger_executor() -> int:
     return 0
 
 
-@fixture
-async def mock_client(
-    hass: HomeAssistant = Depends(hass_fixture),
-    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
+async def _make_mock_client(
+    hass: HomeAssistant, hass_client: ClientSessionGenerator
 ) -> TestClient:
-    """Create http client for webhooks."""
+    """Create http client for webhooks.
+
+    Plain async helper rather than a ``@fixture`` because Tryke's module-
+    level fixtures auto-run for every test in the file, which would
+    pre-load the ``webhook``/``http`` integrations even for tests that
+    don't use the HTTP client and break things like ``mock_real_ip`` that
+    rely on a clean app.
+    """
     await async_setup_component(hass, "webhook", {})
     return await hass_client()
 
@@ -47,9 +52,10 @@ async def mock_client(
 @test
 async def unregistering_webhook(
     hass: HomeAssistant = Depends(hass_fixture),
-    mock_client: TestClient = Depends(mock_client),
+    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
 ) -> None:
     """Test unregistering a webhook."""
+    mock_client = await _make_mock_client(hass, hass_client)
     hooks = []
     webhook_id = webhook.async_generate_id()
 
@@ -115,9 +121,10 @@ async def async_generate_path(
 @test
 async def posting_webhook_nonexisting(
     hass: HomeAssistant = Depends(hass_fixture),
-    mock_client: TestClient = Depends(mock_client),
+    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
 ) -> None:
     """Test posting to a nonexisting webhook."""
+    mock_client = await _make_mock_client(hass, hass_client)
     resp = await mock_client.post("/api/webhook/non-existing")
     expect(resp.status).to_equal(HTTPStatus.OK)
 
@@ -125,9 +132,10 @@ async def posting_webhook_nonexisting(
 @test
 async def posting_webhook_invalid_json(
     hass: HomeAssistant = Depends(hass_fixture),
-    mock_client: TestClient = Depends(mock_client),
+    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
 ) -> None:
     """Test posting to a nonexisting webhook."""
+    mock_client = await _make_mock_client(hass, hass_client)
     webhook.async_register(hass, "test", "Test hook", "hello", None)
     resp = await mock_client.post("/api/webhook/hello", data="not-json")
     expect(resp.status).to_equal(HTTPStatus.OK)
@@ -136,9 +144,10 @@ async def posting_webhook_invalid_json(
 @test
 async def posting_webhook_json(
     hass: HomeAssistant = Depends(hass_fixture),
-    mock_client: TestClient = Depends(mock_client),
+    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
 ) -> None:
     """Test posting a webhook with JSON data."""
+    mock_client = await _make_mock_client(hass, hass_client)
     hooks = []
     webhook_id = webhook.async_generate_id()
 
@@ -159,9 +168,10 @@ async def posting_webhook_json(
 @test
 async def posting_webhook_no_data(
     hass: HomeAssistant = Depends(hass_fixture),
-    mock_client: TestClient = Depends(mock_client),
+    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
 ) -> None:
     """Test posting a webhook with no data."""
+    mock_client = await _make_mock_client(hass, hass_client)
     hooks = []
     webhook_id = webhook.async_generate_id()
 
@@ -183,9 +193,10 @@ async def posting_webhook_no_data(
 @test
 async def webhook_put(
     hass: HomeAssistant = Depends(hass_fixture),
-    mock_client: TestClient = Depends(mock_client),
+    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
 ) -> None:
     """Test sending a put request to a webhook."""
+    mock_client = await _make_mock_client(hass, hass_client)
     hooks = []
     webhook_id = webhook.async_generate_id()
 
@@ -206,9 +217,10 @@ async def webhook_put(
 @test
 async def webhook_head(
     hass: HomeAssistant = Depends(hass_fixture),
-    mock_client: TestClient = Depends(mock_client),
+    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
 ) -> None:
     """Test sending a head request to a webhook."""
+    mock_client = await _make_mock_client(hass, hass_client)
     hooks = []
     webhook_id = webhook.async_generate_id()
 
@@ -240,9 +252,10 @@ async def webhook_head(
 @test
 async def webhook_get(
     hass: HomeAssistant = Depends(hass_fixture),
-    mock_client: TestClient = Depends(mock_client),
+    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
 ) -> None:
     """Test sending a get request to a webhook."""
+    mock_client = await _make_mock_client(hass, hass_client)
     hooks = []
     webhook_id = webhook.async_generate_id()
 
@@ -291,9 +304,10 @@ async def webhook_not_allowed_method(
 @test
 async def webhook_local_only(
     hass: HomeAssistant = Depends(hass_fixture),
-    mock_client: TestClient = Depends(mock_client),
+    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
 ) -> None:
     """Test posting a webhook with local only."""
+    mock_client = await _make_mock_client(hass, hass_client)
     hass.config.components.add("cloud")
 
     hooks = []
@@ -513,14 +527,9 @@ async def ws_webhook_local_only(
     hass_access_token: str = Depends(hass_access_token_fixture),
 ) -> None:
     """Test a local_only webhook over the websocket connection."""
-    a = hass.http.app.frozen if hasattr(hass, "http") else "no http yet"
     expect(await async_setup_component(hass, "webhook", {})).to_be(True)
-    b = hass.http.app.frozen
     expect(await async_setup_component(hass, "websocket_api", {})).to_be(True)
-    c = hass.http.app.frozen
     await hass.async_block_till_done()
-    d = hass.http.app.frozen
-    raise RuntimeError(f"a={a} b={b} c={c} d={d}")
 
     received = []
 
