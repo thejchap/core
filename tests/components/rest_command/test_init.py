@@ -25,7 +25,7 @@ from tests.hass_fixtures import (
     hass as hass_fixture,
     mock_network,
 )
-from tests.hass_tryke_helpers import expect_raises_async, mock_async_zeroconf
+from tests.hass_tryke_helpers import mock_async_zeroconf
 from tests.test_util.aiohttp import AiohttpClientMocker
 
 
@@ -92,11 +92,17 @@ async def rest_command_timeout(
 
     aioclient_mock.get(TEST_URL, exc=TimeoutError())
 
-    async with expect_raises_async(
-        HomeAssistantError,
-        match=r'^Timeout when calling resource "https://example\.com/"$',
-    ):
+    raised: HomeAssistantError | None = None
+    try:
         await hass.services.async_call(DOMAIN, "get_test", {}, blocking=True)
+    except HomeAssistantError as err:
+        raised = err
+    expect(raised is not None).to_be(True)
+    expect(raised.translation_domain).to_equal(DOMAIN)
+    expect(raised.translation_key).to_equal("timeout")
+    expect(raised.translation_placeholders).to_equal(
+        {"request_url": "https://example.com/"}
+    )
 
     expect(len(aioclient_mock.mock_calls)).to_equal(1)
 
@@ -113,13 +119,17 @@ async def rest_command_aiohttp_error(
 
     aioclient_mock.get(TEST_URL, exc=aiohttp.ClientError())
 
-    async with expect_raises_async(
-        HomeAssistantError,
-        match=(
-            r'^Client error occurred when calling resource "https://example\.com/"$'
-        ),
-    ):
+    raised: HomeAssistantError | None = None
+    try:
         await hass.services.async_call(DOMAIN, "get_test", {}, blocking=True)
+    except HomeAssistantError as err:
+        raised = err
+    expect(raised is not None).to_be(True)
+    expect(raised.translation_domain).to_equal(DOMAIN)
+    expect(raised.translation_key).to_equal("client_error")
+    expect(raised.translation_placeholders).to_equal(
+        {"request_url": "https://example.com/"}
+    )
 
     expect(len(aioclient_mock.mock_calls)).to_equal(1)
 
@@ -427,8 +437,10 @@ async def rest_command_get_response_malformed_json(
     except HomeAssistantError as err:
         raised_json = err
     expect(raised_json is not None).to_be(True)
-    expect(str(raised_json)).to_equal(
-        'The response of "https://example.com/" could not be decoded as JSON'
+    expect(raised_json.translation_domain).to_equal(DOMAIN)
+    expect(raised_json.translation_key).to_equal("decoding_error")
+    expect(raised_json.translation_placeholders).to_equal(
+        {"request_url": "https://example.com/", "decoding_type": "JSON"}
     )
 
 
@@ -456,15 +468,19 @@ async def rest_command_get_response_none(
     response = await hass.services.async_call(DOMAIN, "get_test", {}, blocking=True)
     expect(bool(response)).to_be(False)
 
-    async with expect_raises_async(
-        HomeAssistantError,
-        match=(
-            r'^The response of "https://example\.com/" could not be decoded as text$'
-        ),
-    ):
+    raised_text: HomeAssistantError | None = None
+    try:
         response = await hass.services.async_call(
             DOMAIN, "get_test", {}, blocking=True, return_response=True
         )
+    except HomeAssistantError as err:
+        raised_text = err
+    expect(raised_text is not None).to_be(True)
+    expect(raised_text.translation_domain).to_equal(DOMAIN)
+    expect(raised_text.translation_key).to_equal("decoding_error")
+    expect(raised_text.translation_placeholders).to_equal(
+        {"request_url": "https://example.com/", "decoding_type": "text"}
+    )
 
     expect(bool(response)).to_be(False)
 
