@@ -124,3 +124,86 @@ def gatebox() -> tuple[object, str]:
 def gatecontroller() -> tuple[object, str]:
     """Return a gateController fixture."""
     return _make_gatecontroller()
+
+
+def _make_dimmer() -> tuple[object, str]:
+    """Return a dimmer fixture (feature_mock, entity_id)."""
+    feature = mock_feature(
+        "lights",
+        blebox_uniapi.light.Light,
+        unique_id="BleBox-dimmerBox-1afe34e750b8-brightness",
+        full_name="dimmerBox-brightness",
+        device_class=None,
+        brightness=65,
+        is_on=True,
+        supports_color=False,
+        supports_white=False,
+        color_mode=blebox_uniapi.light.BleboxColorMode.MONO,
+        effect_list=None,
+    )
+    product = feature.product
+    type(product).name = PropertyMock(return_value="My dimmer")
+    type(product).model = PropertyMock(return_value="dimmerBox")
+    return (feature, "light.my_dimmer_dimmerbox_brightness")
+
+
+def _make_wlightbox_s() -> tuple[object, str]:
+    """Return a wLightBoxS fixture (feature_mock, entity_id)."""
+    feature = mock_feature(
+        "lights",
+        blebox_uniapi.light.Light,
+        unique_id="BleBox-wLightBoxS-1afe34e750b8-color",
+        full_name="wLightBoxS-color",
+        device_class=None,
+        brightness=None,
+        is_on=None,
+        supports_color=False,
+        supports_white=False,
+        color_mode=blebox_uniapi.light.BleboxColorMode.MONO,
+        effect_list=["NONE", "PL", "RELAX"],
+    )
+    product = feature.product
+    type(product).name = PropertyMock(return_value="My wLightBoxS")
+    type(product).model = PropertyMock(return_value="wLightBoxS")
+    return (feature, "light.my_wlightboxs_wlightboxs_color")
+
+
+def _make_wlightbox() -> tuple[object, str]:
+    """Return a wLightBox fixture (feature_mock, entity_id)."""
+    feature = mock_feature(
+        "lights",
+        blebox_uniapi.light.Light,
+        unique_id="BleBox-wLightBox-1afe34e750b8-color",
+        full_name="wLightBox-color",
+        device_class=None,
+        is_on=None,
+        supports_color=True,
+        supports_white=True,
+        white_value=None,
+        rgbw_hex=None,
+        color_mode=blebox_uniapi.light.BleboxColorMode.RGBW,
+        effect="NONE",
+        effect_list=["NONE", "PL", "POLICE"],
+    )
+    product = feature.product
+    type(product).name = PropertyMock(return_value="My wLightBox")
+    type(product).model = PropertyMock(return_value="wLightBox")
+    return (feature, "light.my_wlightbox_wlightbox_color")
+
+
+@fixture
+def dimmer() -> tuple[object, str]:
+    """Return a dimmer fixture."""
+    return _make_dimmer()
+
+
+@fixture
+def wlightbox_s() -> tuple[object, str]:
+    """Return a wLightBoxS fixture."""
+    return _make_wlightbox_s()
+
+
+@fixture
+def wlightbox() -> tuple[object, str]:
+    """Return a wLightBox fixture."""
+    return _make_wlightbox()

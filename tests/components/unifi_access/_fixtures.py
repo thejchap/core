@@ -3,7 +3,7 @@
 from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from tryke import fixture
+from tryke import Depends, fixture
 from unifi_access_api import (
     Door,
     DoorLockRelayStatus,
@@ -15,8 +15,12 @@ from unifi_discovery import AIOUnifiScanner
 
 from homeassistant.components.unifi_access.const import DOMAIN
 from homeassistant.const import CONF_API_TOKEN, CONF_HOST, CONF_VERIFY_SSL
+from homeassistant.core import HomeAssistant
+
+from . import setup_integration
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fx
 
 MOCK_HOST = "192.168.1.1"
 MOCK_API_TOKEN = "test-api-token-12345"
@@ -125,3 +129,15 @@ def mock_client() -> Generator[MagicMock]:
         client.close = AsyncMock()
         client.start_websocket = MagicMock()
         yield client
+
+
+@fixture
+async def init_integration(
+    hass: HomeAssistant = Depends(hass_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    _mock_client: MagicMock = Depends(mock_client),
+    _mock_discovery: None = Depends(mock_discovery),
+) -> MockConfigEntry:
+    """Set up the UniFi Access integration for testing."""
+    await setup_integration(hass, mock_config_entry)
+    return mock_config_entry
