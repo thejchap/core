@@ -8,6 +8,7 @@ from tryke import Depends, fixture
 
 from homeassistant.components.config import area_registry as area_registry_config
 from homeassistant.components.config import auth as auth_config
+from homeassistant.components.config import floor_registry as floor_registry_config
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import (
     ATTR_DEVICE_CLASS,
@@ -67,6 +68,16 @@ async def area_registry_client(
 ) -> Any:
     """WebSocket client wired to the area_registry config module."""
     area_registry_config.async_setup(hass)
+    return await hass_ws_client(hass)
+
+
+@fixture
+async def floor_registry_client(
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_ws_client: ClientSessionGenerator = Depends(hass_ws_client_fx),
+) -> Any:
+    """WebSocket client wired to the floor_registry config module."""
+    floor_registry_config.async_setup(hass)
     return await hass_ws_client(hass)
 
 

@@ -4,7 +4,13 @@ from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from awesomeversion import AwesomeVersion
-from tryke import fixture
+from synology_dsm.api.photos import SynoPhotosAlbum, SynoPhotosItem
+from tryke import Depends, fixture
+
+from homeassistant.core import HomeAssistant
+from homeassistant.setup import async_setup_component
+
+from tests.hass_fixtures import hass as hass_fixture
 
 
 def _mock_dsm_information() -> Mock:
@@ -51,3 +57,45 @@ def service() -> Generator[MagicMock]:
         dsm.information = _mock_dsm_information()
         dsm.file = AsyncMock(get_shared_folders=AsyncMock(return_value=None))
         yield dsm
+
+
+@fixture
+async def setup_media_source(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Set up media source."""
+    assert await async_setup_component(hass, "media_source", {})
+
+
+@fixture
+def dsm_with_photos() -> MagicMock:
+    """Set up SynologyDSM API fixture with photos."""
+    dsm = MagicMock()
+    dsm.login = AsyncMock(return_value=True)
+    dsm.update = AsyncMock(return_value=True)
+    dsm.information = _mock_dsm_information()
+    dsm.network.update = AsyncMock(return_value=True)
+    dsm.surveillance_station.update = AsyncMock(return_value=True)
+    dsm.upgrade.update = AsyncMock(return_value=True)
+
+    dsm.photos.get_albums = AsyncMock(
+        return_value=[SynoPhotosAlbum(1, "Album 1", 10, "")]
+    )
+    dsm.photos.get_items_from_album = AsyncMock(
+        return_value=[
+            SynoPhotosItem(
+                10, "", "filename.jpg", 12345, "10_1298753", "sm", False, ""
+            ),
+            SynoPhotosItem(10, "", "filename.jpg", 12345, "10_1298753", "sm", True, ""),
+        ]
+    )
+    dsm.photos.get_items_from_shared_space = AsyncMock(
+        return_value=[
+            SynoPhotosItem(10, "", "filename.jpg", 12345, "10_1298753", "sm", True, ""),
+        ]
+    )
+    dsm.photos.get_item_thumbnail_url = AsyncMock(
+        return_value="http://my.thumbnail.url"
+    )
+    dsm.file = AsyncMock(get_shared_folders=AsyncMock(return_value=None))
+    return dsm

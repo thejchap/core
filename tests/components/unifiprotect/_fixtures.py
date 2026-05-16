@@ -13,11 +13,13 @@ from tryke import Depends, fixture
 from uiprotect import ProtectApiClient
 from uiprotect.data import (
     NVR,
+    AiPort,
     Bootstrap,
     Camera,
     Chime,
     Doorlock,
     Light,
+    Sensor,
     SmartDetectObjectType,
     VideoMode,
     WSSubscriptionMessage,
@@ -292,3 +294,42 @@ def chime() -> Generator[Chime]:
     yield Chime.from_unifi_dict(**data)
 
     Chime.model_config["validate_assignment"] = True
+
+
+@fixture
+def sensor(fixed_now: datetime = Depends(fixed_now)) -> Generator[Sensor]:
+    """Mock UniFi Protect Sensor device."""
+    Sensor.model_config["validate_assignment"] = False
+
+    data = load_json_object_fixture("sample_sensor.json", DOMAIN)
+    sensor_obj: Sensor = Sensor.from_unifi_dict(**data)
+    sensor_obj.motion_detected_at = fixed_now - timedelta(hours=1)
+    sensor_obj.open_status_changed_at = fixed_now - timedelta(hours=1)
+    sensor_obj.alarm_triggered_at = fixed_now - timedelta(hours=1)
+    yield sensor_obj
+
+    Sensor.model_config["validate_assignment"] = True
+
+
+@fixture
+def sensor_all(sensor: Sensor = Depends(sensor)) -> Sensor:
+    """Mock UniFi Protect Sensor device (all features enabled)."""
+    all_sensor = sensor.model_copy()
+    all_sensor.light_settings.is_enabled = True
+    all_sensor.humidity_settings.is_enabled = True
+    all_sensor.temperature_settings.is_enabled = True
+    all_sensor.alarm_settings.is_enabled = True
+    all_sensor.led_settings.is_enabled = True
+    all_sensor.motion_settings.is_enabled = True
+    return all_sensor
+
+
+@fixture
+def aiport() -> Generator[AiPort]:
+    """Mock UniFi Protect AI Port device."""
+    AiPort.model_config["validate_assignment"] = False
+
+    data = load_json_object_fixture("sample_aiport.json", DOMAIN)
+    yield AiPort.from_unifi_dict(**data)
+
+    AiPort.model_config["validate_assignment"] = True
