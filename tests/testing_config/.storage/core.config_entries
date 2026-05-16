@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "minor_version": 5,
+  "key": "core.config_entries",
+  "data": {
+    "entries": [
+      {"created_at":"2026-05-16T04:48:29.936274+00:00","data":{"api_key":"test-api-key","host":"1.1.1.1","id":"UnifiProtect","password":"test-password","port":443,"username":"test-username","verify_ssl":false},"disabled_by":"user","discovery_keys":{},"domain":"unifiprotect","entry_id":"01KRQHTK7GCFW2DREBYJ5EWMGA","minor_version":1,"modified_at":"2026-05-16T04:48:29.936277+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"user","subentries":[],"title":"Mock Title","unique_id":"A1E00C826924","version":2}
+    ]
+  }
+}
