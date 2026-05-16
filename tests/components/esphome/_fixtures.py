@@ -24,6 +24,7 @@ from aioesphomeapi import (
 )
 from tryke import Depends, fixture
 
+from homeassistant.components.esphome import dashboard
 from homeassistant.components.esphome.const import (
     CONF_ALLOW_SERVICE_CALLS,
     CONF_DEVICE_NAME,
@@ -34,6 +35,8 @@ from homeassistant.components.esphome.const import (
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
+
+from . import DASHBOARD_HOST, DASHBOARD_PORT, DASHBOARD_SLUG
 
 from tests.common import MockConfigEntry
 from tests.hass_fixtures import (
@@ -518,6 +521,22 @@ async def _mock_generic_device_entry(
 
     await hass.async_block_till_done()
     return mock_device
+
+
+@fixture
+async def mock_dashboard(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> AsyncGenerator[dict[str, Any]]:
+    """Mock dashboard."""
+    data: dict[str, Any] = {"configured": [], "importable": []}
+    with patch(
+        "esphome_dashboard_api.ESPHomeDashboardAPI.get_devices",
+        return_value=data,
+    ):
+        await dashboard.async_set_dashboard_info(
+            hass, DASHBOARD_SLUG, DASHBOARD_HOST, DASHBOARD_PORT
+        )
+        yield data
 
 
 @fixture

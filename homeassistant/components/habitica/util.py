@@ -104,10 +104,11 @@ def get_recurrence_rule(recurrence: rrule) -> str:
     Returns:
         The recurrence rule portion of the RRULE string, starting with 'FREQ='.
 
-    Example:
-        >>> rule = get_recurrence_rule(task)
-        >>> print(rule)
-        'FREQ=YEARLY;INTERVAL=2'
+    Example::
+
+        rule = get_recurrence_rule(task)
+        print(rule)
+        # 'FREQ=YEARLY;INTERVAL=2'
 
     """
     return str(recurrence).split("RRULE:")[1]

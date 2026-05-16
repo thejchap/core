@@ -254,11 +254,10 @@ def _generate_thumbnail_if_file_does_not_exist(
 def _validate_size_from_filename(filename: str) -> tuple[int, int]:
     """Parse image size from the given filename (of the form WIDTHxHEIGHT-filename).
 
-    >>> _validate_size_from_filename("100x100-image.png")
-    (100, 100)
-    >>> _validate_size_from_filename("jeff.png")
-    Traceback (most recent call last):
-    ...
+    Example::
+
+        _validate_size_from_filename("256x256-image.png")  # returns (256, 256)
+        _validate_size_from_filename("jeff.png")           # raises ValueError
     """
     image_size = filename.partition("-")[0]
     if not image_size:

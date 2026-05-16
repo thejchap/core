@@ -936,8 +936,8 @@ exclude = [
     ".venv",
     "build",
     "dist",
-    "homeassistant",
-    "./script",
+    "./homeassistant/",
+    "./script/",
     "tests/testing_config",
 ]
 src = ["."]
