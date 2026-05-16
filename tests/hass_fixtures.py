@@ -319,6 +319,7 @@ class LogCapture:
         self._handler = _ListHandler(self.records)
         self._root = logging.getLogger()
         self._prev_level = self._root.level
+        self._set_level_originals: dict[str, int] = {}
 
     @property
     def text(self) -> str:
@@ -331,9 +332,18 @@ class LogCapture:
         return [r.getMessage() for r in self.records]
 
     def set_level(self, level: int | str, logger: str | None = None) -> None:
-        """Set the capture level."""
+        """Set the capture level (restored when fixture exits)."""
         target = logging.getLogger(logger) if logger else self._root
+        key = logger or ""
+        if key not in self._set_level_originals:
+            self._set_level_originals[key] = target.level
         target.setLevel(level)
+
+    def _restore_levels(self) -> None:
+        """Restore any logger levels modified via ``set_level``."""
+        for name, prev in self._set_level_originals.items():
+            logging.getLogger(name or None).setLevel(prev)
+        self._set_level_originals.clear()
 
     def at_level(self, level: int | str, logger: str | None = None) -> _AtLevel:
         """Scoped level change, restored on __exit__."""
@@ -394,6 +404,7 @@ def caplog() -> Generator[LogCapture]:
     try:
         yield cap
     finally:
+        cap._restore_levels()
         root.removeHandler(cap._handler)
         root.setLevel(prev_level)
 
@@ -818,6 +829,30 @@ async def hass_access_token(
     await hass.auth.async_link_user(user, credential)
     refresh_token = await hass.auth.async_create_refresh_token(
         user, CLIENT_ID, credential=credential
+    )
+    return hass.auth.async_create_access_token(refresh_token)
+
+
+@fixture
+async def hass_read_only_access_token(
+    hass: HomeAssistant = Depends(hass),
+    read_only_user=Depends(hass_read_only_user),
+    _local_auth: Any = Depends(local_auth),
+) -> str:
+    """Return an access token for the read-only user."""
+    from homeassistant.auth.models import Credentials  # noqa: PLC0415
+
+    CLIENT_ID = "https://hass.io/"
+    credential = Credentials(
+        id="mock-readonly-credential-id",
+        auth_provider_type="homeassistant",
+        auth_provider_id=None,
+        data={"username": "readonly"},
+        is_new=False,
+    )
+    read_only_user.credentials.append(credential)
+    refresh_token = await hass.auth.async_create_refresh_token(
+        read_only_user, CLIENT_ID, credential=credential
     )
     return hass.auth.async_create_access_token(refresh_token)
 

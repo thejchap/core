@@ -50,12 +50,13 @@ from tests.hass_fixtures import (
     device_registry as device_registry_fx,
     entity_registry as entity_registry_fx,
     hass as hass_fx,
+    mock_network,
 )
 from tests.hass_tryke_helpers import expect_raises_async
 
 
 @fixture
-def _trigger_executor() -> int:
+def _trigger_executor(_network: None = Depends(mock_network)) -> int:
     """Module-local anchor; opts the test module into Tryke's HookExecutor path."""
     return 0
 

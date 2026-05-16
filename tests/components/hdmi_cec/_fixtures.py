@@ -67,3 +67,17 @@ def create_hdmi_network(
         return mock_hdmi_network_instance
 
     return hdmi_network
+
+
+@fixture
+def create_cec_entity(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> CecEntityCreator:
+    """Create a CecEntity."""
+
+    async def cec_entity(hdmi_network: MagicMock, device: Any) -> None:
+        new_device_callback = hdmi_network.set_new_device_callback.call_args.args[0]
+        new_device_callback(device)
+        await hass.async_block_till_done()
+
+    return cec_entity

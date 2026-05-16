@@ -1,72 +1,673 @@
-"""Tryke skip stub (pending port)."""
+"""Test WebSocket API."""
 
-from tryke import test
+from __future__ import annotations
+
+import asyncio
+from http import HTTPStatus
+from typing import Any
+from unittest.mock import patch
+
+from freezegun.api import FrozenDateTimeFactory
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.assist_pipeline import PipelineStage
+from homeassistant.components.assist_satellite.websocket_api import (
+    CONNECTION_TEST_TIMEOUT,
+)
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+
+from . import ENTITY_ID
+from ._fixtures import (
+    MockAssistSatellite,
+    entity as entity_fixture,
+    init_components as init_components_fixture,
+)
+
+from tests.common import MockUser
+from tests.hass_fixtures import (
+    ClientSessionGenerator,
+    freezer as freezer_fixture,
+    hass as hass_fixture,
+    hass_admin_user as hass_admin_user_fixture,
+    hass_client as hass_client_fixture,
+    hass_read_only_access_token as hass_read_only_access_token_fixture,
+    hass_ws_client as hass_ws_client_fixture,
+    mock_network,
+)
 
 
-@test.skip("pending tryke port")
-async def intercept_wake_word() -> None:
-    """Stub for test_intercept_wake_word (port deferred)."""
+@fixture
+def _trigger_executor() -> int:
+    return 0
 
-@test.skip("pending tryke port")
-async def intercept_wake_word_requires_on_device_wake_word() -> None:
-    """Stub for test_intercept_wake_word_requires_on_device_wake_word (port deferred)."""
 
-@test.skip("pending tryke port")
-async def intercept_wake_word_requires_wake_word_phrase() -> None:
-    """Stub for test_intercept_wake_word_requires_wake_word_phrase (port deferred)."""
+@fixture
+async def _setup(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _network: None = Depends(mock_network),
+    init_components: ConfigEntry = Depends(init_components_fixture),
+) -> ConfigEntry:
+    """Anchor setup so tryke resolves hass before the test body."""
+    return init_components
 
-@test.skip("pending tryke port")
-async def intercept_wake_word_require_admin() -> None:
-    """Stub for test_intercept_wake_word_require_admin (port deferred)."""
 
-@test.skip("pending tryke port")
-async def intercept_wake_word_invalid_satellite() -> None:
-    """Stub for test_intercept_wake_word_invalid_satellite (port deferred)."""
+@test
+async def intercept_wake_word(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    entity: MockAssistSatellite = Depends(entity_fixture),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test intercepting a wake word."""
+    ws_client = await hass_ws_client(hass)
 
-@test.skip("pending tryke port")
-async def intercept_wake_word_twice() -> None:
-    """Stub for test_intercept_wake_word_twice (port deferred)."""
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/intercept_wake_word",
+            "entity_id": ENTITY_ID,
+        }
+    )
+    msg = await ws_client.receive_json()
+    expect(msg["success"]).to_be(True)
+    expect(msg["result"]).to_be(None)
+    subscription_id = msg["id"]
 
-@test.skip("pending tryke port")
-async def intercept_wake_word_unsubscribe() -> None:
-    """Stub for test_intercept_wake_word_unsubscribe (port deferred)."""
+    await entity.async_accept_pipeline_from_satellite(
+        object(),  # type: ignore[arg-type]
+        start_stage=PipelineStage.STT,
+        wake_word_phrase="ok, nabu",
+    )
 
-@test.skip("pending tryke port")
-async def get_configuration() -> None:
-    """Stub for test_get_configuration (port deferred)."""
+    async with asyncio.timeout(1):
+        msg = await ws_client.receive_json()
 
-@test.skip("pending tryke port")
-async def get_configuration_not_implemented() -> None:
-    """Stub for test_get_configuration_not_implemented (port deferred)."""
+    expect(msg["id"]).to_equal(subscription_id)
+    expect(msg["type"]).to_equal("event")
+    expect(msg["event"]).to_equal({"wake_word_phrase": "ok, nabu"})
 
-@test.skip("pending tryke port")
-async def set_wake_words() -> None:
-    """Stub for test_set_wake_words (port deferred)."""
 
-@test.skip("pending tryke port")
-async def set_wake_words_exceed_maximum() -> None:
-    """Stub for test_set_wake_words_exceed_maximum (port deferred)."""
+@test
+async def intercept_wake_word_requires_on_device_wake_word(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    entity: MockAssistSatellite = Depends(entity_fixture),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test intercepting a wake word fails if detection happens in HA."""
+    ws_client = await hass_ws_client(hass)
 
-@test.skip("pending tryke port")
-async def set_wake_words_bad_id() -> None:
-    """Stub for test_set_wake_words_bad_id (port deferred)."""
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/intercept_wake_word",
+            "entity_id": ENTITY_ID,
+        }
+    )
 
-@test.skip("pending tryke port")
-async def connection_test_require_admin() -> None:
-    """Stub for test_connection_test_require_admin (port deferred)."""
+    async with asyncio.timeout(1):
+        msg = await ws_client.receive_json()
 
-@test.skip("pending tryke port")
-async def connection_test() -> None:
-    """Stub for test_connection_test (port deferred)."""
+    expect(msg["success"]).to_be(True)
+    expect(msg["result"]).to_be(None)
 
-@test.skip("pending tryke port")
-async def connection_test_timeout() -> None:
-    """Stub for test_connection_test_timeout (port deferred)."""
+    await entity.async_accept_pipeline_from_satellite(
+        object(),  # type: ignore[arg-type]
+        # Emulate wake word processing in Home Assistant
+        start_stage=PipelineStage.WAKE_WORD,
+    )
 
-@test.skip("pending tryke port")
-async def connection_test_invalid_satellite() -> None:
-    """Stub for test_connection_test_invalid_satellite (port deferred)."""
+    async with asyncio.timeout(1):
+        msg = await ws_client.receive_json()
 
-@test.skip("pending tryke port")
-async def connection_test_timeout_announcement_unsupported() -> None:
-    """Stub for test_connection_test_timeout_announcement_unsupported (port deferred)."""
+    expect(msg["success"]).to_be(False)
+    expect(msg["error"]).to_equal(
+        {
+            "code": "home_assistant_error",
+            "message": "Only on-device wake words currently supported",
+        }
+    )
+
+
+@test
+async def intercept_wake_word_requires_wake_word_phrase(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    entity: MockAssistSatellite = Depends(entity_fixture),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test intercepting a wake word fails if detection happens in HA."""
+    ws_client = await hass_ws_client(hass)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/intercept_wake_word",
+            "entity_id": ENTITY_ID,
+        }
+    )
+
+    async with asyncio.timeout(1):
+        msg = await ws_client.receive_json()
+
+    expect(msg["success"]).to_be(True)
+    expect(msg["result"]).to_be(None)
+
+    await entity.async_accept_pipeline_from_satellite(
+        object(),  # type: ignore[arg-type]
+        start_stage=PipelineStage.STT,
+        # We are not passing wake word phrase
+    )
+
+    async with asyncio.timeout(1):
+        msg = await ws_client.receive_json()
+
+    expect(msg["success"]).to_be(False)
+    expect(msg["error"]).to_equal(
+        {
+            "code": "home_assistant_error",
+            "message": "No wake word phrase provided",
+        }
+    )
+
+
+@test
+async def intercept_wake_word_require_admin(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    entity: MockAssistSatellite = Depends(entity_fixture),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+    hass_admin_user: MockUser = Depends(hass_admin_user_fixture),
+) -> None:
+    """Test intercepting a wake word requires admin access."""
+    # Remove admin permission and verify we're not allowed
+    hass_admin_user.groups = []
+    ws_client = await hass_ws_client(hass)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/intercept_wake_word",
+            "entity_id": ENTITY_ID,
+        }
+    )
+
+    async with asyncio.timeout(1):
+        msg = await ws_client.receive_json()
+
+    expect(msg["success"]).to_be(False)
+    expect(msg["error"]).to_equal(
+        {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+        }
+    )
+
+
+@test
+async def intercept_wake_word_invalid_satellite(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test intercepting a wake word requires admin access."""
+    ws_client = await hass_ws_client(hass)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/intercept_wake_word",
+            "entity_id": "assist_satellite.invalid",
+        }
+    )
+    async with asyncio.timeout(1):
+        msg = await ws_client.receive_json()
+
+    expect(msg["success"]).to_be(False)
+    expect(msg["error"]).to_equal(
+        {
+            "code": "not_found",
+            "message": "Entity not found",
+        }
+    )
+
+
+@test
+async def intercept_wake_word_twice(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test intercepting a wake word twice cancels the previous request."""
+    ws_client = await hass_ws_client(hass)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/intercept_wake_word",
+            "entity_id": ENTITY_ID,
+        }
+    )
+
+    async with asyncio.timeout(1):
+        msg = await ws_client.receive_json()
+
+    expect(msg["success"]).to_be(True)
+    expect(msg["result"]).to_be(None)
+
+    task = hass.async_create_task(ws_client.receive_json())
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/intercept_wake_word",
+            "entity_id": ENTITY_ID,
+        }
+    )
+
+    # Should get an error from previous subscription
+    async with asyncio.timeout(1):
+        msg = await task
+
+    expect(msg["success"]).to_be(False)
+    expect(msg["error"]).to_equal(
+        {
+            "code": "home_assistant_error",
+            "message": "Wake word interception already in progress",
+        }
+    )
+
+    # Response to second subscription
+    async with asyncio.timeout(1):
+        msg = await ws_client.receive_json()
+
+    expect(msg["success"]).to_be(True)
+    expect(msg["result"]).to_be(None)
+
+
+@test
+async def intercept_wake_word_unsubscribe(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    entity: MockAssistSatellite = Depends(entity_fixture),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test that closing the websocket connection stops interception."""
+    ws_client = await hass_ws_client(hass)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/intercept_wake_word",
+            "entity_id": ENTITY_ID,
+        }
+    )
+
+    # Wait for interception to start
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+    async def receive_json():
+        try:
+            await ws_client.receive_json()
+        except TypeError:
+            # Raises TypeError when connection is closed
+            return
+        raise AssertionError("Expected TypeError on closed connection")
+
+    task = hass.async_create_task(receive_json())
+
+    # Close connection
+    await ws_client.close()
+    await task
+
+    with (
+        patch(
+            "homeassistant.components.assist_satellite.entity.async_pipeline_from_audio_stream",
+        ) as mock_pipeline_from_audio_stream,
+    ):
+        # Start a pipeline with a wake word
+        await entity.async_accept_pipeline_from_satellite(
+            object(),
+            wake_word_phrase="ok, nabu",  # type: ignore[arg-type]
+        )
+
+        # Wake word should not be intercepted
+        mock_pipeline_from_audio_stream.assert_called_once()
+
+
+@test
+async def get_configuration(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    entity: MockAssistSatellite = Depends(entity_fixture),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test getting satellite configuration."""
+    ws_client = await hass_ws_client(hass)
+
+    with (
+        patch.object(entity, "_attr_pipeline_entity_id", "select.test_pipeline"),
+        patch.object(entity, "_attr_vad_sensitivity_entity_id", "select.test_vad"),
+    ):
+        await ws_client.send_json_auto_id(
+            {
+                "type": "assist_satellite/get_configuration",
+                "entity_id": ENTITY_ID,
+            }
+        )
+        msg = await ws_client.receive_json()
+        expect(msg["success"]).to_be(True)
+        expect(msg["result"]).to_equal(
+            {
+                "active_wake_words": ["1234"],
+                "available_wake_words": [
+                    {
+                        "id": "1234",
+                        "trained_languages": ["en"],
+                        "wake_word": "okay nabu",
+                    },
+                    {
+                        "id": "5678",
+                        "trained_languages": ["en"],
+                        "wake_word": "hey jarvis",
+                    },
+                ],
+                "max_active_wake_words": 1,
+                "pipeline_entity_id": "select.test_pipeline",
+                "vad_entity_id": "select.test_vad",
+            }
+        )
+
+
+@test
+async def get_configuration_not_implemented(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    entity: MockAssistSatellite = Depends(entity_fixture),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test getting stub satellite configuration when the entity doesn't implement the method."""
+    ws_client = await hass_ws_client(hass)
+
+    with patch.object(
+        entity, "async_get_configuration", side_effect=NotImplementedError()
+    ):
+        await ws_client.send_json_auto_id(
+            {
+                "type": "assist_satellite/get_configuration",
+                "entity_id": ENTITY_ID,
+            }
+        )
+        msg = await ws_client.receive_json()
+        expect(msg["success"]).to_be(True)
+
+        # Stub configuration
+        expect(msg["result"]).to_equal(
+            {
+                "active_wake_words": [],
+                "available_wake_words": [],
+                "max_active_wake_words": 1,
+                "pipeline_entity_id": None,
+                "vad_entity_id": None,
+            }
+        )
+
+
+@test
+async def set_wake_words(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test setting active wake words."""
+    ws_client = await hass_ws_client(hass)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/set_wake_words",
+            "entity_id": ENTITY_ID,
+            "wake_word_ids": ["5678"],
+        }
+    )
+    msg = await ws_client.receive_json()
+    expect(msg["success"]).to_be(True)
+
+    # Verify change
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/get_configuration",
+            "entity_id": ENTITY_ID,
+        }
+    )
+    msg = await ws_client.receive_json()
+    expect(msg["success"]).to_be(True)
+    expect(msg["result"].get("active_wake_words")).to_equal(["5678"])
+
+
+@test
+async def set_wake_words_exceed_maximum(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test setting too many active wake words."""
+    ws_client = await hass_ws_client(hass)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/set_wake_words",
+            "entity_id": ENTITY_ID,
+            "wake_word_ids": ["1234", "5678"],  # max of 1
+        }
+    )
+    msg = await ws_client.receive_json()
+    expect(msg["success"]).to_be(False)
+    expect(msg["error"]).to_equal(
+        {
+            "code": "not_supported",
+            "message": "Maximum number of active wake words is 1",
+        }
+    )
+
+
+@test
+async def set_wake_words_bad_id(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test setting active wake words with a bad id."""
+    ws_client = await hass_ws_client(hass)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/set_wake_words",
+            "entity_id": ENTITY_ID,
+            "wake_word_ids": ["abcd"],  # not an available id
+        }
+    )
+    msg = await ws_client.receive_json()
+    expect(msg["success"]).to_be(False)
+    expect(msg["error"]).to_equal(
+        {
+            "code": "not_supported",
+            "message": "Wake word id is not supported: abcd",
+        }
+    )
+
+
+@test
+async def connection_test_require_admin(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+    hass_read_only_access_token: str = Depends(hass_read_only_access_token_fixture),
+) -> None:
+    """Test connection test requires admin access."""
+    ws_client = await hass_ws_client(hass, hass_read_only_access_token)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/test_connection",
+            "entity_id": ENTITY_ID,
+        }
+    )
+
+    async with asyncio.timeout(1):
+        msg = await ws_client.receive_json()
+
+    expect(msg["success"]).to_be(False)
+    expect(msg["error"]).to_equal(
+        {
+            "code": "unauthorized",
+            "message": "Unauthorized",
+        }
+    )
+
+
+@test
+async def connection_test(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    entity: MockAssistSatellite = Depends(entity_fixture),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+    hass_client: ClientSessionGenerator = Depends(hass_client_fixture),
+) -> None:
+    """Test connection test."""
+    ws_client = await hass_ws_client(hass)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/test_connection",
+            "entity_id": ENTITY_ID,
+        }
+    )
+
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+    expect(len(entity.announcements)).to_equal(1)
+    expect(entity.announcements[0].message).to_equal("")
+    expect(entity.announcements[0].preannounce_media_id).to_be(None)
+    announcement_media_id = entity.announcements[0].media_id
+    hass_url = "http://10.10.10.10:8123"
+    expect(
+        announcement_media_id.startswith(
+            f"{hass_url}/api/assist_satellite/connection_test/"
+        )
+    ).to_be(True)
+
+    # Fake satellite fetches the URL
+    client = await hass_client()
+    resp = await client.get(announcement_media_id[len(hass_url) :])
+    expect(resp.status).to_equal(HTTPStatus.OK)
+
+    response = await ws_client.receive_json()
+    expect(response["success"]).to_be(True)
+    expect(response["result"]).to_equal({"status": "success"})
+
+
+@test
+async def connection_test_timeout(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    entity: MockAssistSatellite = Depends(entity_fixture),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+    freezer: FrozenDateTimeFactory = Depends(freezer_fixture),
+) -> None:
+    """Test connection test timeout."""
+    ws_client = await hass_ws_client(hass)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/test_connection",
+            "entity_id": ENTITY_ID,
+        }
+    )
+
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+    expect(len(entity.announcements)).to_equal(1)
+    expect(entity.announcements[0].message).to_equal("")
+    announcement_media_id = entity.announcements[0].media_id
+    hass_url = "http://10.10.10.10:8123"
+    expect(
+        announcement_media_id.startswith(
+            f"{hass_url}/api/assist_satellite/connection_test/"
+        )
+    ).to_be(True)
+
+    freezer.tick(CONNECTION_TEST_TIMEOUT + 1)
+
+    # Timeout
+    response = await ws_client.receive_json()
+    expect(response["success"]).to_be(True)
+    expect(response["result"]).to_equal({"status": "timeout"})
+
+
+@test
+async def connection_test_invalid_satellite(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test connection test with unknown entity id."""
+    ws_client = await hass_ws_client(hass)
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/test_connection",
+            "entity_id": "assist_satellite.invalid",
+        }
+    )
+    response = await ws_client.receive_json()
+
+    expect(response["success"]).to_be(False)
+    expect(response["error"]).to_equal(
+        {
+            "code": "not_found",
+            "message": "Entity not found",
+        }
+    )
+
+
+@test
+async def connection_test_timeout_announcement_unsupported(
+    _exec: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup: ConfigEntry = Depends(_setup),
+    entity: MockAssistSatellite = Depends(entity_fixture),
+    hass_ws_client: Any = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test connection test entity which does not support announce."""
+    ws_client = await hass_ws_client(hass)
+
+    # Disable announce support
+    entity.supported_features = 0
+
+    await ws_client.send_json_auto_id(
+        {
+            "type": "assist_satellite/test_connection",
+            "entity_id": ENTITY_ID,
+        }
+    )
+    response = await ws_client.receive_json()
+
+    expect(response["success"]).to_be(False)
+    expect(response["error"]).to_equal(
+        {
+            "code": "not_supported",
+            "message": "Entity does not support announce",
+        }
+    )

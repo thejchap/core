@@ -24,7 +24,8 @@ from homeassistant.components.shelly.const import (
     EVENT_SHELLY_CLICK,
     REST_SENSORS_UPDATE_INTERVAL,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Context, HomeAssistant, ServiceCall, ServiceResponse
+from homeassistant.exceptions import ServiceNotFound
 
 from tests.common import async_capture_events
 from tests.components.shelly import MOCK_MAC
@@ -801,6 +802,46 @@ def mock_setup() -> Generator[AsyncMock]:
 
 
 @fixture
+def service_calls(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> Generator[list[ServiceCall]]:
+    """Track all service calls."""
+    calls: list[ServiceCall] = []
+
+    _original_async_call = hass.services.async_call
+
+    async def _async_call(
+        self: Any,
+        domain: str,
+        service: str,
+        service_data: dict[str, Any] | None = None,
+        blocking: bool = False,
+        context: Context | None = None,
+        target: dict[str, Any] | None = None,
+        return_response: bool = False,
+    ) -> ServiceResponse:
+        calls.append(
+            ServiceCall(hass, domain, service, service_data, context, return_response)
+        )
+        try:
+            return await _original_async_call(
+                domain,
+                service,
+                service_data,
+                blocking,
+                context,
+                target,
+                return_response,
+            )
+        except ServiceNotFound:
+            pass
+        return None
+
+    with patch("homeassistant.core.ServiceRegistry.async_call", _async_call):
+        yield calls
+
+
+@fixture
 def disable_async_remove_shelly_rpc_entities() -> Generator[None]:
     """Patch out async_remove_shelly_rpc_entities."""
     with patch(
@@ -832,6 +873,7 @@ __all__ = [
     "mock_setup",
     "mock_setup_entry",
     "mock_sleepy_rpc_device",
+    "service_calls",
     "mock_white_light_set_state",
     "mock_ws_server",
 ]

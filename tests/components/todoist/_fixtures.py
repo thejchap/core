@@ -2,19 +2,25 @@
 
 from collections.abc import AsyncGenerator, Callable, Generator
 from http import HTTPStatus
-from typing import TypeVar
+from typing import Any, TypeVar
 from unittest.mock import AsyncMock, patch
 
+from freezegun import freeze_time
 from requests.exceptions import HTTPError
 from requests.models import Response
 from todoist_api_python.api_async import TodoistAPIAsync
 from todoist_api_python.models import Collaborator, Due, Label, Project, Section, Task
 from tryke import Depends, fixture
 
+from homeassistant import setup
 from homeassistant.components.todoist.const import DOMAIN
-from homeassistant.const import CONF_TOKEN
+from homeassistant.const import CONF_TOKEN, Platform
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_component import async_update_entity
+from homeassistant.setup import async_setup_component
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fixture
 
 T = TypeVar("T")
 
@@ -182,3 +188,74 @@ def patch_api(api: AsyncMock = Depends(mock_api)) -> Generator[AsyncMock]:
         "homeassistant.components.todoist.config_flow.TodoistAPIAsync", return_value=api
     ):
         yield api
+
+
+# ---------------------------------------------------------------------------
+# Calendar test fixtures (legacy YAML platform setup)
+# ---------------------------------------------------------------------------
+
+
+@fixture
+def freeze_calendar_time() -> Generator[None]:
+    """Freeze time to a stable point for calendar tests."""
+    with freeze_time("2024-05-24 12:00:00"):
+        yield
+
+
+@fixture
+async def set_time_zone_regina(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Set the time zone to America/Regina (UTC-6 year round)."""
+    await hass.config.async_set_time_zone("America/Regina")
+
+
+async def setup_yaml_calendar_platform(
+    hass: HomeAssistant,
+    api: AsyncMock,
+    todoist_config: dict[str, Any] | None = None,
+) -> None:
+    """Set up the legacy todoist YAML calendar platform.
+
+    This is intentionally a function rather than a fixture so tests can
+    parametrize the ``todoist_config`` value at the test level (the legacy
+    pytest layout relied on parametrizing an autouse fixture).
+    """
+    todoist_config = todoist_config or {}
+    with patch(
+        "homeassistant.components.todoist.calendar.TodoistAPIAsync"
+    ) as todoist_api:
+        todoist_api.return_value = api
+        assert await setup.async_setup_component(
+            hass,
+            "calendar",
+            {
+                "calendar": {
+                    "platform": DOMAIN,
+                    CONF_TOKEN: "token",
+                    **todoist_config,
+                }
+            },
+        )
+        await hass.async_block_till_done()
+        await async_update_entity(hass, "calendar.name")
+
+
+@fixture
+async def setup_integration(
+    hass: HomeAssistant = Depends(hass_fixture),
+    api: AsyncMock = Depends(mock_api),
+    config_entry: MockConfigEntry = Depends(mock_todoist_config_entry),
+) -> None:
+    """Set up the todoist integration via a MockConfigEntry."""
+    config_entry.add_to_hass(hass)
+    with (
+        patch("homeassistant.components.todoist.TodoistAPIAsync", return_value=api),
+        patch(
+            "homeassistant.components.todoist.PLATFORMS",
+            [Platform.CALENDAR],
+        ),
+    ):
+        assert await async_setup_component(hass, DOMAIN, {})
+        await hass.async_block_till_done()
+        yield

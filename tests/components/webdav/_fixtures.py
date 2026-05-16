@@ -1,17 +1,21 @@
 """Tryke fixtures for the WebDAV tests."""
 
-from collections.abc import AsyncIterator, Generator
+from collections.abc import AsyncGenerator, AsyncIterator, Generator
 from json import dumps
 from unittest.mock import AsyncMock, patch
 
-from tryke import fixture
+from tryke import Depends, fixture
 
+from homeassistant.components.backup import DOMAIN as BACKUP_DOMAIN
 from homeassistant.components.webdav.const import DOMAIN
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
+from homeassistant.core import HomeAssistant
+from homeassistant.setup import async_setup_component
 
 from .const import BACKUP_METADATA, MOCK_LIST_FILES
 
 from tests.common import MockConfigEntry
+from tests.hass_fixtures import hass as hass_fx
 
 
 @fixture
@@ -65,3 +69,22 @@ def webdav_client() -> Generator[AsyncMock]:
         mock.clean.return_value = None
         mock.move.return_value = None
         yield mock
+
+
+@fixture
+async def setup_backup_integration(
+    hass: HomeAssistant = Depends(hass_fx),
+    mock_config_entry: MockConfigEntry = Depends(mock_config_entry),
+    webdav_client: AsyncMock = Depends(webdav_client),
+) -> AsyncGenerator[None]:
+    """Set up webdav integration with backup component."""
+    with (
+        patch("homeassistant.components.backup.is_hassio", return_value=False),
+        patch("homeassistant.components.backup.store.STORE_DELAY_SAVE", 0),
+    ):
+        assert await async_setup_component(hass, BACKUP_DOMAIN, {})
+        mock_config_entry.add_to_hass(hass)
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+        yield
