@@ -148,3 +148,4 @@ pytest_buckets.txt
 .claude/worktrees/
 .serena/
 
+tests/testing_config/.storage/
