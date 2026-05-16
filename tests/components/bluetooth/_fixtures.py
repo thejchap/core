@@ -44,6 +44,45 @@ def macos_adapter() -> Generator[None]:
 
 
 @fixture
+def one_adapter() -> Generator[None]:
+    """Fixture that mocks one adapter on Linux."""
+    with (
+        patch(
+            "homeassistant.components.bluetooth.platform.system",
+            return_value="Linux",
+        ),
+        patch(
+            "habluetooth.scanner.platform.system",
+            return_value="Linux",
+        ),
+        patch(
+            "bluetooth_adapters.systems.platform.system",
+            return_value="Linux",
+        ),
+        patch("habluetooth.scanner.SYSTEM", "Linux"),
+        patch(
+            "bluetooth_adapters.systems.linux.LinuxAdapters.refresh",
+        ),
+        patch(
+            "bluetooth_adapters.systems.linux.LinuxAdapters.adapters",
+            {
+                "hci0": {
+                    "address": "00:00:00:00:00:01",
+                    "hw_version": "usb:v1D6Bp0246d053F",
+                    "passive_scan": True,
+                    "sw_version": "homeassistant",
+                    "manufacturer": "ACME",
+                    "product": "Bluetooth Adapter 5.0",
+                    "product_id": "aa01",
+                    "vendor_id": "cc01",
+                },
+            },
+        ),
+    ):
+        yield
+
+
+@fixture
 async def register_hci0_scanner(
     hass: HomeAssistant = Depends(hass_fixture),
     _enable_bluetooth: None = Depends(enable_bluetooth_fixture),

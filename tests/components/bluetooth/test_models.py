@@ -1,44 +1,649 @@
-"""Tryke skip stub (pending port)."""
+"""Tests for the Bluetooth integration models."""
 
-from tryke import test
+from unittest.mock import patch
+
+from bleak import BleakError
+from bleak.backends.device import BLEDevice
+from bleak.backends.scanner import AdvertisementData
+from habluetooth.wrappers import HaBleakClientWrapper, HaBleakScannerWrapper
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components.bluetooth import (
+    BaseHaRemoteScanner,
+    BaseHaScanner,
+    HaBluetoothConnector,
+)
+from homeassistant.core import HomeAssistant
+
+from . import (
+    FakeScannerMixin,
+    MockBleakClient,
+    _get_manager,
+    generate_advertisement_data,
+    generate_ble_device,
+    inject_advertisement,
+    inject_advertisement_with_source,
+    patch_bleak_backend_type,
+)
+from ._fixtures import (
+    macos_adapter as macos_adapter_fixture,
+    one_adapter as one_adapter_fixture,
+)
+
+from tests.hass_fixtures import (
+    enable_bluetooth as enable_bluetooth_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
+from tests.hass_tryke_helpers import expect_raises_async
 
 
-@test.skip("pending tryke port")
-async def wrapped_bleak_scanner() -> None:
-    """Stub for test_wrapped_bleak_scanner (port deferred)."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> int:
+    """Module-local anchor; opts the test module into Tryke's HookExecutor path."""
+    return 0
 
-@test.skip("pending tryke port")
-async def wrapped_bleak_client_raises_device_missing() -> None:
-    """Stub for test_wrapped_bleak_client_raises_device_missing (port deferred)."""
 
-@test.skip("pending tryke port")
-async def wrapped_bleak_client_set_disconnected_callback_before_connected() -> None:
-    """Stub for test_wrapped_bleak_client_set_disconnected_callback_before_connected (port deferred)."""
+@test
+async def wrapped_bleak_scanner(
+    _trigger: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _enable_bluetooth: None = Depends(enable_bluetooth_fixture),
+) -> None:
+    """Test wrapped bleak scanner dispatches calls as expected."""
+    scanner = HaBleakScannerWrapper()
+    switchbot_device = generate_ble_device("44:44:33:11:23:45", "wohand")
+    switchbot_adv = generate_advertisement_data(
+        local_name="wohand", service_uuids=[], manufacturer_data={1: b"\x01"}
+    )
+    inject_advertisement(hass, switchbot_device, switchbot_adv)
+    expect(scanner.discovered_devices).to_equal([switchbot_device])
+    expect(await scanner.discover()).to_equal([switchbot_device])
 
-@test.skip("pending tryke port")
-async def wrapped_bleak_client_local_adapter_only() -> None:
-    """Stub for test_wrapped_bleak_client_local_adapter_only (port deferred)."""
 
-@test.skip("pending tryke port")
-async def wrapped_bleak_client_set_disconnected_callback_after_connected() -> None:
-    """Stub for test_wrapped_bleak_client_set_disconnected_callback_after_connected (port deferred)."""
+@test
+async def wrapped_bleak_client_raises_device_missing(
+    _trigger: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _enable_bluetooth: None = Depends(enable_bluetooth_fixture),
+) -> None:
+    """Test wrapped bleak client dispatches calls as expected."""
+    switchbot_device = generate_ble_device("44:44:33:11:23:45", "wohand")
+    client = HaBleakClientWrapper(switchbot_device)
+    expect(client.is_connected).to_be(False)
+    async with expect_raises_async(BleakError):
+        await client.connect()
+    expect(client.is_connected).to_be(False)
+    await client.disconnect()
+    expect(await client.clear_cache()).to_be(False)
 
-@test.skip("pending tryke port")
-async def ble_device_with_proxy_client_out_of_connections_no_scanners() -> None:
-    """Stub for test_ble_device_with_proxy_client_out_of_connections_no_scanners (port deferred)."""
 
-@test.skip("pending tryke port")
-async def ble_device_with_proxy_client_out_of_connections() -> None:
-    """Stub for test_ble_device_with_proxy_client_out_of_connections (port deferred)."""
+@test
+async def wrapped_bleak_client_set_disconnected_callback_before_connected(
+    _trigger: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _enable_bluetooth: None = Depends(enable_bluetooth_fixture),
+) -> None:
+    """Test wrapped bleak client can set a disconnected callback before connected."""
+    switchbot_device = generate_ble_device("44:44:33:11:23:45", "wohand")
+    client = HaBleakClientWrapper(switchbot_device)
+    client.set_disconnected_callback(lambda client: None)
 
-@test.skip("pending tryke port")
-async def ble_device_with_proxy_clear_cache() -> None:
-    """Stub for test_ble_device_with_proxy_clear_cache (port deferred)."""
 
-@test.skip("pending tryke port")
-async def ble_device_with_proxy_client_out_of_connections_uses_best_available() -> None:
-    """Stub for test_ble_device_with_proxy_client_out_of_connections_uses_best_available (port deferred)."""
+@test
+async def wrapped_bleak_client_local_adapter_only(
+    _trigger: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _enable_bluetooth: None = Depends(enable_bluetooth_fixture),
+    _one_adapter: None = Depends(one_adapter_fixture),
+) -> None:
+    """Test wrapped bleak client with only a local adapter."""
+    manager = _get_manager()
 
-@test.skip("pending tryke port")
-async def ble_device_with_proxy_client_out_of_connections_uses_best_available_macos() -> None:
-    """Stub for test_ble_device_with_proxy_client_out_of_connections_uses_best_available_macos (port deferred)."""
+    switchbot_device = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand",
+        {"path": "/org/bluez/hci0/dev_44_44_33_11_23_45"},
+    )
+    switchbot_adv = generate_advertisement_data(
+        local_name="wohand", service_uuids=[], manufacturer_data={1: b"\x01"}, rssi=-100
+    )
+
+    class FakeScanner(FakeScannerMixin, BaseHaScanner):
+        @property
+        def discovered_devices(self) -> list[BLEDevice]:
+            """Return a list of discovered devices."""
+            return []
+
+        @property
+        def discovered_devices_and_advertisement_data(
+            self,
+        ) -> dict[str, tuple[BLEDevice, AdvertisementData]]:
+            """Return a list of discovered devices."""
+            return {
+                switchbot_device.address: (
+                    switchbot_device,
+                    switchbot_adv,
+                )
+            }
+
+        async def async_get_device_by_address(self, address: str) -> BLEDevice | None:
+            """Return a list of discovered devices."""
+            if address == switchbot_device.address:
+                return switchbot_adv
+            return None
+
+    scanner = FakeScanner(
+        "00:00:00:00:00:01",
+        "hci0",
+    )
+    # pylint: disable-next=attribute-defined-outside-init
+    scanner.connectable = True
+    cancel = manager.async_register_scanner(scanner)
+    inject_advertisement_with_source(
+        hass, switchbot_device, switchbot_adv, "00:00:00:00:00:01"
+    )
+
+    client = HaBleakClientWrapper(switchbot_device)
+    with (
+        patch(
+            "bleak.backends.bluezdbus.client.BleakClientBlueZDBus.connect",
+            return_value=True,
+        ),
+        patch(
+            "bleak.backends.bluezdbus.client.BleakClientBlueZDBus.is_connected", True
+        ),
+    ):
+        await client.connect()
+        expect(client.is_connected).to_be(True)
+    client.set_disconnected_callback(lambda client: None)
+    await client.disconnect()
+    cancel()
+
+
+@test
+async def wrapped_bleak_client_set_disconnected_callback_after_connected(
+    _trigger: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _enable_bluetooth: None = Depends(enable_bluetooth_fixture),
+    _one_adapter: None = Depends(one_adapter_fixture),
+) -> None:
+    """Test wrapped bleak client can set a disconnected callback after connected."""
+    manager = _get_manager()
+
+    switchbot_proxy_device_has_connection_slot = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand",
+        {
+            "source": "esp32_has_connection_slot",
+            "path": "/org/bluez/hci0/dev_44_44_33_11_23_45",
+        },
+    )
+    switchbot_proxy_device_adv_has_connection_slot = generate_advertisement_data(
+        local_name="wohand",
+        service_uuids=[],
+        manufacturer_data={1: b"\x01"},
+        rssi=-40,
+    )
+    switchbot_device = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand",
+        {"path": "/org/bluez/hci0/dev_44_44_33_11_23_45"},
+    )
+    switchbot_adv = generate_advertisement_data(
+        local_name="wohand", service_uuids=[], manufacturer_data={1: b"\x01"}, rssi=-100
+    )
+
+    class FakeScanner(FakeScannerMixin, BaseHaRemoteScanner):
+        @property
+        def discovered_devices(self) -> list[BLEDevice]:
+            """Return a list of discovered devices."""
+            return []
+
+        @property
+        def discovered_devices_and_advertisement_data(
+            self,
+        ) -> dict[str, tuple[BLEDevice, AdvertisementData]]:
+            """Return a list of discovered devices."""
+            return {
+                switchbot_proxy_device_has_connection_slot.address: (
+                    switchbot_proxy_device_has_connection_slot,
+                    switchbot_proxy_device_adv_has_connection_slot,
+                )
+            }
+
+        async def async_get_device_by_address(self, address: str) -> BLEDevice | None:
+            """Return a list of discovered devices."""
+            if address == switchbot_proxy_device_has_connection_slot.address:
+                return switchbot_proxy_device_has_connection_slot
+            return None
+
+    connector = HaBluetoothConnector(
+        MockBleakClient, "esp32_has_connection_slot", lambda: True
+    )
+    scanner = FakeScanner(
+        "esp32_has_connection_slot",
+        "esp32_has_connection_slot",
+        connector,
+        True,
+    )
+    cancel = manager.async_register_scanner(scanner)
+    inject_advertisement_with_source(
+        hass, switchbot_device, switchbot_adv, "00:00:00:00:00:01"
+    )
+    inject_advertisement_with_source(
+        hass,
+        switchbot_proxy_device_has_connection_slot,
+        switchbot_proxy_device_adv_has_connection_slot,
+        "esp32_has_connection_slot",
+    )
+    client = HaBleakClientWrapper(switchbot_proxy_device_has_connection_slot)
+    with (
+        patch(
+            "bleak.backends.bluezdbus.client.BleakClientBlueZDBus.connect",
+            return_value=True,
+        ),
+        patch(
+            "bleak.backends.bluezdbus.client.BleakClientBlueZDBus.is_connected", True
+        ),
+    ):
+        await client.connect()
+        expect(client.is_connected).to_be(True)
+    client.set_disconnected_callback(lambda client: None)
+    await client.disconnect()
+    cancel()
+
+
+@test
+async def ble_device_with_proxy_client_out_of_connections_no_scanners(
+    _trigger: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _enable_bluetooth: None = Depends(enable_bluetooth_fixture),
+    _one_adapter: None = Depends(one_adapter_fixture),
+) -> None:
+    """Test we switch to the next available proxy when one runs out of connections with no scanners."""
+    manager = _get_manager()
+
+    switchbot_proxy_device_no_connection_slot = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand",
+        {
+            "source": "esp32",
+            "path": "/org/bluez/hci0/dev_44_44_33_11_23_45",
+        },
+    )
+    switchbot_adv = generate_advertisement_data(
+        local_name="wohand", service_uuids=[], manufacturer_data={1: b"\x01"}, rssi=-30
+    )
+
+    inject_advertisement_with_source(
+        hass, switchbot_proxy_device_no_connection_slot, switchbot_adv, "esp32"
+    )
+
+    expect(manager.async_discovered_devices(True)).to_equal(
+        [switchbot_proxy_device_no_connection_slot]
+    )
+
+    client = HaBleakClientWrapper(switchbot_proxy_device_no_connection_slot)
+    with patch("bleak.backends.bluezdbus.client.BleakClientBlueZDBus.connect"):
+        async with expect_raises_async(BleakError):
+            await client.connect()
+    expect(client.is_connected).to_be(False)
+    client.set_disconnected_callback(lambda client: None)
+    await client.disconnect()
+
+
+@test
+async def ble_device_with_proxy_client_out_of_connections(
+    _trigger: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _enable_bluetooth: None = Depends(enable_bluetooth_fixture),
+    _one_adapter: None = Depends(one_adapter_fixture),
+) -> None:
+    """Test handling all scanners are out of connection slots."""
+    manager = _get_manager()
+
+    switchbot_proxy_device_no_connection_slot = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand",
+        {
+            "source": "esp32",
+            "path": "/org/bluez/hci0/dev_44_44_33_11_23_45",
+        },
+    )
+    switchbot_adv = generate_advertisement_data(
+        local_name="wohand", service_uuids=[], manufacturer_data={1: b"\x01"}, rssi=-30
+    )
+
+    class FakeScanner(FakeScannerMixin, BaseHaRemoteScanner):
+        @property
+        def discovered_devices(self) -> list[BLEDevice]:
+            """Return a list of discovered devices."""
+            return []
+
+        @property
+        def discovered_devices_and_advertisement_data(
+            self,
+        ) -> dict[str, tuple[BLEDevice, AdvertisementData]]:
+            """Return a list of discovered devices."""
+            return {
+                switchbot_proxy_device_no_connection_slot.address: (
+                    switchbot_proxy_device_no_connection_slot,
+                    switchbot_adv,
+                )
+            }
+
+        async def async_get_device_by_address(self, address: str) -> BLEDevice | None:
+            """Return a list of discovered devices."""
+            if address == switchbot_proxy_device_no_connection_slot.address:
+                return switchbot_adv
+            return None
+
+    connector = HaBluetoothConnector(MockBleakClient, "esp32", lambda: False)
+    scanner = FakeScanner("esp32", "esp32", connector, True)
+    cancel = manager.async_register_scanner(scanner)
+    inject_advertisement_with_source(
+        hass, switchbot_proxy_device_no_connection_slot, switchbot_adv, "esp32"
+    )
+
+    expect(manager.async_discovered_devices(True)).to_equal(
+        [switchbot_proxy_device_no_connection_slot]
+    )
+
+    client = HaBleakClientWrapper(switchbot_proxy_device_no_connection_slot)
+    with patch("bleak.backends.bluezdbus.client.BleakClientBlueZDBus.connect"):
+        async with expect_raises_async(BleakError):
+            await client.connect()
+    expect(client.is_connected).to_be(False)
+    client.set_disconnected_callback(lambda client: None)
+    await client.disconnect()
+    cancel()
+
+
+@test
+async def ble_device_with_proxy_clear_cache(
+    _trigger: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _enable_bluetooth: None = Depends(enable_bluetooth_fixture),
+    _one_adapter: None = Depends(one_adapter_fixture),
+) -> None:
+    """Test we can clear cache on the proxy."""
+    manager = _get_manager()
+
+    switchbot_proxy_device_with_connection_slot = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand",
+        {
+            "source": "esp32",
+            "path": "/org/bluez/hci0/dev_44_44_33_11_23_45",
+        },
+    )
+    switchbot_adv = generate_advertisement_data(
+        local_name="wohand", service_uuids=[], manufacturer_data={1: b"\x01"}, rssi=-30
+    )
+
+    class FakeScanner(FakeScannerMixin, BaseHaRemoteScanner):
+        @property
+        def discovered_devices(self) -> list[BLEDevice]:
+            """Return a list of discovered devices."""
+            return []
+
+        @property
+        def discovered_devices_and_advertisement_data(
+            self,
+        ) -> dict[str, tuple[BLEDevice, AdvertisementData]]:
+            """Return a list of discovered devices."""
+            return {
+                switchbot_proxy_device_with_connection_slot.address: (
+                    switchbot_proxy_device_with_connection_slot,
+                    switchbot_adv,
+                )
+            }
+
+        async def async_get_device_by_address(self, address: str) -> BLEDevice | None:
+            """Return a list of discovered devices."""
+            if address == switchbot_proxy_device_with_connection_slot.address:
+                return switchbot_adv
+            return None
+
+    connector = HaBluetoothConnector(MockBleakClient, "esp32", lambda: True)
+    scanner = FakeScanner("esp32", "esp32", connector, True)
+    cancel = manager.async_register_scanner(scanner)
+    inject_advertisement_with_source(
+        hass, switchbot_proxy_device_with_connection_slot, switchbot_adv, "esp32"
+    )
+
+    expect(manager.async_discovered_devices(True)).to_equal(
+        [switchbot_proxy_device_with_connection_slot]
+    )
+
+    client = HaBleakClientWrapper(switchbot_proxy_device_with_connection_slot)
+    await client.connect()
+    expect(client.is_connected).to_be(True)
+    expect(await client.clear_cache()).to_be(True)
+    await client.disconnect()
+    cancel()
+
+
+@test
+async def ble_device_with_proxy_client_out_of_connections_uses_best_available(
+    _trigger: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _enable_bluetooth: None = Depends(enable_bluetooth_fixture),
+    _one_adapter: None = Depends(one_adapter_fixture),
+) -> None:
+    """Test we switch to the next available proxy when one runs out of connections."""
+    manager = _get_manager()
+
+    switchbot_proxy_device_no_connection_slot = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand",
+        {
+            "source": "esp32_no_connection_slot",
+            "path": "/org/bluez/hci0/dev_44_44_33_11_23_45",
+        },
+    )
+    switchbot_proxy_device_adv_no_connection_slot = generate_advertisement_data(
+        local_name="wohand",
+        service_uuids=[],
+        manufacturer_data={1: b"\x01"},
+        rssi=-30,
+    )
+    switchbot_proxy_device_has_connection_slot = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand",
+        {
+            "source": "esp32_has_connection_slot",
+            "path": "/org/bluez/hci0/dev_44_44_33_11_23_45",
+        },
+    )
+    switchbot_proxy_device_adv_has_connection_slot = generate_advertisement_data(
+        local_name="wohand",
+        service_uuids=[],
+        manufacturer_data={1: b"\x01"},
+        rssi=-40,
+    )
+    switchbot_device = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand",
+        {"path": "/org/bluez/hci0/dev_44_44_33_11_23_45"},
+    )
+    switchbot_adv = generate_advertisement_data(
+        local_name="wohand", service_uuids=[], manufacturer_data={1: b"\x01"}, rssi=-100
+    )
+
+    inject_advertisement_with_source(
+        hass, switchbot_device, switchbot_adv, "00:00:00:00:00:01"
+    )
+    inject_advertisement_with_source(
+        hass,
+        switchbot_proxy_device_has_connection_slot,
+        switchbot_proxy_device_adv_has_connection_slot,
+        "esp32_has_connection_slot",
+    )
+    inject_advertisement_with_source(
+        hass,
+        switchbot_proxy_device_no_connection_slot,
+        switchbot_proxy_device_adv_no_connection_slot,
+        "esp32_no_connection_slot",
+    )
+
+    class FakeScanner(FakeScannerMixin, BaseHaRemoteScanner):
+        @property
+        def discovered_devices(self) -> list[BLEDevice]:
+            """Return a list of discovered devices."""
+            return []
+
+        @property
+        def discovered_devices_and_advertisement_data(
+            self,
+        ) -> dict[str, tuple[BLEDevice, AdvertisementData]]:
+            """Return a list of discovered devices."""
+            return {
+                switchbot_proxy_device_has_connection_slot.address: (
+                    switchbot_proxy_device_has_connection_slot,
+                    switchbot_proxy_device_adv_has_connection_slot,
+                )
+            }
+
+        async def async_get_device_by_address(self, address: str) -> BLEDevice | None:
+            """Return a list of discovered devices."""
+            if address == switchbot_proxy_device_has_connection_slot.address:
+                return switchbot_proxy_device_has_connection_slot
+            return None
+
+    connector = HaBluetoothConnector(
+        MockBleakClient, "esp32_has_connection_slot", lambda: True
+    )
+    scanner = FakeScanner(
+        "esp32_has_connection_slot",
+        "esp32_has_connection_slot",
+        connector,
+        True,
+    )
+    cancel = manager.async_register_scanner(scanner)
+    expect(manager.async_discovered_devices(True)).to_equal(
+        [switchbot_proxy_device_no_connection_slot]
+    )
+
+    client = HaBleakClientWrapper(switchbot_proxy_device_no_connection_slot)
+    with patch("bleak.backends.bluezdbus.client.BleakClientBlueZDBus.connect"):
+        await client.connect()
+    expect(client.is_connected).to_be(True)
+    client.set_disconnected_callback(lambda client: None)
+    await client.disconnect()
+    cancel()
+
+
+@test
+async def ble_device_with_proxy_client_out_of_connections_uses_best_available_macos(
+    _trigger: int = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    _enable_bluetooth: None = Depends(enable_bluetooth_fixture),
+    _macos_adapter: None = Depends(macos_adapter_fixture),
+) -> None:
+    """Test we switch to the next available proxy when one runs out of connections on MacOS."""
+    manager = _get_manager()
+
+    switchbot_proxy_device_no_connection_slot = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand_no_connection_slot",
+        {
+            "source": "esp32_no_connection_slot",
+            "path": "/org/bluez/hci0/dev_44_44_33_11_23_45",
+        },
+    )
+    switchbot_proxy_device_no_connection_slot_adv = generate_advertisement_data(
+        local_name="wohand",
+        service_uuids=[],
+        manufacturer_data={1: b"\x01"},
+        rssi=-30,
+    )
+    switchbot_proxy_device_has_connection_slot = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand_has_connection_slot",
+        {
+            "source": "esp32_has_connection_slot",
+            "path": "/org/bluez/hci0/dev_44_44_33_11_23_45",
+        },
+    )
+    switchbot_proxy_device_has_connection_slot_adv = generate_advertisement_data(
+        local_name="wohand",
+        service_uuids=[],
+        manufacturer_data={1: b"\x01"},
+        rssi=-40,
+    )
+
+    switchbot_device = generate_ble_device(
+        "44:44:33:11:23:45",
+        "wohand",
+        {},
+    )
+    switchbot_device_adv = generate_advertisement_data(
+        local_name="wohand",
+        service_uuids=[],
+        manufacturer_data={1: b"\x01"},
+        rssi=-100,
+    )
+
+    inject_advertisement_with_source(
+        hass, switchbot_device, switchbot_device_adv, "00:00:00:00:00:01"
+    )
+    inject_advertisement_with_source(
+        hass,
+        switchbot_proxy_device_has_connection_slot,
+        switchbot_proxy_device_has_connection_slot_adv,
+        "esp32_has_connection_slot",
+    )
+    inject_advertisement_with_source(
+        hass,
+        switchbot_proxy_device_no_connection_slot,
+        switchbot_proxy_device_no_connection_slot_adv,
+        "esp32_no_connection_slot",
+    )
+
+    class FakeScanner(FakeScannerMixin, BaseHaRemoteScanner):
+        @property
+        def discovered_devices(self) -> list[BLEDevice]:
+            """Return a list of discovered devices."""
+            return []
+
+        @property
+        def discovered_devices_and_advertisement_data(
+            self,
+        ) -> dict[str, tuple[BLEDevice, AdvertisementData]]:
+            """Return a list of discovered devices."""
+            return {
+                switchbot_proxy_device_has_connection_slot.address: (
+                    switchbot_proxy_device_has_connection_slot,
+                    switchbot_proxy_device_has_connection_slot_adv,
+                )
+            }
+
+        async def async_get_device_by_address(self, address: str) -> BLEDevice | None:
+            """Return a list of discovered devices."""
+            if address == switchbot_proxy_device_has_connection_slot.address:
+                return switchbot_proxy_device_has_connection_slot
+            return None
+
+    connector = HaBluetoothConnector(
+        MockBleakClient, "esp32_has_connection_slot", lambda: True
+    )
+    scanner = FakeScanner(
+        "esp32_has_connection_slot",
+        "esp32_has_connection_slot",
+        connector,
+        True,
+    )
+    cancel = manager.async_register_scanner(scanner)
+    expect(manager.async_discovered_devices(True)).to_equal(
+        [switchbot_proxy_device_no_connection_slot]
+    )
+
+    client = HaBleakClientWrapper(switchbot_proxy_device_no_connection_slot)
+    with patch_bleak_backend_type():
+        await client.connect()
+    expect(client.is_connected).to_be(True)
+    client.set_disconnected_callback(lambda client: None)
+    await client.disconnect()
+    cancel()

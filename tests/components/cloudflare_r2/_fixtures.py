@@ -51,6 +51,12 @@ def test_backup_large() -> AgentBackup:
     return _make_test_backup(MULTIPART_MIN_PART_SIZE_BYTES)
 
 
+@fixture
+def test_backup_xlarge() -> AgentBackup:
+    """Test backup fixture (extra large / multipart upload, multiple parts)."""
+    return _make_test_backup(MULTIPART_MIN_PART_SIZE_BYTES * 2)
+
+
 def _build_mock_client(backup: AgentBackup) -> Generator[AsyncMock]:
     """Patch the aiobotocore client and yield the configured mock."""
     with patch(
@@ -94,6 +100,14 @@ def mock_client_large(
     backup: AgentBackup = Depends(test_backup_large),
 ) -> Generator[AsyncMock]:
     """Mock the R2 client (S3-compatible) for large/multipart backups."""
+    yield from _build_mock_client(backup)
+
+
+@fixture
+def mock_client_xlarge(
+    backup: AgentBackup = Depends(test_backup_xlarge),
+) -> Generator[AsyncMock]:
+    """Mock the R2 client (S3-compatible) for extra-large/multipart backups."""
     yield from _build_mock_client(backup)
 
 
@@ -147,6 +161,23 @@ async def setup_backup_integration_large(
     _client: AsyncMock = Depends(mock_client_large),
 ) -> AsyncGenerator[None]:
     """Set up R2 + Backup integrations for testing (large backup variant)."""
+    with (
+        patch("homeassistant.components.backup.is_hassio", return_value=False),
+        patch("homeassistant.components.backup.store.STORE_DELAY_SAVE", 0),
+    ):
+        assert await async_setup_component(hass, BACKUP_DOMAIN, {})
+        await setup_integration(hass, entry)
+        await hass.async_block_till_done()
+        yield
+
+
+@fixture
+async def setup_backup_integration_xlarge(
+    hass: HomeAssistant = Depends(hass_fx),
+    entry: MockConfigEntry = Depends(mock_config_entry),
+    _client: AsyncMock = Depends(mock_client_xlarge),
+) -> AsyncGenerator[None]:
+    """Set up R2 + Backup integrations for testing (extra-large backup variant)."""
     with (
         patch("homeassistant.components.backup.is_hassio", return_value=False),
         patch("homeassistant.components.backup.store.STORE_DELAY_SAVE", 0),
