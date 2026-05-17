@@ -1,9 +1,9 @@
-"""Tryke fixtures for threshold tests."""
+"""Tryke fixtures for integration tests."""
 
 from tryke import Depends, fixture
 
-from homeassistant.components.threshold.config_flow import ConfigFlowHandler
-from homeassistant.components.threshold.const import DOMAIN
+from homeassistant.components.integration.config_flow import ConfigFlowHandler
+from homeassistant.components.integration.const import DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -13,16 +13,7 @@ from tests.hass_fixtures import (
     device_registry as device_registry_fixture,
     entity_registry as entity_registry_fixture,
     hass as hass_fixture,
-    mock_network,
 )
-
-
-@fixture
-def _trigger_executor(
-    _network: None = Depends(mock_network),
-) -> int:
-    """Anchor module-level fixtures."""
-    return 0
 
 
 @fixture
@@ -65,22 +56,24 @@ def sensor_entity_entry(
 
 
 @fixture
-def threshold_config_entry(
+def integration_config_entry(
     hass: HomeAssistant = Depends(hass_fixture),
     entity_entry: er.RegistryEntry = Depends(sensor_entity_entry),
 ) -> MockConfigEntry:
-    """Fixture to create a threshold config entry."""
+    """Fixture to create an integration config entry."""
     config_entry = MockConfigEntry(
         data={},
         domain=DOMAIN,
         options={
-            "entity_id": entity_entry.entity_id,
-            "hysteresis": 0.0,
-            "lower": -2.0,
-            "name": "My threshold",
-            "upper": None,
+            "method": "trapezoidal",
+            "name": "My integration",
+            "round": 1.0,
+            "source": entity_entry.entity_id,
+            "unit_prefix": "k",
+            "unit_time": "min",
+            "max_sub_interval": {"minutes": 1},
         },
-        title="My threshold",
+        title="My integration",
         version=ConfigFlowHandler.VERSION,
         minor_version=ConfigFlowHandler.MINOR_VERSION,
     )

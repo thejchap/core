@@ -1,9 +1,11 @@
 """Tryke fixtures for Transmission tests."""
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 from transmission_rpc.session import Session, SessionStats
+from transmission_rpc.torrent import Torrent
 from tryke import fixture
 
 from homeassistant.components.transmission.const import DOMAIN
@@ -75,3 +77,39 @@ def patch_sleep() -> Generator[None]:
     """Fixture to remove sleep in tests."""
     with patch("homeassistant.components.transmission.switch.AFTER_WRITE_SLEEP", 0):
         yield
+
+
+@fixture
+def mock_torrent() -> Callable[..., Torrent]:
+    """Fixture that returns a factory function to create mock torrents."""
+
+    def _create_mock_torrent(
+        torrent_id: int = 1,
+        name: str = "Test Torrent",
+        percent_done: float = 0.5,
+        status: int = 4,
+        download_dir: str = "/downloads",
+        eta: int = 3600,
+        added_date: datetime | None = None,
+        ratio: float = 1.5,
+    ) -> Torrent:
+        """Create a mock torrent with all required attributes."""
+        if added_date is None:
+            added_date = datetime(2025, 11, 26, 14, 18, 0, tzinfo=UTC)
+
+        torrent_data = {
+            "id": torrent_id,
+            "name": name,
+            "status": status,
+            "percentDone": percent_done,
+            "uploadRatio": ratio,
+            "ratio": ratio,
+            "eta": eta,
+            "addedDate": int(added_date.timestamp()),
+            "doneDate": int(added_date.timestamp()) if percent_done >= 1.0 else 0,
+            "downloadDir": download_dir,
+            "labels": [],
+        }
+        return Torrent(fields=torrent_data)
+
+    return _create_mock_torrent
