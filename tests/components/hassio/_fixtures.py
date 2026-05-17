@@ -35,6 +35,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
 from . import SUPERVISOR_TOKEN
+from .common import (
+    mock_addon_info,
+    mock_addon_installed,
+    mock_addon_store_info,
+)
 
 from tests.hass_fixtures import (
     ClientSessionGenerator,
@@ -220,6 +225,50 @@ async def hassio_noauth_client(
 ) -> TestClient:
     """Return a Hass.io HTTP client without auth."""
     return await aiohttp_client(hass.http.app)
+
+
+@fixture
+def addon_store_info(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock Supervisor add-on store info."""
+    return mock_addon_store_info(supervisor_client, None)
+
+
+@fixture
+def addon_info(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock Supervisor add-on info."""
+    return mock_addon_info(supervisor_client, None)
+
+
+@fixture
+def addon_installed(
+    addon_store_info: AsyncMock = Depends(addon_store_info),
+    addon_info: AsyncMock = Depends(addon_info),
+) -> AsyncMock:
+    """Mock add-on already installed but not running."""
+    return mock_addon_installed(addon_store_info, addon_info)
+
+
+@fixture
+def get_addon_discovery_info(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock get add-on discovery info."""
+    supervisor_client.discovery.list.return_value = []
+    supervisor_client.discovery.list.side_effect = None
+    return supervisor_client.discovery.list
+
+
+@fixture
+def get_discovery_message(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock getting a discovery message by uuid."""
+    supervisor_client.discovery.get.side_effect = None
+    return supervisor_client.discovery.get
 
 
 @fixture
