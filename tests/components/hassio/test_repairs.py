@@ -207,37 +207,68 @@ def all_setup_requests(
     _homeassistant_stats: AsyncMock = Depends(homeassistant_stats),
     _supervisor_stats: AsyncMock = Depends(supervisor_stats),
     _ingress_panels: AsyncMock = Depends(ingress_panels),
-) -> None:
-    """Mock all setup requests (without addons)."""
+) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
+    """Mock all setup requests (default: without addons)."""
     _apply_setup_mocks(addon_installed, addon_stats, addons_list, include_addons=False)
+    return addon_installed, addon_stats, addons_list
 
 
-@fixture
-def all_setup_requests_with_addons(
-    addon_installed: AsyncMock = Depends(addon_installed),
-    _store_info: AsyncMock = Depends(store_info),
-    _addon_changelog: AsyncMock = Depends(addon_changelog),
-    addon_stats: AsyncMock = Depends(addon_stats),
-    _jobs_info: AsyncMock = Depends(jobs_info),
-    _host_info: AsyncMock = Depends(host_info),
-    _supervisor_root_info: AsyncMock = Depends(supervisor_root_info),
-    _homeassistant_info: AsyncMock = Depends(homeassistant_info),
-    _supervisor_info: AsyncMock = Depends(supervisor_info),
-    addons_list: AsyncMock = Depends(addons_list),
-    _network_info: AsyncMock = Depends(network_info),
-    _os_info: AsyncMock = Depends(os_info),
-    _homeassistant_stats: AsyncMock = Depends(homeassistant_stats),
-    _supervisor_stats: AsyncMock = Depends(supervisor_stats),
-    _ingress_panels: AsyncMock = Depends(ingress_panels),
-) -> None:
-    """Mock all setup requests with addons."""
+def _enable_addons(setup: tuple[AsyncMock, AsyncMock, AsyncMock]) -> None:
+    """Switch all_setup_requests to include_addons=True for this test."""
+    addon_installed, addon_stats, addons_list = setup
+    # Re-create the addons_list since the default fixture wipes it to empty.
+    from aiohasupervisor.models import (  # noqa: PLC0415
+        AddonStage as _AddonStage,
+        InstalledAddon as _InstalledAddon,
+    )
+
+    addons_list.return_value = [
+        _InstalledAddon(
+            detached=False,
+            advanced=False,
+            available=True,
+            build=False,
+            description="",
+            homeassistant=None,
+            icon=False,
+            logo=False,
+            name="test",
+            repository="core",
+            slug="test",
+            stage=_AddonStage.STABLE,
+            update_available=True,
+            url="https://github.com/home-assistant/addons/test",
+            version_latest="2.0.1",
+            version="2.0.0",
+            state=AddonState.STARTED,
+        ),
+        _InstalledAddon(
+            detached=False,
+            advanced=False,
+            available=True,
+            build=False,
+            description="",
+            homeassistant=None,
+            icon=False,
+            logo=False,
+            name="test2",
+            repository="core",
+            slug="test2",
+            stage=_AddonStage.STABLE,
+            update_available=False,
+            url="https://github.com",
+            version_latest="3.1.0",
+            version="3.1.0",
+            state=AddonState.STOPPED,
+        ),
+    ]
     _apply_setup_mocks(addon_installed, addon_stats, addons_list, include_addons=True)
 
 
 @test
 async def supervisor_issue_repair_flow(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
@@ -326,7 +357,7 @@ async def supervisor_issue_repair_flow(
 @test
 async def supervisor_issue_repair_flow_with_multiple_suggestions(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
@@ -432,7 +463,7 @@ async def supervisor_issue_repair_flow_with_multiple_suggestions(
 @test
 async def supervisor_issue_repair_flow_with_multiple_suggestions_and_confirmation(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
@@ -559,7 +590,7 @@ async def supervisor_issue_repair_flow_with_multiple_suggestions_and_confirmatio
 @test
 async def supervisor_issue_repair_flow_skip_confirmation(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
@@ -648,7 +679,7 @@ async def supervisor_issue_repair_flow_skip_confirmation(
 @test
 async def supervisor_issue_ntp_sync_failed_repair_flow(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
@@ -737,7 +768,7 @@ async def supervisor_issue_ntp_sync_failed_repair_flow(
 @test
 async def supervisor_issue_ntp_sync_failed_repair_flow_error(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
@@ -811,7 +842,7 @@ async def supervisor_issue_ntp_sync_failed_repair_flow_error(
 @test
 async def mount_failed_repair_flow_error(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
@@ -895,7 +926,7 @@ async def mount_failed_repair_flow_error(
 @test
 async def mount_failed_repair_flow(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
@@ -1005,13 +1036,14 @@ async def mount_failed_repair_flow(
 @test
 async def supervisor_issue_docker_config_repair_flow(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests_with_addons),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
     issue_registry: ir.IssueRegistry = Depends(issue_registry_fx),
 ) -> None:
     """Test fix flow for supervisor issue."""
+    _enable_addons(_setup)
     issue1_uuid = uuid4()
     issue2_uuid = uuid4()
     issue3_uuid = uuid4()
@@ -1126,7 +1158,7 @@ async def supervisor_issue_docker_config_repair_flow(
 @test
 async def supervisor_issue_repair_flow_multiple_data_disks(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
@@ -1253,13 +1285,14 @@ async def supervisor_issue_repair_flow_multiple_data_disks(
 @test
 async def supervisor_issue_detached_addon_removed(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests_with_addons),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
     issue_registry: ir.IssueRegistry = Depends(issue_registry_fx),
 ) -> None:
     """Test fix flow for supervisor issue."""
+    _enable_addons(_setup)
     issue_uuid = uuid4()
     sugg_uuid = uuid4()
     _mock_resolution_info(
@@ -1347,13 +1380,14 @@ async def supervisor_issue_detached_addon_removed(
 @test
 async def supervisor_issue_addon_boot_fail(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests_with_addons),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
     issue_registry: ir.IssueRegistry = Depends(issue_registry_fx),
 ) -> None:
     """Test fix flow for supervisor issue."""
+    _enable_addons(_setup)
     issue_uuid = uuid4()
     sugg_uuid = uuid4()
     _mock_resolution_info(
@@ -1465,13 +1499,14 @@ async def supervisor_issue_deprecated_addon() -> None:
 @test
 async def supervisor_issue_deprecated_arch_addon(
     _env: None = Depends(fixture_supervisor_environ),
-    _setup: None = Depends(all_setup_requests_with_addons),
+    _setup: tuple = Depends(all_setup_requests),
     hass: HomeAssistant = Depends(hass_fixture),
     supervisor_client: AsyncMock = Depends(supervisor_client),
     hass_client: ClientSessionGenerator = Depends(hass_client_fx),
     issue_registry: ir.IssueRegistry = Depends(issue_registry_fx),
 ) -> None:
     """Test fix flow for supervisor issue for add-on using deprecated architecture or machine."""
+    _enable_addons(_setup)
     issue_uuid = uuid4()
     sugg_uuid = uuid4()
     _mock_resolution_info(
