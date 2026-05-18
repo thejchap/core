@@ -64,7 +64,22 @@ def _trigger_executor(_network=Depends(mock_network)) -> int:
 
 
 @fixture
+async def load_hassio_translations(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Load hassio translations so entity_ids use translation_key suffixes."""
+    from homeassistant.helpers import translation  # noqa: PLC0415
+
+    await translation.async_load_integrations(hass, {"hassio"})
+    # Also pre-cache 'entity' category for hassio
+    await translation.async_get_translations(
+        hass, hass.config.language, "entity", {"hassio"}
+    )
+
+
+@fixture
 def mock_all(
+    _translations: None = Depends(load_hassio_translations),
     addon_installed: AsyncMock = Depends(addon_installed),
     _store_info: AsyncMock = Depends(store_info),
     _addon_changelog: AsyncMock = Depends(addon_changelog),
@@ -147,7 +162,6 @@ def hass_supervisor_ws_client(
         addon_state="stopped",
     ),
 )
-@test
 async def binary_sensor(
     entity_id: str,
     expected: str,
@@ -231,6 +245,16 @@ async def mount_binary_sensor(
 
     expect(hass.states.get(entity_id)).to_be_none()
 
+    import sys
+    from homeassistant.helpers import translation
+    bin_entities = [e for e in entity_registry.entities.keys() if 'binary' in e]
+    print(f"BINARY entities: {bin_entities}", file=sys.stderr)
+    cache = translation._async_get_translations_cache(hass)
+    print(f"Cache lang: {hass.config.language}", file=sys.stderr)
+    print(f"Loaded: {cache.cache_data.loaded}", file=sys.stderr)
+    print(f"Cache keys: {list(cache.cache_data.cache.get(hass.config.language, {}).get('entity', {}).keys())[:20]}", file=sys.stderr)
+    print(f"Hassio entity translations: {[k for k in cache.cache_data.cache.get(hass.config.language, {}).get('entity', {}).keys() if 'hassio' in k]}", file=sys.stderr)
+    print(f"Sample entity name: {[entity_registry.entities[e].translation_key for e in bin_entities]}", file=sys.stderr)
     entity_registry.async_update_entity(entity_id, disabled_by=None)
     await hass.config_entries.async_reload(config_entry.entry_id)
     await hass.async_block_till_done()
