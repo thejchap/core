@@ -76,6 +76,48 @@ except ImportError:
     pass
 
 
+# Fallback translations loader: when ``<integration>/translations/en.json``
+# doesn't exist in the dev tree, fall back to ``<integration>/strings.json``
+# so entity_ids generated via ``translation_key`` resolve to their English
+# slug instead of dropping to the device's name-based fallback.
+#
+# This is a generalization of the per-test ``_preload_strings_translations``
+# helper that several integrations (shelly/test_device_trigger, tessie/
+# test_coordinator) had to hand-roll. By patching the module-level
+# ``_load_translations_files_by_language`` once at import time, every
+# integration's translations resolve automatically.
+def _patch_translation_loader() -> None:
+    """Monkey-patch translation loader to use strings.json as a fallback."""
+    from homeassistant.helpers import translation as _t  # noqa: PLC0415
+    from homeassistant.util.json import load_json  # noqa: PLC0415
+
+    _orig = _t._load_translations_files_by_language
+
+    def _patched(translation_files):
+        # Re-point any missing en.json paths to the integration's strings.json
+        # (located at the parent of the translations/ dir).
+        adjusted: dict[str, dict[str, Any]] = {}
+        for language, files_by_domain in translation_files.items():
+            new_map: dict[str, Any] = {}
+            for domain, fp in files_by_domain.items():
+                if not fp.is_file():
+                    strings_path = fp.parent.parent / "strings.json"
+                    if strings_path.is_file():
+                        new_map[domain] = strings_path
+                        continue
+                new_map[domain] = fp
+            adjusted[language] = new_map
+        return _orig(adjusted)
+
+    _t._load_translations_files_by_language = _patched
+
+
+try:
+    _patch_translation_loader()
+except ImportError:
+    pass
+
+
 @fixture
 def hass_storage() -> Generator[dict[str, Any]]:
     """Mock the Home Assistant storage layer for the duration of a test."""
