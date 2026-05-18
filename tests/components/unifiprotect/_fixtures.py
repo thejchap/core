@@ -17,6 +17,7 @@ from uiprotect.data import (
     Bootstrap,
     Camera,
     Chime,
+    CloudAccount,
     Doorlock,
     Light,
     Sensor,
@@ -70,6 +71,29 @@ def nvr() -> Generator[NVR]:
     yield nvr
 
     NVR.model_config["validate_assignment"] = True
+
+
+@fixture
+def old_nvr() -> NVR:
+    """Mock UniFi Protect NVR with old version."""
+    data = load_json_object_fixture("sample_nvr.json", DOMAIN)
+    data["version"] = "1.19.0"
+    return NVR.from_unifi_dict(**data)
+
+
+@fixture
+def cloud_account() -> CloudAccount:
+    """Return UI Cloud Account."""
+    return CloudAccount(
+        id="42",
+        first_name="Test",
+        last_name="User",
+        email="test@example.com",
+        user_id="42",
+        name="Test User",
+        location=None,
+        profile_img=None,
+    )
 
 
 @fixture
