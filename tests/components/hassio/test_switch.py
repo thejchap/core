@@ -35,12 +35,10 @@ from .common import MOCK_REPOSITORIES, MOCK_STORE_ADDONS
 
 from tests.common import MockConfigEntry
 from tests.hass_fixtures import (
-    aioclient_mock as aioclient_mock_fx,
     entity_registry as entity_registry_fx,
     hass as hass_fixture,
     mock_network,
 )
-from tests.test_util.aiohttp import AiohttpClientMocker
 
 MOCK_ENVIRON = {"SUPERVISOR": "127.0.0.1", "SUPERVISOR_TOKEN": "abcdefgh"}
 
@@ -181,18 +179,14 @@ async def switch_state(
 @test
 async def switch_turn_on(
     hass: HomeAssistant = Depends(hass_fixture),
-    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
     entity_registry: er.EntityRegistry = Depends(entity_registry_fx),
     addon_installed: AsyncMock = Depends(addon_installed),
+    supervisor_client: AsyncMock = Depends(supervisor_client),
     setup_integration: MockConfigEntry = Depends(setup_integration),
 ) -> None:
     """Test turning on addon switch."""
     entity_id = "switch.test_two"
     addon_installed.return_value.state = "stopped"
-
-    aioclient_mock.post(
-        "http://127.0.0.1/addons/test-two/start", json={"result": "ok"}
-    )
 
     expect(hass.states.get(entity_id)).to_be_none()
 
@@ -202,6 +196,7 @@ async def switch_turn_on(
     expect(state).not_.to_be_none()
     expect(state.state).to_equal("off")
 
+    supervisor_client.addons.start_addon.reset_mock()
     await hass.services.async_call(
         "switch",
         "turn_on",
@@ -209,23 +204,20 @@ async def switch_turn_on(
         blocking=True,
     )
 
-    expect(aioclient_mock.mock_calls[-1][1].path).to_equal("/addons/test-two/start")
-    expect(aioclient_mock.mock_calls[-1][0]).to_equal("POST")
+    supervisor_client.addons.start_addon.assert_called_once_with("test-two")
 
 
 @test
 async def switch_turn_off(
     hass: HomeAssistant = Depends(hass_fixture),
-    aioclient_mock: AiohttpClientMocker = Depends(aioclient_mock_fx),
     entity_registry: er.EntityRegistry = Depends(entity_registry_fx),
     addon_installed: AsyncMock = Depends(addon_installed),
+    supervisor_client: AsyncMock = Depends(supervisor_client),
     setup_integration: MockConfigEntry = Depends(setup_integration),
 ) -> None:
     """Test turning off addon switch."""
     entity_id = "switch.test"
     addon_installed.return_value.state = "started"
-
-    aioclient_mock.post("http://127.0.0.1/addons/test/stop", json={"result": "ok"})
 
     expect(hass.states.get(entity_id)).to_be_none()
 
@@ -235,6 +227,7 @@ async def switch_turn_off(
     expect(state).not_.to_be_none()
     expect(state.state).to_equal("on")
 
+    supervisor_client.addons.stop_addon.reset_mock()
     await hass.services.async_call(
         "switch",
         "turn_off",
@@ -242,5 +235,4 @@ async def switch_turn_off(
         blocking=True,
     )
 
-    expect(aioclient_mock.mock_calls[-1][1].path).to_equal("/addons/test/stop")
-    expect(aioclient_mock.mock_calls[-1][0]).to_equal("POST")
+    supervisor_client.addons.stop_addon.assert_called_once_with("test")

@@ -175,12 +175,15 @@ def hass_supervisor_ws_client(
 
 async def _setup_hassio(hass: HomeAssistant) -> None:
     """Set up the hassio integration."""
-    result = await async_setup_component(
-        hass,
-        "hassio",
-        {"http": {"server_port": 9999, "server_host": "127.0.0.1"}, "hassio": {}},
-    )
-    assert result
+    config_entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    config_entry.add_to_hass(hass)
+    with patch.dict(os.environ, MOCK_ENVIRON):
+        result = await async_setup_component(
+            hass,
+            "hassio",
+            {"http": {"server_port": 9999, "server_host": "127.0.0.1"}, "hassio": {}},
+        )
+        assert result
     await hass.async_block_till_done()
 
 
@@ -241,7 +244,7 @@ async def update_entities(
 
 
 @test
-async def update_addon(
+async def update_addon_test(
     _env: None = Depends(fixture_supervisor_environ),
     _mock_all: None = Depends(mock_all),
     hass: HomeAssistant = Depends(hass_fixture),

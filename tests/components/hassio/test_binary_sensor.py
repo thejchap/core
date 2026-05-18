@@ -245,29 +245,19 @@ async def mount_binary_sensor(
 
     expect(hass.states.get(entity_id)).to_be_none()
 
-    import sys
-    from homeassistant.helpers import translation
-    bin_entities = [e for e in entity_registry.entities.keys() if 'binary' in e]
-    print(f"BINARY entities: {bin_entities}", file=sys.stderr)
-    cache = translation._async_get_translations_cache(hass)
-    print(f"Cache lang: {hass.config.language}", file=sys.stderr)
-    print(f"Loaded: {cache.cache_data.loaded}", file=sys.stderr)
-    print(f"Cache keys: {list(cache.cache_data.cache.get(hass.config.language, {}).get('entity', {}).keys())[:20]}", file=sys.stderr)
-    print(f"Hassio entity translations: {[k for k in cache.cache_data.cache.get(hass.config.language, {}).get('entity', {}).keys() if 'hassio' in k]}", file=sys.stderr)
-    print(f"Sample entity name: {[entity_registry.entities[e].translation_key for e in bin_entities]}", file=sys.stderr)
     entity_registry.async_update_entity(entity_id, disabled_by=None)
     await hass.config_entries.async_reload(config_entry.entry_id)
     await hass.async_block_till_done()
 
     entity = hass.states.get(entity_id)
-    expect(entity).not_to_be_none()
+    expect(entity).not_.to_be_none()
     expect(entity.state).to_equal("on")
 
     mock_mounts[0] = replace(mock_mounts[0], state=MountState.FAILED)
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=1000))
     await hass.async_block_till_done(wait_background_tasks=True)
     entity = hass.states.get(entity_id)
-    expect(entity).not_to_be_none()
+    expect(entity).not_.to_be_none()
     expect(entity.state).to_equal("off")
 
     mount = mock_mounts.pop()
@@ -278,7 +268,7 @@ async def mount_binary_sensor(
     mock_mounts.append(mount)
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=1000))
     await hass.async_block_till_done(wait_background_tasks=True)
-    expect(hass.states.get(entity_id)).not_to_be_none()
+    expect(hass.states.get(entity_id)).not_.to_be_none()
 
 
 @test
@@ -324,7 +314,7 @@ async def mount_refresh_after_issue(
     await hass.async_block_till_done()
 
     entity = hass.states.get(entity_id)
-    expect(entity).not_to_be_none()
+    expect(entity).not_.to_be_none()
     expect(entity.state).to_equal("on")
 
     mock_mounts[0] = replace(mock_mounts[0], state=MountState.FAILED)
@@ -363,7 +353,7 @@ async def mount_refresh_after_issue(
     expect(msg["success"]).to_be_truthy()
     await hass.async_block_till_done(wait_background_tasks=True)
     entity = hass.states.get(entity_id)
-    expect(entity).not_to_be_none()
+    expect(entity).not_.to_be_none()
     expect(entity.state).to_equal("off")
 
     mock_mounts[0] = replace(mock_mounts[0], state=MountState.ACTIVE)
@@ -386,5 +376,5 @@ async def mount_refresh_after_issue(
     expect(msg["success"]).to_be_truthy()
     await hass.async_block_till_done(wait_background_tasks=True)
     entity = hass.states.get(entity_id)
-    expect(entity).not_to_be_none()
+    expect(entity).not_.to_be_none()
     expect(entity.state).to_equal("on")

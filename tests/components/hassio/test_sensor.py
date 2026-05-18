@@ -187,10 +187,8 @@ async def sensor(
         addons=MOCK_STORE_ADDONS, repositories=MOCK_REPOSITORIES
     )
 
-    import sys  # noqa: PLC0415
+    # Pre-load hassio translations so entity_ids resolve via translation_key.
     await translation.async_load_integrations(hass, {"hassio"})
-    trans = await translation.async_get_translations(hass, "en", "entity", {"hassio"})
-    print(f"TRANS keys count: {len(trans)}; sample: {list(trans.items())[:3]}", file=sys.stderr)
 
     config_entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
     config_entry.add_to_hass(hass)
@@ -206,7 +204,6 @@ async def sensor(
 
     # Verify that the entity is disabled by default.
     expect(hass.states.get(entity_id)).to_be_none()
-
 
     # Enable the entity.
     entity_registry.async_update_entity(entity_id, disabled_by=None)
@@ -247,6 +244,9 @@ async def stats_addon_sensor(
     supervisor_client.store.info.return_value = StoreInfo(
         addons=MOCK_STORE_ADDONS, repositories=MOCK_REPOSITORIES
     )
+
+    # Pre-load hassio translations so entity_ids resolve via translation_key.
+    await translation.async_load_integrations(hass, {"hassio"})
 
     config_entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
     config_entry.add_to_hass(hass)
@@ -295,7 +295,7 @@ async def stats_addon_sensor(
     async_fire_time_changed(hass)
     await hass.async_block_till_done(wait_background_tasks=True)
 
-    expect(hass.states.get(entity_id)).not_to_be_none()
+    expect(hass.states.get(entity_id) is not None).to_be_truthy()
 
     freezer.tick(HASSIO_STATS_UPDATE_INTERVAL + timedelta(seconds=1))
     async_fire_time_changed(hass)
