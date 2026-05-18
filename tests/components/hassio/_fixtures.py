@@ -6,7 +6,7 @@ import os
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from aiohasupervisor import SupervisorClient
+from aiohasupervisor import SupervisorClient, SupervisorNotFoundError
 from aiohasupervisor.addons import AddonsClient
 from aiohasupervisor.backups import BackupsClient
 from aiohasupervisor.discovery import DiscoveryClient
@@ -44,6 +44,7 @@ from aiohasupervisor.supervisor import SupervisorManagementClient
 from aiohttp.test_utils import TestClient
 from tryke import Depends, fixture
 
+from homeassistant.components.hassio.addon_manager import AddonManager
 from homeassistant.components.hassio.const import DATA_CONFIG_STORE
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
@@ -52,8 +53,13 @@ from . import SUPERVISOR_TOKEN
 from .common import (
     mock_addon_info,
     mock_addon_installed,
+    mock_addon_manager,
+    mock_addon_not_installed,
     mock_addon_stats,
     mock_addon_store_info,
+    mock_install_addon_side_effect,
+    mock_set_addon_options_side_effect,
+    mock_start_addon_side_effect,
 )
 
 from tests.hass_fixtures import (
@@ -265,6 +271,117 @@ def addon_installed(
 ) -> AsyncMock:
     """Mock add-on already installed but not running."""
     return mock_addon_installed(addon_store_info, addon_info)
+
+
+@fixture
+def addon_not_installed(
+    addon_store_info: AsyncMock = Depends(addon_store_info),
+    addon_info: AsyncMock = Depends(addon_info),
+) -> AsyncMock:
+    """Mock add-on not installed."""
+    addon_info.side_effect = SupervisorNotFoundError
+    return mock_addon_not_installed(addon_store_info, addon_info)
+
+
+@fixture
+def addon_manager(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _supervisor: AsyncMock = Depends(supervisor_client),
+) -> AddonManager:
+    """Return an AddonManager instance."""
+    return mock_addon_manager(hass)
+
+
+@fixture
+def install_addon(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+    addon_store_info: AsyncMock = Depends(addon_store_info),
+    addon_info: AsyncMock = Depends(addon_info),
+) -> AsyncMock:
+    """Mock install add-on."""
+    supervisor_client.store.install_addon.side_effect = mock_install_addon_side_effect(
+        addon_store_info, addon_info
+    )
+    return supervisor_client.store.install_addon
+
+
+@fixture
+def start_addon(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+    addon_store_info: AsyncMock = Depends(addon_store_info),
+    addon_info: AsyncMock = Depends(addon_info),
+) -> AsyncMock:
+    """Mock start add-on."""
+    supervisor_client.addons.start_addon.side_effect = mock_start_addon_side_effect(
+        addon_store_info, addon_info
+    )
+    return supervisor_client.addons.start_addon
+
+
+@fixture
+def restart_addon(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock restart add-on."""
+    supervisor_client.addons.restart_addon.side_effect = None
+    return supervisor_client.addons.restart_addon
+
+
+@fixture
+def stop_addon(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock stop add-on."""
+    return supervisor_client.addons.stop_addon
+
+
+@fixture
+def set_addon_options(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+    addon_info: AsyncMock = Depends(addon_info),
+) -> AsyncMock:
+    """Mock set add-on options."""
+    supervisor_client.addons.set_addon_options.side_effect = (
+        mock_set_addon_options_side_effect(addon_info.return_value.options)
+    )
+    return supervisor_client.addons.set_addon_options
+
+
+@fixture
+def set_addon_options_no_side_effect(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock set add-on options without applying options to addon_info.
+
+    Mirrors the pytest fixture parametrize override
+    ``@pytest.mark.parametrize("set_addon_options_side_effect", [None])``.
+    """
+    supervisor_client.addons.set_addon_options.side_effect = None
+    return supervisor_client.addons.set_addon_options
+
+
+@fixture
+def uninstall_addon(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock uninstall add-on."""
+    return supervisor_client.addons.uninstall_addon
+
+
+@fixture
+def create_backup(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock create backup."""
+    return supervisor_client.backups.partial_backup
+
+
+@fixture
+def update_addon(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock update add-on."""
+    return supervisor_client.store.update_addon
 
 
 @fixture

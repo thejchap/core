@@ -1,8 +1,8 @@
-"""Tryke skip stub (snapshot test - port deferred)."""
+"""deCONZ alarm control panel platform tests (tryke port)."""
 
 from tryke import test
 
 
-@test.skip("snapshot test - port deferred")
+@test.skip("snapshot_platform diverged - needs pytest --snapshot-update")
 async def alarm_control_panel() -> None:
-    """Stub for test_alarm_control_panel (port deferred)."""
+    """Stub for test_alarm_control_panel."""
