@@ -1,6 +1,7 @@
 """Tryke fixtures for Hass.io tests."""
 
 from collections.abc import AsyncGenerator, Generator
+from ipaddress import IPv4Address, IPv4Network
 import os
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -14,11 +15,24 @@ from aiohasupervisor.host import HostClient
 from aiohasupervisor.ingress import IngressClient
 from aiohasupervisor.jobs import JobsClient
 from aiohasupervisor.models import (
+    AddonStage,
+    AddonState,
+    DockerNetwork,
+    HomeAssistantInfo,
+    HomeAssistantStats,
+    HostInfo,
+    InstalledAddon,
     JobsInfo,
     LogLevel,
     MountsInfo,
+    NetworkInfo,
+    OSInfo,
+    ResolutionInfo,
     RootInfo,
+    StoreInfo,
+    SupervisorInfo,
     SupervisorState,
+    SupervisorStats,
     UpdateChannel,
 )
 from aiohasupervisor.mounts import MountsClient
@@ -38,6 +52,7 @@ from . import SUPERVISOR_TOKEN
 from .common import (
     mock_addon_info,
     mock_addon_installed,
+    mock_addon_stats,
     mock_addon_store_info,
 )
 
@@ -288,3 +303,257 @@ async def hassio_client_supervisor(
         hass.http.app,
         headers={"Authorization": f"Bearer {access_token}"},
     )
+
+
+@fixture
+def store_info(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock store info."""
+    supervisor_client.store.info.return_value = StoreInfo(addons=[], repositories=[])
+    return supervisor_client.store.info
+
+
+@fixture
+def addon_stats(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock addon stats info."""
+    return mock_addon_stats(supervisor_client)
+
+
+@fixture
+def addon_changelog(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock addon changelog."""
+    supervisor_client.store.addon_changelog.return_value = ""
+    return supervisor_client.store.addon_changelog
+
+
+@fixture
+def resolution_info(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock resolution info from supervisor."""
+    supervisor_client.resolution.info.return_value = ResolutionInfo(
+        suggestions=[],
+        unsupported=[],
+        unhealthy=[],
+        issues=[],
+        checks=[],
+    )
+    return supervisor_client.resolution.info
+
+
+@fixture
+def jobs_info(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock jobs info from supervisor."""
+    supervisor_client.jobs.info.return_value = JobsInfo(ignore_conditions=[], jobs=[])
+    return supervisor_client.jobs.info
+
+
+@fixture
+def host_info(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock host info API from supervisor."""
+    supervisor_client.host.info.return_value = HostInfo(
+        agent_version=None,
+        apparmor_version=None,
+        chassis="vm",
+        virtualization=None,
+        cpe=None,
+        deployment=None,
+        disk_free=1.6,
+        disk_total=100.0,
+        disk_used=98.4,
+        disk_life_time=None,
+        features=[],
+        hostname=None,
+        llmnr_hostname=None,
+        kernel="4.19.0-6-amd64",
+        operating_system="Debian GNU/Linux 10 (buster)",
+        timezone=None,
+        dt_utc=None,
+        dt_synchronized=None,
+        use_ntp=None,
+        startup_time=None,
+        boot_timestamp=None,
+        broadcast_llmnr=None,
+        broadcast_mdns=None,
+    )
+    return supervisor_client.host.info
+
+
+@fixture
+def homeassistant_info(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock Home Assistant info API from supervisor."""
+    supervisor_client.homeassistant.info.return_value = HomeAssistantInfo(
+        version="1.0.0",
+        version_latest="1.0.0",
+        update_available=False,
+        machine=None,
+        ip_address=IPv4Address("172.30.32.1"),
+        arch=None,
+        image="homeassistant",
+        boot=True,
+        port=8123,
+        ssl=False,
+        watchdog=True,
+        audio_input=None,
+        audio_output=None,
+        backups_exclude_database=False,
+        duplicate_log_file=False,
+    )
+    return supervisor_client.homeassistant.info
+
+
+@fixture
+def supervisor_info(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock supervisor info API from supervisor."""
+    supervisor_client.supervisor.info.return_value = SupervisorInfo(
+        version="1.0.0",
+        version_latest="1.0.0",
+        update_available=False,
+        channel=UpdateChannel.STABLE,
+        arch="",
+        supported=True,
+        healthy=True,
+        ip_address=IPv4Address("172.30.32.2"),
+        timezone=None,
+        logging=LogLevel.INFO,
+        debug=False,
+        debug_block=False,
+        diagnostics=None,
+        auto_update=True,
+        country=None,
+        detect_blocking_io=False,
+    )
+    return supervisor_client.supervisor.info
+
+
+@fixture
+def addons_list(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock addons list API from supervisor."""
+    supervisor_client.addons.list.return_value = [
+        InstalledAddon(
+            detached=False,
+            advanced=False,
+            available=True,
+            build=False,
+            description="",
+            homeassistant=None,
+            icon=False,
+            logo=False,
+            name="test",
+            repository="core",
+            slug="test",
+            stage=AddonStage.STABLE,
+            update_available=True,
+            url="https://github.com/home-assistant/addons/test",
+            version_latest="2.0.1",
+            version="2.0.0",
+            state=AddonState.STARTED,
+        ),
+        InstalledAddon(
+            detached=False,
+            advanced=False,
+            available=True,
+            build=False,
+            description="",
+            homeassistant=None,
+            icon=False,
+            logo=False,
+            name="test2",
+            repository="core",
+            slug="test2",
+            stage=AddonStage.STABLE,
+            update_available=False,
+            url="https://github.com",
+            version_latest="3.1.0",
+            version="3.1.0",
+            state=AddonState.STOPPED,
+        ),
+    ]
+    return supervisor_client.addons.list
+
+
+@fixture
+def network_info(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock network info API from supervisor."""
+    supervisor_client.network.info.return_value = NetworkInfo(
+        interfaces=[],
+        docker=DockerNetwork(
+            interface="hassio",
+            address=IPv4Network("172.30.32.0/23"),
+            gateway=IPv4Address("172.30.32.1"),
+            dns=IPv4Address("172.30.32.3"),
+        ),
+        host_internet=True,
+        supervisor_internet=True,
+    )
+    return supervisor_client.network.info
+
+
+@fixture
+def os_info(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock os info API from supervisor."""
+    supervisor_client.os.info.return_value = OSInfo(
+        version="1.0.0",
+        version_latest="1.0.0",
+        update_available=False,
+        board=None,
+        boot=None,
+        data_disk=None,
+        boot_slots={},
+    )
+    return supervisor_client.os.info
+
+
+@fixture
+def homeassistant_stats(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock Home Assistant stats API from supervisor."""
+    supervisor_client.homeassistant.stats.return_value = HomeAssistantStats(
+        cpu_percent=0.99,
+        memory_usage=182611968,
+        memory_limit=3977146368,
+        memory_percent=4.59,
+        network_rx=362570232,
+        network_tx=82374138,
+        blk_read=46010945536,
+        blk_write=15051526144,
+    )
+    return supervisor_client.homeassistant.stats
+
+
+@fixture
+def supervisor_stats(
+    supervisor_client: AsyncMock = Depends(supervisor_client),
+) -> AsyncMock:
+    """Mock supervisor stats API from supervisor."""
+    supervisor_client.supervisor.stats.return_value = SupervisorStats(
+        cpu_percent=0.99,
+        memory_usage=182611968,
+        memory_limit=3977146368,
+        memory_percent=4.59,
+        network_rx=362570232,
+        network_tx=82374138,
+        blk_read=46010945536,
+        blk_write=15051526144,
+    )
+    return supervisor_client.supervisor.stats

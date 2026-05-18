@@ -134,7 +134,9 @@ async def browse_media_unconfigured(
         await source.async_browse_media(item)
 
 
-async def _setup_entry(hass: HomeAssistant, dsm_with_photos: MagicMock) -> MockConfigEntry:
+async def _setup_entry(
+    hass: HomeAssistant, dsm_with_photos: MagicMock
+) -> MockConfigEntry:
     """Set up a mock config entry for synology_dsm."""
     with (
         patch(
