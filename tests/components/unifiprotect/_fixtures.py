@@ -223,6 +223,27 @@ def camera(fixed_now: datetime = Depends(fixed_now)) -> Generator[Camera]:
 
 
 @fixture
+def camera_all(camera: Camera = Depends(camera)) -> Camera:
+    """Mock UniFi Protect Camera device with multiple channels."""
+    all_camera = camera.model_copy()
+    all_camera.channels = [all_camera.channels[0].model_copy()]
+
+    medium_channel = all_camera.channels[0].model_copy()
+    medium_channel.name = "Medium"
+    medium_channel.id = 1
+    medium_channel.rtsp_alias = "test_medium_alias"
+    all_camera.channels.append(medium_channel)
+
+    low_channel = all_camera.channels[0].model_copy()
+    low_channel.name = "Low"
+    low_channel.id = 2
+    low_channel.rtsp_alias = "test_medium_alias"
+    all_camera.channels.append(low_channel)
+
+    return all_camera
+
+
+@fixture
 def doorbell(
     camera: Camera = Depends(camera),
     fixed_now: datetime = Depends(fixed_now),
@@ -280,6 +301,15 @@ def light() -> Generator[Light]:
     yield Light.from_unifi_dict(**data)
 
     Light.model_config["validate_assignment"] = True
+
+
+@fixture
+def unadopted_light(light: Light = Depends(light)) -> Light:
+    """Mock UniFi Protect Light device (unadopted)."""
+    no_light = light.model_copy()
+    no_light.name = "Unadopted Light"
+    no_light.is_adopted = False
+    return no_light
 
 
 @fixture
