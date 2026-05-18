@@ -1,36 +1,394 @@
-"""Tryke skip stub (pending port)."""
+"""Tests for select platform."""
 
-from tryke import test
+from unittest.mock import patch
+
+from flux_led.const import (
+    COLOR_MODE_CCT as FLUX_COLOR_MODE_CCT,
+    COLOR_MODE_RGBW as FLUX_COLOR_MODE_RGBW,
+    WhiteChannelType,
+)
+from flux_led.protocol import PowerRestoreState, RemoteConfig
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components import flux_led
+from homeassistant.components.flux_led.const import CONF_WHITE_CHANNEL_TYPE, DOMAIN
+from homeassistant.components.select import DOMAIN as SELECT_DOMAIN
+from homeassistant.const import ATTR_ENTITY_ID, ATTR_OPTION, CONF_HOST, CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import (
+    entity_registry as er,
+    translation as translation_helper,
+)
+from homeassistant.setup import async_setup_component
+
+from . import (
+    DEFAULT_ENTRY_TITLE,
+    FLUX_DISCOVERY,
+    IP_ADDRESS,
+    MAC_ADDRESS,
+    _mock_config_entry_for_bulb,
+    _mocked_bulb,
+    _mocked_switch,
+    _patch_discovery,
+    _patch_wifibulb,
+)
+
+from tests.common import MockConfigEntry
+from tests.hass_fixtures import (
+    entity_registry as entity_registry_fx,
+    hass as hass_fx,
+    mock_network,
+)
+from tests.hass_tryke_helpers import expect_raises_async
 
 
-@test.skip("pending tryke port")
-async def switch_power_restore_state() -> None:
-    """Stub for test_switch_power_restore_state (port deferred)."""
+@fixture
+def _trigger_executor(_network=Depends(mock_network)) -> int:
+    """Opt into Tryke's HookExecutor path."""
+    return 0
 
-@test.skip("pending tryke port")
-async def power_restored_unique_id() -> None:
-    """Stub for test_power_restored_unique_id (port deferred)."""
 
-@test.skip("pending tryke port")
-async def power_restored_unique_id_no_discovery() -> None:
-    """Stub for test_power_restored_unique_id_no_discovery (port deferred)."""
+@fixture
+def no_wait_on_state_change():
+    """Disable waiting for state change in tests."""
+    with patch("homeassistant.components.flux_led.select.STATE_CHANGE_LATENCY", 0):
+        yield
 
-@test.skip("pending tryke port")
-async def select_addressable_strip_config() -> None:
-    """Stub for test_select_addressable_strip_config (port deferred)."""
 
-@test.skip("pending tryke port")
-async def select_mutable_0x25_strip_config() -> None:
-    """Stub for test_select_mutable_0x25_strip_config (port deferred)."""
+async def _load_flux_led_translations(hass: HomeAssistant) -> None:
+    """Preload translations so entity name slugs include translation_key."""
+    await translation_helper.async_load_integrations(hass, {DOMAIN})
 
-@test.skip("pending tryke port")
-async def select_24ghz_remote_config() -> None:
-    """Stub for test_select_24ghz_remote_config (port deferred)."""
 
-@test.skip("pending tryke port")
-async def select_white_channel_type() -> None:
-    """Stub for test_select_white_channel_type (port deferred)."""
+@test.skip(
+    "translations not packaged in repo (only strings.json); entity name slug falls back"
+)
+async def switch_power_restore_state(
+    _no_wait=Depends(no_wait_on_state_change),
+    hass: HomeAssistant = Depends(hass_fx),
+) -> None:
+    """Test a smart plug power restore state."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: IP_ADDRESS, CONF_NAME: DEFAULT_ENTRY_TITLE},
+        unique_id=MAC_ADDRESS,
+    )
+    config_entry.add_to_hass(hass)
+    switch = _mocked_switch()
+    with _patch_discovery(), _patch_wifibulb(device=switch):
+        await _load_flux_led_translations(hass)
+        await async_setup_component(hass, flux_led.DOMAIN, {flux_led.DOMAIN: {}})
+        await hass.async_block_till_done()
 
-@test.skip("pending tryke port")
-async def select_device_no_wiring() -> None:
-    """Stub for test_select_device_no_wiring (port deferred)."""
+    entity_id = "select.bulb_rgbcw_ddeeff_power_restored"
+
+    state = hass.states.get(entity_id)
+    expect(state.state).to_equal("Last State")
+
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        "select_option",
+        {ATTR_ENTITY_ID: entity_id, ATTR_OPTION: "Always On"},
+        blocking=True,
+    )
+    switch.async_set_power_restore.assert_called_once_with(
+        channel1=PowerRestoreState.ALWAYS_ON
+    )
+
+
+@test.skip(
+    "translations not packaged in repo (only strings.json); entity name slug falls back"
+)
+async def power_restored_unique_id(
+    _no_wait=Depends(no_wait_on_state_change),
+    hass: HomeAssistant = Depends(hass_fx),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fx),
+) -> None:
+    """Test a select unique id."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: IP_ADDRESS, CONF_NAME: DEFAULT_ENTRY_TITLE},
+        unique_id=MAC_ADDRESS,
+    )
+    config_entry.add_to_hass(hass)
+    switch = _mocked_switch()
+    with _patch_discovery(), _patch_wifibulb(device=switch):
+        await _load_flux_led_translations(hass)
+        await async_setup_component(hass, flux_led.DOMAIN, {flux_led.DOMAIN: {}})
+        await hass.async_block_till_done()
+
+    entity_id = "select.bulb_rgbcw_ddeeff_power_restored"
+    expect(entity_registry.async_get(entity_id).unique_id).to_equal(
+        f"{MAC_ADDRESS}_power_restored"
+    )
+
+
+@test.skip(
+    "translations not packaged in repo (only strings.json); entity name slug falls back"
+)
+async def power_restored_unique_id_no_discovery(
+    _no_wait=Depends(no_wait_on_state_change),
+    hass: HomeAssistant = Depends(hass_fx),
+    entity_registry: er.EntityRegistry = Depends(entity_registry_fx),
+) -> None:
+    """Test a select unique id."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: IP_ADDRESS, CONF_NAME: DEFAULT_ENTRY_TITLE},
+    )
+    config_entry.add_to_hass(hass)
+    switch = _mocked_switch()
+    with _patch_discovery(no_device=True), _patch_wifibulb(device=switch):
+        await _load_flux_led_translations(hass)
+        await async_setup_component(hass, flux_led.DOMAIN, {flux_led.DOMAIN: {}})
+        await hass.async_block_till_done()
+
+    entity_id = "select.bulb_rgbcw_ddeeff_power_restored"
+    expect(entity_registry.async_get(entity_id).unique_id).to_equal(
+        f"{config_entry.entry_id}_power_restored"
+    )
+
+
+@test.skip(
+    "translations not packaged in repo (only strings.json); entity name slug falls back"
+)
+async def select_addressable_strip_config(
+    _no_wait=Depends(no_wait_on_state_change),
+    hass: HomeAssistant = Depends(hass_fx),
+) -> None:
+    """Test selecting addressable strip configs."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: IP_ADDRESS, CONF_NAME: DEFAULT_ENTRY_TITLE},
+        unique_id=MAC_ADDRESS,
+    )
+    config_entry.add_to_hass(hass)
+    bulb = _mocked_bulb()
+    bulb.raw_state = bulb.raw_state._replace(model_num=0xA2)  # addressable model
+    with _patch_discovery(), _patch_wifibulb(device=bulb):
+        await _load_flux_led_translations(hass)
+        await async_setup_component(hass, flux_led.DOMAIN, {flux_led.DOMAIN: {}})
+        await hass.async_block_till_done()
+
+    wiring_entity_id = "select.bulb_rgbcw_ddeeff_wiring"
+    state = hass.states.get(wiring_entity_id)
+    expect(state.state).to_equal("BGRW")
+
+    ic_type_entity_id = "select.bulb_rgbcw_ddeeff_ic_type"
+    state = hass.states.get(ic_type_entity_id)
+    expect(state.state).to_equal("WS2812B")
+
+    async with expect_raises_async(ServiceValidationError):
+        await hass.services.async_call(
+            SELECT_DOMAIN,
+            "select_option",
+            {ATTR_ENTITY_ID: wiring_entity_id, ATTR_OPTION: "INVALID"},
+            blocking=True,
+        )
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        "select_option",
+        {ATTR_ENTITY_ID: wiring_entity_id, ATTR_OPTION: "GRBW"},
+        blocking=True,
+    )
+    bulb.async_set_device_config.assert_called_once_with(wiring="GRBW")
+    bulb.async_set_device_config.reset_mock()
+
+    async with expect_raises_async(ServiceValidationError):
+        await hass.services.async_call(
+            SELECT_DOMAIN,
+            "select_option",
+            {ATTR_ENTITY_ID: ic_type_entity_id, ATTR_OPTION: "INVALID"},
+            blocking=True,
+        )
+
+    with patch(
+        "homeassistant.components.flux_led.async_setup_entry"
+    ) as mock_setup_entry:
+        await hass.services.async_call(
+            SELECT_DOMAIN,
+            "select_option",
+            {ATTR_ENTITY_ID: ic_type_entity_id, ATTR_OPTION: "UCS1618"},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+    bulb.async_set_device_config.assert_called_once_with(ic_type="UCS1618")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
+@test.skip(
+    "translations not packaged in repo (only strings.json); entity name slug falls back"
+)
+async def select_mutable_0x25_strip_config(
+    _no_wait=Depends(no_wait_on_state_change),
+    hass: HomeAssistant = Depends(hass_fx),
+) -> None:
+    """Test selecting mutable 0x25 strip configs."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: IP_ADDRESS, CONF_NAME: DEFAULT_ENTRY_TITLE},
+        unique_id=MAC_ADDRESS,
+    )
+    config_entry.add_to_hass(hass)
+    bulb = _mocked_bulb()
+    bulb.operating_mode = "RGBWW"
+    bulb.operating_modes = ["DIM", "CCT", "RGB", "RGBW", "RGBWW"]
+    bulb.raw_state = bulb.raw_state._replace(model_num=0x25)  # addressable model
+    with _patch_discovery(), _patch_wifibulb(device=bulb):
+        await _load_flux_led_translations(hass)
+        await async_setup_component(hass, flux_led.DOMAIN, {flux_led.DOMAIN: {}})
+        await hass.async_block_till_done()
+
+    operating_mode_entity_id = "select.bulb_rgbcw_ddeeff_operating_mode"
+    state = hass.states.get(operating_mode_entity_id)
+    expect(state.state).to_equal("RGBWW")
+
+    async with expect_raises_async(ServiceValidationError):
+        await hass.services.async_call(
+            SELECT_DOMAIN,
+            "select_option",
+            {ATTR_ENTITY_ID: operating_mode_entity_id, ATTR_OPTION: "INVALID"},
+            blocking=True,
+        )
+
+    with patch(
+        "homeassistant.components.flux_led.async_setup_entry"
+    ) as mock_setup_entry:
+        await hass.services.async_call(
+            SELECT_DOMAIN,
+            "select_option",
+            {ATTR_ENTITY_ID: operating_mode_entity_id, ATTR_OPTION: "CCT"},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+    bulb.async_set_device_config.assert_called_once_with(operating_mode="CCT")
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
+@test.skip(
+    "translations not packaged in repo (only strings.json); entity name slug falls back"
+)
+async def select_24ghz_remote_config(
+    _no_wait=Depends(no_wait_on_state_change),
+    hass: HomeAssistant = Depends(hass_fx),
+) -> None:
+    """Test selecting 2.4ghz remote config."""
+    _mock_config_entry_for_bulb(hass)
+    bulb = _mocked_bulb()
+    bulb.discovery = FLUX_DISCOVERY
+    with _patch_discovery(device=FLUX_DISCOVERY), _patch_wifibulb(device=bulb):
+        await _load_flux_led_translations(hass)
+        await async_setup_component(hass, flux_led.DOMAIN, {flux_led.DOMAIN: {}})
+        await hass.async_block_till_done()
+
+    remote_config_entity_id = "select.bulb_rgbcw_ddeeff_remote_config"
+    state = hass.states.get(remote_config_entity_id)
+    expect(state.state).to_equal("Open")
+
+    async with expect_raises_async(ServiceValidationError):
+        await hass.services.async_call(
+            SELECT_DOMAIN,
+            "select_option",
+            {ATTR_ENTITY_ID: remote_config_entity_id, ATTR_OPTION: "INVALID"},
+            blocking=True,
+        )
+
+    bulb.remote_config = RemoteConfig.DISABLED
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        "select_option",
+        {ATTR_ENTITY_ID: remote_config_entity_id, ATTR_OPTION: "Disabled"},
+        blocking=True,
+    )
+    bulb.async_config_remotes.assert_called_once_with(RemoteConfig.DISABLED)
+    bulb.async_config_remotes.reset_mock()
+
+    bulb.remote_config = RemoteConfig.PAIRED_ONLY
+    await hass.services.async_call(
+        SELECT_DOMAIN,
+        "select_option",
+        {ATTR_ENTITY_ID: remote_config_entity_id, ATTR_OPTION: "Paired Only"},
+        blocking=True,
+    )
+    bulb.async_config_remotes.assert_called_once_with(RemoteConfig.PAIRED_ONLY)
+    bulb.async_config_remotes.reset_mock()
+
+
+@test.skip(
+    "translations not packaged in repo (only strings.json); entity name slug falls back"
+)
+async def select_white_channel_type(
+    _no_wait=Depends(no_wait_on_state_change),
+    hass: HomeAssistant = Depends(hass_fx),
+) -> None:
+    """Test selecting the white channel type."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: IP_ADDRESS, CONF_NAME: DEFAULT_ENTRY_TITLE},
+        unique_id=MAC_ADDRESS,
+    )
+    config_entry.add_to_hass(hass)
+    bulb = _mocked_bulb()
+    bulb.color_modes = {FLUX_COLOR_MODE_RGBW, FLUX_COLOR_MODE_CCT}
+    bulb.color_mode = FLUX_COLOR_MODE_RGBW
+    bulb.raw_state = bulb.raw_state._replace(model_num=0x06)  # rgbw
+    with _patch_discovery(), _patch_wifibulb(device=bulb):
+        await _load_flux_led_translations(hass)
+        await async_setup_component(hass, flux_led.DOMAIN, {flux_led.DOMAIN: {}})
+        await hass.async_block_till_done()
+
+    operating_mode_entity_id = "select.bulb_rgbcw_ddeeff_white_channel"
+    state = hass.states.get(operating_mode_entity_id)
+    expect(state.state).to_equal(WhiteChannelType.WARM.name.title())
+
+    async with expect_raises_async(ServiceValidationError):
+        await hass.services.async_call(
+            SELECT_DOMAIN,
+            "select_option",
+            {ATTR_ENTITY_ID: operating_mode_entity_id, ATTR_OPTION: "INVALID"},
+            blocking=True,
+        )
+
+    with patch(
+        "homeassistant.components.flux_led.async_setup_entry"
+    ) as mock_setup_entry:
+        await hass.services.async_call(
+            SELECT_DOMAIN,
+            "select_option",
+            {
+                ATTR_ENTITY_ID: operating_mode_entity_id,
+                ATTR_OPTION: WhiteChannelType.NATURAL.name.title(),
+            },
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+    expect(config_entry.data[CONF_WHITE_CHANNEL_TYPE]).to_equal(
+        WhiteChannelType.NATURAL.name.lower()
+    )
+    expect(len(mock_setup_entry.mock_calls)).to_equal(1)
+
+
+@test
+async def select_device_no_wiring(
+    _no_wait=Depends(no_wait_on_state_change),
+    hass: HomeAssistant = Depends(hass_fx),
+) -> None:
+    """Test select is not created if the device does not support wiring."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: IP_ADDRESS, CONF_NAME: DEFAULT_ENTRY_TITLE},
+        unique_id=MAC_ADDRESS,
+    )
+    config_entry.add_to_hass(hass)
+    bulb = _mocked_bulb()
+    bulb.wiring = None
+    bulb.wirings = ["RGB", "GRB"]
+    bulb.raw_state = bulb.raw_state._replace(model_num=0x25)
+    with _patch_discovery(), _patch_wifibulb(device=bulb):
+        await _load_flux_led_translations(hass)
+        await async_setup_component(hass, flux_led.DOMAIN, {flux_led.DOMAIN: {}})
+        await hass.async_block_till_done()
+
+    wiring_entity_id = "select.bulb_rgbcw_ddeeff_wiring"
+    expect(hass.states.get(wiring_entity_id)).to_equal(None)

@@ -1,7 +1,7 @@
 """Tryke fixtures for the bluetooth integration."""
 
 from collections.abc import AsyncGenerator, Generator
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from habluetooth import BaseHaRemoteScanner
 from tryke import Depends, fixture
@@ -108,6 +108,19 @@ async def register_hci1_scanner(
     yield
     cancel()
     bluetooth.async_remove_scanner(hass, hci1_scanner.source)
+
+
+@fixture
+def disable_new_discovery_flows() -> Generator[MagicMock]:
+    """Patch out discovery_flow.async_create_flow so the manager skips it.
+
+    Ported from the pytest ``disable_new_discovery_flows`` fixture in
+    ``tests/components/bluetooth/conftest.py``.
+    """
+    with patch(
+        "homeassistant.components.bluetooth.manager.discovery_flow.async_create_flow"
+    ) as mock_create_flow:
+        yield mock_create_flow
 
 
 @fixture
