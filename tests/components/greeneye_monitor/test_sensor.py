@@ -142,7 +142,7 @@ async def power_sensor_initially_unknown(
 
 
 @test
-async def power_sensor(
+async def power_sensor_test(
     hass: HomeAssistant = Depends(hass_fx),
     monitors: AsyncMock = Depends(monitors_fx),
 ) -> None:
@@ -187,7 +187,7 @@ async def pulse_counter_initially_unknown(
 
 
 @test
-async def pulse_counter(
+async def pulse_counter_test(
     hass: HomeAssistant = Depends(hass_fx),
     monitors: AsyncMock = Depends(monitors_fx),
 ) -> None:
@@ -206,7 +206,7 @@ async def pulse_counter(
 
 
 @test
-async def temperature_sensor(
+async def temperature_sensor_test(
     hass: HomeAssistant = Depends(hass_fx),
     monitors: AsyncMock = Depends(monitors_fx),
 ) -> None:
@@ -221,7 +221,7 @@ async def temperature_sensor(
 
 
 @test
-async def voltage_sensor(
+async def voltage_sensor_test(
     hass: HomeAssistant = Depends(hass_fx),
     monitors: AsyncMock = Depends(monitors_fx),
 ) -> None:

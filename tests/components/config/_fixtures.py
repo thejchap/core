@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from typing import Any
 
 from tryke import Depends, fixture
 
 from homeassistant.components.config import area_registry as area_registry_config
 from homeassistant.components.config import auth as auth_config
+from homeassistant.components.config import category_registry as category_registry_config
 from homeassistant.components.config import floor_registry as floor_registry_config
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import (
@@ -19,6 +21,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 
 from tests.common import CLIENT_ID
+from tests.components.config.conftest import mock_config_store
 from tests.hass_fixtures import (
     ClientSessionGenerator,
     hass as hass_fixture,
@@ -26,6 +29,13 @@ from tests.hass_fixtures import (
     hass_ws_client as hass_ws_client_fx,
     local_auth as local_auth_fx,
 )
+
+
+@fixture
+def hass_config_store() -> Generator[dict[str, Any]]:
+    """Mock the config yaml store for the duration of a test."""
+    with mock_config_store() as stored_data:
+        yield stored_data
 
 
 @fixture
@@ -68,6 +78,16 @@ async def area_registry_client(
 ) -> Any:
     """WebSocket client wired to the area_registry config module."""
     area_registry_config.async_setup(hass)
+    return await hass_ws_client(hass)
+
+
+@fixture
+async def category_registry_client(
+    hass: HomeAssistant = Depends(hass_fixture),
+    hass_ws_client: ClientSessionGenerator = Depends(hass_ws_client_fx),
+) -> Any:
+    """WebSocket client wired to the category_registry config module."""
+    category_registry_config.async_setup(hass)
     return await hass_ws_client(hass)
 
 

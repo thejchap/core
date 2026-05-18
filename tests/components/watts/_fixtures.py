@@ -4,6 +4,7 @@ from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 
 from tryke import Depends, fixture
+from visionpluspython.models import Device, create_device_from_data
 
 from homeassistant.components.application_credentials import (
     DOMAIN as APPLICATION_CREDENTIALS_DOMAIN,
@@ -14,7 +15,11 @@ from homeassistant.components.watts.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
-from tests.common import MockConfigEntry
+from tests.common import (
+    MockConfigEntry,
+    load_json_array_fixture,
+    load_json_object_fixture,
+)
 from tests.hass_fixtures import hass as hass_fx
 
 CLIENT_ID = "test_client_id"
@@ -46,6 +51,49 @@ def mock_setup_entry() -> Generator[AsyncMock]:
         return_value=True,
     ) as mock_setup_entry:
         yield mock_setup_entry
+
+
+@fixture
+def mock_watts_client() -> Generator[AsyncMock]:
+    """Mock a Watts Vision client."""
+    with patch(
+        "homeassistant.components.watts.WattsVisionClient",
+        autospec=True,
+    ) as mock_client_class:
+        client = mock_client_class.return_value
+
+        discover_data = load_json_array_fixture("discover_devices.json", DOMAIN)
+        device_report_data = load_json_object_fixture("device_report.json", DOMAIN)
+        device_detail_data = load_json_object_fixture("device_detail.json", DOMAIN)
+        switch_detail_data = load_json_object_fixture("switch_detail.json", DOMAIN)
+
+        discovered_devices = [
+            create_device_from_data(device_data)  # type: ignore[arg-type]
+            for device_data in discover_data
+        ]
+        device_report = {
+            device_id: create_device_from_data(device_data)  # type: ignore[arg-type]
+            for device_id, device_data in device_report_data.items()
+        }
+        device_detail = create_device_from_data(device_detail_data)  # type: ignore[arg-type]
+        switch_detail = create_device_from_data(switch_detail_data)  # type: ignore[arg-type]
+
+        device_details = {
+            device_detail_data["deviceId"]: device_detail,
+            switch_detail_data["deviceId"]: switch_detail,
+        }
+
+        async def get_device_side_effect(
+            device_id: str, refresh: bool = False
+        ) -> Device:
+            """Return the appropriate device based on device_id."""
+            return device_details.get(device_id, device_detail)
+
+        client.discover_devices.return_value = discovered_devices
+        client.get_devices_report.return_value = device_report
+        client.get_device.side_effect = get_device_side_effect
+
+        yield client
 
 
 @fixture
