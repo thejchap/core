@@ -25,6 +25,7 @@ from tests.common import (
 )
 from tests.components.common import target_entities
 from tests.hass_fixtures import hass as hass_fixture
+from tests.hass_tryke_helpers import setup_recorder_mock
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,6 +93,14 @@ async def target_humidifiers(
 ) -> dict[str, list[str]]:
     """Create multiple humidifier entities associated with different targets."""
     return await target_entities(hass, "humidifier")
+
+
+@fixture
+async def recorder_mock(
+    hass: HomeAssistant = Depends(hass_fixture),
+):
+    """Set up the recorder for tests that need it."""
+    return await setup_recorder_mock(hass)
 
 
 async def setup_test_integration(

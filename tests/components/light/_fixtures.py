@@ -12,6 +12,27 @@ from homeassistant.core import HomeAssistant
 
 from tests.components.common import target_entities
 from tests.hass_fixtures import hass as hass_fixture
+from tests.hass_tryke_helpers import setup_recorder_mock
+
+
+@fixture
+async def recorder_mock(
+    hass: HomeAssistant = Depends(hass_fixture),
+):
+    """Set up the recorder for tests that need it."""
+    return await setup_recorder_mock(hass)
+
+
+@fixture
+def light_only() -> Generator[None]:
+    """Enable only the light platform on the demo integration."""
+    from homeassistant.const import Platform  # noqa: PLC0415
+
+    with patch(
+        "homeassistant.components.demo.COMPONENTS_WITH_CONFIG_ENTRY_DEMO_PLATFORM",
+        [Platform.LIGHT],
+    ):
+        yield
 
 
 @fixture
