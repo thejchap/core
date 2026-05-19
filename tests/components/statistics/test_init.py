@@ -18,11 +18,7 @@ from homeassistant.components.statistics.sensor import (
     DEFAULT_NAME,
     STAT_AVERAGE_LINEAR,
 )
-from homeassistant.config_entries import (
-    SOURCE_USER,
-    ConfigEntry,
-    ConfigEntryState,
-)
+from homeassistant.config_entries import SOURCE_USER, ConfigEntry, ConfigEntryState
 from homeassistant.const import (
     ATTR_UNIT_OF_MEASUREMENT,
     CONF_ENTITY_ID,
@@ -52,7 +48,6 @@ def _trigger_executor(
     _recorder: object = Depends(recorder_mock),
 ) -> None:
     """Force tryke fixture resolution before each test."""
-    print("DEBUG _trigger_executor invoked")
 
 
 @fixture
@@ -96,20 +91,10 @@ def sensor_entity_entry(
 
 @fixture
 def statistics_config_entry(
-    _network: None = Depends(mock_network),
-    _recorder: object = Depends(recorder_mock),
     hass: HomeAssistant = Depends(hass_fixture),
     sensor_entity_entry: er.RegistryEntry = Depends(sensor_entity_entry),
 ) -> MockConfigEntry:
     """Fixture to create a statistics config entry."""
-    import traceback
-    orig_setup = statistics.async_setup_entry
-    async def traced_setup(hass_, entry_):
-        print(f"DEBUG async_setup_entry called for {entry_.entry_id}", flush=True)
-        traceback.print_stack()
-        return await orig_setup(hass_, entry_)
-    p = patch("homeassistant.components.statistics.async_setup_entry", new=traced_setup)
-    p.start()
     config_entry = MockConfigEntry(
         data={},
         domain=DOMAIN,
@@ -126,38 +111,28 @@ def statistics_config_entry(
         version=StatisticsConfigFlowHandler.VERSION,
         minor_version=StatisticsConfigFlowHandler.MINOR_VERSION,
     )
-    print(f"DEBUG fixture state after init: {config_entry.state}")
     config_entry.add_to_hass(hass)
-    print(f"DEBUG fixture state after add_to_hass: {config_entry.state}")
-
     return config_entry
 
 
-@fixture
-def get_config() -> dict[str, Any]:
-    """Return the default config used by ``loaded_entry``."""
-    return {
-        CONF_NAME: DEFAULT_NAME,
-        CONF_ENTITY_ID: "sensor.test_monitored",
-        CONF_STATE_CHARACTERISTIC: STAT_AVERAGE_LINEAR,
-        CONF_SAMPLES_MAX_BUFFER_SIZE: 20.0,
-        CONF_MAX_AGE: {"hours": 8, "minutes": 5, "seconds": 5},
-        CONF_KEEP_LAST_SAMPLE: False,
-        CONF_PERCENTILE: 50.0,
-        CONF_PRECISION: 2.0,
-    }
+DEFAULT_GET_CONFIG: dict[str, Any] = {
+    CONF_NAME: DEFAULT_NAME,
+    CONF_ENTITY_ID: "sensor.test_monitored",
+    CONF_STATE_CHARACTERISTIC: STAT_AVERAGE_LINEAR,
+    CONF_SAMPLES_MAX_BUFFER_SIZE: 20.0,
+    CONF_MAX_AGE: {"hours": 8, "minutes": 5, "seconds": 5},
+    CONF_KEEP_LAST_SAMPLE: False,
+    CONF_PERCENTILE: 50.0,
+    CONF_PRECISION: 2.0,
+}
 
 
-@fixture
-async def loaded_entry(
-    hass: HomeAssistant = Depends(hass_fixture),
-    get_config: dict[str, Any] = Depends(get_config),
-) -> MockConfigEntry:
-    """Set up the Statistics integration in Home Assistant."""
+async def _load_integration(hass: HomeAssistant) -> MockConfigEntry:
+    """Set up the Statistics integration with a default config entry."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         source=SOURCE_USER,
-        options=get_config,
+        options=DEFAULT_GET_CONFIG,
         entry_id="1",
     )
 
@@ -194,9 +169,9 @@ def track_entity_registry_actions(hass: HomeAssistant, entity_id: str) -> list[s
 async def unload_entry(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
-    loaded_entry: MockConfigEntry = Depends(loaded_entry),
 ) -> None:
     """Test unload an entry."""
+    loaded_entry = await _load_integration(hass)
     expect(loaded_entry.state).to_be(ConfigEntryState.LOADED)
     expect(await hass.config_entries.async_unload(loaded_entry.entry_id)).to_be(True)
     await hass.async_block_till_done()
@@ -215,21 +190,10 @@ async def async_handle_source_entity_changes_source_entity_removed(
     sensor_entity_entry: er.RegistryEntry = Depends(sensor_entity_entry),
 ) -> None:
     """Test the statistics config entry is removed when the source entity is removed."""
-    # Patch async_setup_entry to capture stack trace of who calls it.
-    import traceback
-    orig_setup = statistics.async_setup_entry
-    async def traced_setup(hass_, entry_):
-        print("DEBUG async_setup_entry called for", entry_.entry_id)
-        traceback.print_stack()
-        return await orig_setup(hass_, entry_)
-    with patch(
-        "homeassistant.components.statistics.async_setup_entry", new=traced_setup
-    ):
-        print(f"DEBUG entry state before async_setup: {statistics_config_entry.state}")
-        expect(
-            await hass.config_entries.async_setup(statistics_config_entry.entry_id)
-        ).to_be(True)
-        await hass.async_block_till_done()
+    expect(
+        await hass.config_entries.async_setup(statistics_config_entry.entry_id)
+    ).to_be(True)
+    await hass.async_block_till_done()
 
     statistics_entity_entry = entity_registry.async_get("sensor.my_statistics")
     expect(statistics_entity_entry.device_id).to_equal(sensor_entity_entry.device_id)
