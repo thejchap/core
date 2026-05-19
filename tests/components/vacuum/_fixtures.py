@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 
 from tests.common import mock_config_flow, mock_platform
 from tests.hass_fixtures import hass as hass_fixture
+from tests.hass_tryke_helpers import setup_recorder_mock
 
 TEST_DOMAIN = "test"
 
@@ -28,3 +29,11 @@ def config_flow_fixture(
 
     with mock_config_flow(TEST_DOMAIN, MockFlow):
         yield
+
+
+@fixture
+async def recorder_mock(
+    hass: HomeAssistant = Depends(hass_fixture),
+):
+    """Set up the recorder for tests that need it."""
+    return await setup_recorder_mock(hass)
