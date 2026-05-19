@@ -1,288 +1,542 @@
-"""Tryke skip stub (pending port)."""
-
-from tryke import test
-
-
-@test.skip("pending tryke port")
-async def service_data_not_a_dict() -> None:
-    """Stub for test_service_data_not_a_dict (port deferred)."""
-
-@test.skip("pending tryke port")
-async def service_data_single_template() -> None:
-    """Stub for test_service_data_single_template (port deferred)."""
-
-@test.skip("pending tryke port")
-async def service_specify_data() -> None:
-    """Stub for test_service_specify_data (port deferred)."""
-
-@test.skip("pending tryke port")
-async def service_specify_entity_id() -> None:
-    """Stub for test_service_specify_entity_id (port deferred)."""
-
-@test.skip("pending tryke port")
-async def service_specify_entity_id_list() -> None:
-    """Stub for test_service_specify_entity_id_list (port deferred)."""
-
-@test.skip("pending tryke port")
-async def two_triggers() -> None:
-    """Stub for test_two_triggers (port deferred)."""
-
-@test.skip("pending tryke port")
-async def trigger_service_ignoring_condition() -> None:
-    """Stub for test_trigger_service_ignoring_condition (port deferred)."""
-
-@test.skip("pending tryke port")
-async def two_conditions_with_and() -> None:
-    """Stub for test_two_conditions_with_and (port deferred)."""
-
-@test.skip("pending tryke port")
-async def shorthand_conditions_template() -> None:
-    """Stub for test_shorthand_conditions_template (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_list_setting() -> None:
-    """Stub for test_automation_list_setting (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_calling_two_actions() -> None:
-    """Stub for test_automation_calling_two_actions (port deferred)."""
-
-@test.skip("pending tryke port")
-async def shared_context() -> None:
-    """Stub for test_shared_context (port deferred)."""
-
-@test.skip("pending tryke port")
-async def services() -> None:
-    """Stub for test_services (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_config_service() -> None:
-    """Stub for test_reload_config_service (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_config_when_invalid_config() -> None:
-    """Stub for test_reload_config_when_invalid_config (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_config_handles_load_fails() -> None:
-    """Stub for test_reload_config_handles_load_fails (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_stops() -> None:
-    """Stub for test_automation_stops (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_unchanged_does_not_stop() -> None:
-    """Stub for test_reload_unchanged_does_not_stop (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_single_unchanged_does_not_stop() -> None:
-    """Stub for test_reload_single_unchanged_does_not_stop (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_single_add_automation() -> None:
-    """Stub for test_reload_single_add_automation (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_single_parallel_calls() -> None:
-    """Stub for test_reload_single_parallel_calls (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_single_remove_automation() -> None:
-    """Stub for test_reload_single_remove_automation (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_moved_automation_without_alias() -> None:
-    """Stub for test_reload_moved_automation_without_alias (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_identical_automations_without_id() -> None:
-    """Stub for test_reload_identical_automations_without_id (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_unchanged_automation() -> None:
-    """Stub for test_reload_unchanged_automation (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_automation_when_blueprint_changes() -> None:
-    """Stub for test_reload_automation_when_blueprint_changes (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_restore_state() -> None:
-    """Stub for test_automation_restore_state (port deferred)."""
-
-@test.skip("pending tryke port")
-async def initial_value_off() -> None:
-    """Stub for test_initial_value_off (port deferred)."""
-
-@test.skip("pending tryke port")
-async def initial_value_on() -> None:
-    """Stub for test_initial_value_on (port deferred)."""
-
-@test.skip("pending tryke port")
-async def initial_value_off_but_restore_on() -> None:
-    """Stub for test_initial_value_off_but_restore_on (port deferred)."""
-
-@test.skip("pending tryke port")
-async def initial_value_on_but_restore_off() -> None:
-    """Stub for test_initial_value_on_but_restore_off (port deferred)."""
-
-@test.skip("pending tryke port")
-async def no_initial_value_and_restore_off() -> None:
-    """Stub for test_no_initial_value_and_restore_off (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_is_on_if_no_initial_state_or_restore() -> None:
-    """Stub for test_automation_is_on_if_no_initial_state_or_restore (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_not_trigger_on_bootstrap() -> None:
-    """Stub for test_automation_not_trigger_on_bootstrap (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_bad_config_validation() -> None:
-    """Stub for test_automation_bad_config_validation (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_with_error_in_script() -> None:
-    """Stub for test_automation_with_error_in_script (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_with_error_in_script_2() -> None:
-    """Stub for test_automation_with_error_in_script_2 (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_restore_last_triggered_with_initial_state() -> None:
-    """Stub for test_automation_restore_last_triggered_with_initial_state (port deferred)."""
-
-@test.skip("pending tryke port")
-async def extraction_functions_not_setup() -> None:
-    """Stub for test_extraction_functions_not_setup (port deferred)."""
-
-@test.skip("pending tryke port")
-async def extraction_functions_unknown_automation() -> None:
-    """Stub for test_extraction_functions_unknown_automation (port deferred)."""
-
-@test.skip("pending tryke port")
-async def extraction_functions_unavailable_automation() -> None:
-    """Stub for test_extraction_functions_unavailable_automation (port deferred)."""
-
-@test.skip("pending tryke port")
-async def extraction_functions() -> None:
-    """Stub for test_extraction_functions (port deferred)."""
-
-@test.skip("pending tryke port")
-async def extraction_functions_with_trigger_targets() -> None:
-    """Stub for test_extraction_functions_with_trigger_targets (port deferred)."""
-
-@test.skip("pending tryke port")
-async def extraction_functions_with_condition_targets() -> None:
-    """Stub for test_extraction_functions_with_condition_targets (port deferred)."""
-
-@test.skip("pending tryke port")
-async def logbook_humanify_automation_triggered_event() -> None:
-    """Stub for test_logbook_humanify_automation_triggered_event (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_variables() -> None:
-    """Stub for test_automation_variables (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_trigger_variables() -> None:
-    """Stub for test_automation_trigger_variables (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_bad_trigger_variables() -> None:
-    """Stub for test_automation_bad_trigger_variables (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_this_var_always() -> None:
-    """Stub for test_automation_this_var_always (port deferred)."""
-
-@test.skip("pending tryke port")
-async def blueprint_automation() -> None:
-    """Stub for test_blueprint_automation (port deferred)."""
-
-@test.skip("pending tryke port")
-async def blueprint_automation_legacy_schema() -> None:
-    """Stub for test_blueprint_automation_legacy_schema (port deferred)."""
-
-@test.skip("pending tryke port")
-async def blueprint_automation_override() -> None:
-    """Stub for test_blueprint_automation_override (port deferred)."""
-
-@test.skip("pending tryke port")
-async def blueprint_automation_bad_config() -> None:
-    """Stub for test_blueprint_automation_bad_config (port deferred)."""
-
-@test.skip("pending tryke port")
-async def blueprint_automation_fails_substitution() -> None:
-    """Stub for test_blueprint_automation_fails_substitution (port deferred)."""
-
-@test.skip("pending tryke port")
-async def trigger_service() -> None:
-    """Stub for test_trigger_service (port deferred)."""
-
-@test.skip("pending tryke port")
-async def trigger_condition_implicit_id() -> None:
-    """Stub for test_trigger_condition_implicit_id (port deferred)."""
-
-@test.skip("pending tryke port")
-async def trigger_condition_explicit_id() -> None:
-    """Stub for test_trigger_condition_explicit_id (port deferred)."""
-
-@test.skip("pending tryke port")
-async def recursive_automation_starting_script() -> None:
-    """Stub for test_recursive_automation_starting_script (port deferred)."""
-
-@test.skip("pending tryke port")
-async def recursive_automation() -> None:
-    """Stub for test_recursive_automation (port deferred)."""
-
-@test.skip("pending tryke port")
-async def recursive_automation_restart_mode() -> None:
-    """Stub for test_recursive_automation_restart_mode (port deferred)."""
-
-@test.skip("pending tryke port")
-async def websocket_config() -> None:
-    """Stub for test_websocket_config (port deferred)."""
-
-@test.skip("pending tryke port")
-async def websocket_config_requires_admin() -> None:
-    """Stub for test_websocket_config_requires_admin (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_turns_off_other_automation() -> None:
-    """Stub for test_automation_turns_off_other_automation (port deferred)."""
-
-@test.skip("pending tryke port")
-async def two_automations_call_restart_script_same_time() -> None:
-    """Stub for test_two_automations_call_restart_script_same_time (port deferred)."""
-
-@test.skip("pending tryke port")
-async def two_automation_call_restart_script_right_after_each_other() -> None:
-    """Stub for test_two_automation_call_restart_script_right_after_each_other (port deferred)."""
-
-@test.skip("pending tryke port")
-async def action_backward_compatibility() -> None:
-    """Stub for test_action_backward_compatibility (port deferred)."""
-
-@test.skip("pending tryke port")
-async def invalid_configuration() -> None:
-    """Stub for test_invalid_configuration (port deferred)."""
-
-@test.skip("pending tryke port")
-async def valid_configuration() -> None:
-    """Stub for test_valid_configuration (port deferred)."""
-
-@test.skip("pending tryke port")
-async def reload_when_labs_flag_changes() -> None:
-    """Stub for test_reload_when_labs_flag_changes (port deferred)."""
-
-@test.skip("pending tryke port")
-async def remove_automation_unloads_condition_and_script() -> None:
-    """Stub for test_remove_automation_unloads_condition_and_script (port deferred)."""
-
-@test.skip("pending tryke port")
-async def automation_changed_entity_id() -> None:
-    """Stub for test_automation_changed_entity_id (port deferred)."""
+"""The tests for the automation component."""
+
+from unittest.mock import Mock, patch
+
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components import automation
+from homeassistant.components.automation import (
+    ATTR_SOURCE,
+    EVENT_AUTOMATION_TRIGGERED,
+    SERVICE_TRIGGER,
+)
+from homeassistant.const import (
+    ATTR_ENTITY_ID,
+    ATTR_NAME,
+    SERVICE_TOGGLE,
+    SERVICE_TURN_OFF,
+    SERVICE_TURN_ON,
+)
+from homeassistant.core import Context, HomeAssistant, ServiceCall
+from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
+
+from tests.common import assert_setup_component, async_mock_service
+from tests.hass_fixtures import (
+    LogCapture,
+    caplog as caplog_fixture,
+    hass as hass_fixture,
+)
+
+
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    return hass
+
+
+@fixture
+def calls(hass: HomeAssistant = Depends(_trigger_executor)) -> list[ServiceCall]:
+    """Track calls to a mock service."""
+    return async_mock_service(hass, "test", "automation")
+
+
+@test
+async def service_data_not_a_dict(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    caplog: LogCapture = Depends(caplog_fixture),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test service data not dict."""
+    with assert_setup_component(1, automation.DOMAIN):
+        expect(
+            await async_setup_component(
+                hass,
+                automation.DOMAIN,
+                {
+                    automation.DOMAIN: {
+                        "trigger": {"platform": "event", "event_type": "test_event"},
+                        "action": {"action": "test.automation", "data": 100},
+                    }
+                },
+            )
+        ).to_be_truthy()
+
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(0)
+    expect("Result is not a Dictionary" in caplog.text).to_be(True)
+
+
+@test
+async def service_data_single_template(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test service data not dict."""
+    with assert_setup_component(1, automation.DOMAIN):
+        expect(
+            await async_setup_component(
+                hass,
+                automation.DOMAIN,
+                {
+                    automation.DOMAIN: {
+                        "trigger": {"platform": "event", "event_type": "test_event"},
+                        "action": {
+                            "action": "test.automation",
+                            "data": "{{ { 'foo': 'bar' } }}",
+                        },
+                    }
+                },
+            )
+        ).to_be_truthy()
+
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+    expect(calls[0].data["foo"]).to_equal("bar")
+
+
+@test
+async def service_specify_data(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test service data."""
+    expect(
+        await async_setup_component(
+            hass,
+            automation.DOMAIN,
+            {
+                automation.DOMAIN: {
+                    "alias": "hello",
+                    "trigger": {"platform": "event", "event_type": "test_event"},
+                    "action": {
+                        "action": "test.automation",
+                        "data_template": {
+                            "some": (
+                                "{{ trigger.platform }} - "
+                                "{{ trigger.event.event_type }}"
+                            )
+                        },
+                    },
+                }
+            },
+        )
+    ).to_be_truthy()
+
+    time = dt_util.utcnow()
+
+    with patch("homeassistant.helpers.script.utcnow", return_value=time):
+        hass.bus.async_fire("test_event")
+        await hass.async_block_till_done()
+
+    expect(len(calls)).to_equal(1)
+    expect(calls[0].data["some"]).to_equal("event - test_event")
+    state = hass.states.get("automation.hello")
+    expect(state is not None).to_be(True)
+    expect(state.attributes.get("last_triggered")).to_equal(time)
+
+
+@test
+async def service_specify_entity_id(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test service data."""
+    expect(
+        await async_setup_component(
+            hass,
+            automation.DOMAIN,
+            {
+                automation.DOMAIN: {
+                    "trigger": {"platform": "event", "event_type": "test_event"},
+                    "action": {
+                        "action": "test.automation",
+                        "entity_id": "hello.world",
+                    },
+                }
+            },
+        )
+    ).to_be_truthy()
+
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+    expect(calls[0].data.get(ATTR_ENTITY_ID)).to_equal(["hello.world"])
+
+
+@test
+async def service_specify_entity_id_list(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test service data."""
+    expect(
+        await async_setup_component(
+            hass,
+            automation.DOMAIN,
+            {
+                automation.DOMAIN: {
+                    "trigger": {"platform": "event", "event_type": "test_event"},
+                    "action": {
+                        "action": "test.automation",
+                        "entity_id": ["hello.world", "hello.world2"],
+                    },
+                }
+            },
+        )
+    ).to_be_truthy()
+
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+    expect(calls[0].data.get(ATTR_ENTITY_ID)).to_equal(["hello.world", "hello.world2"])
+
+
+@test
+async def two_triggers(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test triggers."""
+    expect(
+        await async_setup_component(
+            hass,
+            automation.DOMAIN,
+            {
+                automation.DOMAIN: {
+                    "trigger": [
+                        {"platform": "event", "event_type": "test_event"},
+                        {"platform": "state", "entity_id": "test.entity"},
+                    ],
+                    "action": {"action": "test.automation"},
+                }
+            },
+        )
+    ).to_be_truthy()
+
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+    hass.states.async_set("test.entity", "hello")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(2)
+
+
+@test
+async def two_conditions_with_and(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test two and conditions."""
+    entity_id = "test.entity"
+    expect(
+        await async_setup_component(
+            hass,
+            automation.DOMAIN,
+            {
+                automation.DOMAIN: {
+                    "triggers": [{"platform": "event", "event_type": "test_event"}],
+                    "conditions": [
+                        {
+                            "condition": "state",
+                            "entity_id": entity_id,
+                            "state": "100",
+                        },
+                        {
+                            "condition": "numeric_state",
+                            "entity_id": entity_id,
+                            "below": 150,
+                        },
+                    ],
+                    "actions": {"action": "test.automation"},
+                }
+            },
+        )
+    ).to_be_truthy()
+
+    hass.states.async_set(entity_id, 100)
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+
+    hass.states.async_set(entity_id, 101)
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+
+    hass.states.async_set(entity_id, 151)
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+
+
+@test
+async def shorthand_conditions_template(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test shorthand nation form in conditions."""
+    expect(
+        await async_setup_component(
+            hass,
+            automation.DOMAIN,
+            {
+                automation.DOMAIN: {
+                    "triggers": [{"platform": "event", "event_type": "test_event"}],
+                    "conditions": "{{ is_state('test.entity', 'hello') }}",
+                    "actions": {"action": "test.automation"},
+                }
+            },
+        )
+    ).to_be_truthy()
+
+    hass.states.async_set("test.entity", "hello")
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+
+    hass.states.async_set("test.entity", "goodbye")
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+
+
+@test
+async def automation_list_setting(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Event is not a valid condition."""
+    expect(
+        await async_setup_component(
+            hass,
+            automation.DOMAIN,
+            {
+                automation.DOMAIN: [
+                    {
+                        "trigger": {"platform": "event", "event_type": "test_event"},
+                        "action": {"action": "test.automation"},
+                    },
+                    {
+                        "trigger": {
+                            "platform": "event",
+                            "event_type": "test_event_2",
+                        },
+                        "action": {"action": "test.automation"},
+                    },
+                ]
+            },
+        )
+    ).to_be_truthy()
+
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+
+    hass.bus.async_fire("test_event_2")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(2)
+
+
+@test
+async def automation_calling_two_actions(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test if we can call two actions from automation async definition."""
+    expect(
+        await async_setup_component(
+            hass,
+            automation.DOMAIN,
+            {
+                automation.DOMAIN: {
+                    "trigger": {"platform": "event", "event_type": "test_event"},
+                    "action": [
+                        {"action": "test.automation", "data": {"position": 0}},
+                        {"action": "test.automation", "data": {"position": 1}},
+                    ],
+                }
+            },
+        )
+    ).to_be_truthy()
+
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+
+    expect(len(calls)).to_equal(2)
+    expect(calls[0].data["position"]).to_equal(0)
+    expect(calls[1].data["position"]).to_equal(1)
+
+
+@test
+async def shared_context(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test that the shared context is passed down the chain."""
+    expect(
+        await async_setup_component(
+            hass,
+            automation.DOMAIN,
+            {
+                automation.DOMAIN: [
+                    {
+                        "alias": "hello",
+                        "trigger": {"platform": "event", "event_type": "test_event"},
+                        "action": {"event": "test_event2"},
+                    },
+                    {
+                        "alias": "bye",
+                        "trigger": {
+                            "platform": "event",
+                            "event_type": "test_event2",
+                        },
+                        "action": {"action": "test.automation"},
+                    },
+                ]
+            },
+        )
+    ).to_be_truthy()
+
+    context = Context()
+    first_automation_listener = Mock()
+    event_mock = Mock()
+
+    hass.bus.async_listen("test_event2", first_automation_listener)
+    hass.bus.async_listen(EVENT_AUTOMATION_TRIGGERED, event_mock)
+    hass.bus.async_fire("test_event", context=context)
+    await hass.async_block_till_done()
+
+    expect(first_automation_listener.call_count).to_equal(1)
+    expect(event_mock.call_count).to_equal(2)
+
+    args, _ = event_mock.call_args_list[0]
+    first_trigger_context = args[0].context
+    expect(first_trigger_context.parent_id).to_equal(context.id)
+    expect(args[0].data.get(ATTR_NAME) is not None).to_be(True)
+    expect(args[0].data.get(ATTR_ENTITY_ID) is not None).to_be(True)
+    expect(args[0].data.get(ATTR_SOURCE) is not None).to_be(True)
+
+    args, _ = first_automation_listener.call_args
+    expect(args[0].context is first_trigger_context).to_be(True)
+
+    state = hass.states.get("automation.hello")
+    expect(state is not None).to_be(True)
+    expect(state.context is first_trigger_context).to_be(True)
+
+    args, _ = event_mock.call_args_list[1]
+    second_trigger_context = args[0].context
+    expect(second_trigger_context.parent_id).to_equal(first_trigger_context.id)
+    expect(args[0].data.get(ATTR_NAME) is not None).to_be(True)
+    expect(args[0].data.get(ATTR_ENTITY_ID) is not None).to_be(True)
+    expect(args[0].data.get(ATTR_SOURCE) is not None).to_be(True)
+
+    expect(len(calls)).to_equal(1)
+    expect(calls[0].context is second_trigger_context).to_be(True)
+
+
+@test
+async def services(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test the automation services for turning entities on/off."""
+    entity_id = "automation.hello"
+
+    expect(hass.states.get(entity_id)).to_be(None)
+    expect(automation.is_on(hass, entity_id)).to_be(False)
+
+    expect(
+        await async_setup_component(
+            hass,
+            automation.DOMAIN,
+            {
+                automation.DOMAIN: {
+                    "alias": "hello",
+                    "trigger": {"platform": "event", "event_type": "test_event"},
+                    "action": {"action": "test.automation"},
+                }
+            },
+        )
+    ).to_be_truthy()
+
+    expect(hass.states.get(entity_id) is not None).to_be(True)
+    expect(automation.is_on(hass, entity_id)).to_be(True)
+
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+
+    await hass.services.async_call(
+        automation.DOMAIN,
+        SERVICE_TURN_OFF,
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+
+    expect(automation.is_on(hass, entity_id)).to_be(False)
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(1)
+
+    await hass.services.async_call(
+        automation.DOMAIN,
+        SERVICE_TOGGLE,
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+
+    expect(automation.is_on(hass, entity_id)).to_be(True)
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(2)
+
+    await hass.services.async_call(
+        automation.DOMAIN,
+        SERVICE_TOGGLE,
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+    expect(automation.is_on(hass, entity_id)).to_be(False)
+    hass.bus.async_fire("test_event")
+    await hass.async_block_till_done()
+    expect(len(calls)).to_equal(2)
+
+    await hass.services.async_call(
+        automation.DOMAIN,
+        SERVICE_TOGGLE,
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+    await hass.services.async_call(
+        automation.DOMAIN,
+        SERVICE_TRIGGER,
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+    expect(len(calls)).to_equal(3)
+
+    await hass.services.async_call(
+        automation.DOMAIN,
+        SERVICE_TURN_OFF,
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+    await hass.services.async_call(
+        automation.DOMAIN,
+        SERVICE_TRIGGER,
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+    expect(len(calls)).to_equal(4)
+
+    await hass.services.async_call(
+        automation.DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: entity_id},
+        blocking=True,
+    )
+    expect(automation.is_on(hass, entity_id)).to_be(True)
