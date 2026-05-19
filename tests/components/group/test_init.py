@@ -1,98 +1,426 @@
-"""Tryke skip stub for test_init.py with one passing smoke test."""
+"""The tests for the Group components (tryke port)."""
 
-from tryke import expect, test
+from tryke import Depends, expect, fixture, test
+
+from homeassistant.components import group
+from homeassistant.const import STATE_HOME, STATE_OFF, STATE_ON
+from homeassistant.core import HomeAssistant
+from homeassistant.setup import async_setup_component
+
+from tests.hass_fixtures import hass as hass_fixture
+
+
+@fixture
+async def _trigger_executor(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> HomeAssistant:
+    """Force tryke fixture resolution and set up the homeassistant integration.
+
+    The pytest conftest.py autouse fixture ``setup_homeassistant`` does not
+    run under tryke, so we install the ``homeassistant`` component here.
+    """
+    expect(await async_setup_component(hass, "homeassistant", {})).to_be_truthy()
+    return hass
 
 
 @test
 def domain_const_importable() -> None:
     """Smoke test: the group integration's DOMAIN constant imports cleanly."""
     from homeassistant.components.group.const import DOMAIN  # noqa: PLC0415
+
     expect(DOMAIN).to_equal("group")
 
 
-@test.skip("pending tryke port")
-async def setup_group_with_mixed_groupable_states() -> None:
-    """Stub for test_setup_group_with_mixed_groupable_states."""
+@test
+async def setup_group_with_mixed_groupable_states(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Try to set up a group with mixed groupable states."""
+    hass.states.async_set("light.Bowl", STATE_ON)
+    hass.states.async_set("device_tracker.Paulus", STATE_HOME)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    await group.Group.async_create_group(
+        hass,
+        "person_and_light",
+        created_by_service=False,
+        entity_ids=["light.Bowl", "device_tracker.Paulus"],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    await hass.async_block_till_done()
+
+    expect(hass.states.get(f"{group.DOMAIN}.person_and_light").state).to_equal(
+        STATE_ON
+    )
 
 
-@test.skip("pending tryke port")
-async def setup_group_with_a_non_existing_state() -> None:
-    """Stub for test_setup_group_with_a_non_existing_state."""
+@test
+async def setup_group_with_a_non_existing_state(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Try to set up a group with a non existing state."""
+    hass.states.async_set("light.Bowl", STATE_ON)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    grp = await group.Group.async_create_group(
+        hass,
+        "light_and_nothing",
+        created_by_service=False,
+        entity_ids=["light.Bowl", "non.existing"],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    expect(grp.state).to_equal(STATE_ON)
 
 
-@test.skip("pending tryke port")
-async def setup_group_with_non_groupable_states() -> None:
-    """Stub for test_setup_group_with_non_groupable_states."""
+@test
+async def setup_group_with_non_groupable_states(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test setup with groups which are not groupable."""
+    hass.states.async_set("cast.living_room", "Plex")
+    hass.states.async_set("cast.bedroom", "Netflix")
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    grp = await group.Group.async_create_group(
+        hass,
+        "chromecasts",
+        created_by_service=False,
+        entity_ids=["cast.living_room", "cast.bedroom"],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    expect(grp.state).to_be(None)
 
 
-@test.skip("pending tryke port")
-async def setup_empty_group() -> None:
-    """Stub for test_setup_empty_group."""
+@test
+async def setup_empty_group(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Try to set up an empty group."""
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    grp = await group.Group.async_create_group(
+        hass,
+        "nothing",
+        created_by_service=False,
+        entity_ids=[],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    expect(grp.state).to_be(None)
 
 
-@test.skip("pending tryke port")
-async def monitor_group() -> None:
-    """Stub for test_monitor_group."""
+@test
+async def monitor_group(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test if the group keeps track of states."""
+    hass.states.async_set("light.Bowl", STATE_ON)
+    hass.states.async_set("light.Ceiling", STATE_OFF)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    test_group = await group.Group.async_create_group(
+        hass,
+        "init_group",
+        created_by_service=True,
+        entity_ids=["light.Bowl", "light.Ceiling"],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    expect(test_group.entity_id in hass.states.async_entity_ids()).to_be(True)
+
+    group_state = hass.states.get(test_group.entity_id)
+    expect(group_state.state).to_equal(STATE_ON)
+    expect(bool(group_state.attributes.get(group.ATTR_AUTO))).to_be(True)
 
 
-@test.skip("pending tryke port")
-async def group_turns_off_if_all_off() -> None:
-    """Stub for test_group_turns_off_if_all_off."""
+@test
+async def group_turns_off_if_all_off(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test if turn off if the last device that was on turns off."""
+    hass.states.async_set("light.Bowl", STATE_OFF)
+    hass.states.async_set("light.Ceiling", STATE_OFF)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    test_group = await group.Group.async_create_group(
+        hass,
+        "init_group",
+        created_by_service=True,
+        entity_ids=["light.Bowl", "light.Ceiling"],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    await hass.async_block_till_done()
+
+    group_state = hass.states.get(test_group.entity_id)
+    expect(group_state.state).to_equal(STATE_OFF)
 
 
-@test.skip("pending tryke port")
-async def group_turns_on_if_all_are_off_and_one_turns_on() -> None:
-    """Stub for test_group_turns_on_if_all_are_off_and_one_turns_on."""
+@test
+async def group_turns_on_if_all_are_off_and_one_turns_on(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test if turn on if all devices were turned off and one turns on."""
+    hass.states.async_set("light.Bowl", STATE_OFF)
+    hass.states.async_set("light.Ceiling", STATE_OFF)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    test_group = await group.Group.async_create_group(
+        hass,
+        "init_group",
+        created_by_service=True,
+        entity_ids=["light.Bowl", "light.Ceiling"],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    hass.states.async_set("light.Ceiling", STATE_ON)
+    await hass.async_block_till_done()
+
+    group_state = hass.states.get(test_group.entity_id)
+    expect(group_state.state).to_equal(STATE_ON)
 
 
-@test.skip("pending tryke port")
-async def allgroup_stays_off_if_all_are_off_and_one_turns_on() -> None:
-    """Stub for test_allgroup_stays_off_if_all_are_off_and_one_turns_on."""
+@test
+async def allgroup_stays_off_if_all_are_off_and_one_turns_on(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Group with all: true, stay off if one device turns on."""
+    hass.states.async_set("light.Bowl", STATE_OFF)
+    hass.states.async_set("light.Ceiling", STATE_OFF)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    test_group = await group.Group.async_create_group(
+        hass,
+        "init_group",
+        created_by_service=True,
+        entity_ids=["light.Bowl", "light.Ceiling"],
+        icon=None,
+        mode=True,
+        object_id=None,
+        order=None,
+    )
+
+    hass.states.async_set("light.Ceiling", STATE_ON)
+    await hass.async_block_till_done()
+
+    group_state = hass.states.get(test_group.entity_id)
+    expect(group_state.state).to_equal(STATE_OFF)
 
 
-@test.skip("pending tryke port")
-async def allgroup_turn_on_if_last_turns_on() -> None:
-    """Stub for test_allgroup_turn_on_if_last_turns_on."""
+@test
+async def allgroup_turn_on_if_last_turns_on(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Group with all: true, turn on if all devices are on."""
+    hass.states.async_set("light.Bowl", STATE_ON)
+    hass.states.async_set("light.Ceiling", STATE_OFF)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    test_group = await group.Group.async_create_group(
+        hass,
+        "init_group",
+        created_by_service=True,
+        entity_ids=["light.Bowl", "light.Ceiling"],
+        icon=None,
+        mode=True,
+        object_id=None,
+        order=None,
+    )
+
+    hass.states.async_set("light.Ceiling", STATE_ON)
+    await hass.async_block_till_done()
+
+    group_state = hass.states.get(test_group.entity_id)
+    expect(group_state.state).to_equal(STATE_ON)
 
 
-@test.skip("pending tryke port")
-async def expand_entity_ids() -> None:
-    """Stub for test_expand_entity_ids."""
+@test
+async def expand_entity_ids(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test expand_entity_ids method."""
+    hass.states.async_set("light.Bowl", STATE_ON)
+    hass.states.async_set("light.Ceiling", STATE_OFF)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    test_group = await group.Group.async_create_group(
+        hass,
+        "init_group",
+        created_by_service=True,
+        entity_ids=["light.Bowl", "light.Ceiling"],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    expect(sorted(group.expand_entity_ids(hass, [test_group.entity_id]))).to_equal(
+        sorted(["light.ceiling", "light.bowl"])
+    )
 
 
-@test.skip("pending tryke port")
-async def expand_entity_ids_does_not_return_duplicates() -> None:
-    """Stub for test_expand_entity_ids_does_not_return_duplicates."""
+@test
+async def expand_entity_ids_does_not_return_duplicates(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test that expand_entity_ids does not return duplicates."""
+    hass.states.async_set("light.Bowl", STATE_ON)
+    hass.states.async_set("light.Ceiling", STATE_OFF)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    test_group = await group.Group.async_create_group(
+        hass,
+        "init_group",
+        created_by_service=True,
+        entity_ids=["light.Bowl", "light.Ceiling"],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    expect(
+        sorted(group.expand_entity_ids(hass, [test_group.entity_id, "light.Ceiling"]))
+    ).to_equal(["light.bowl", "light.ceiling"])
+
+    expect(
+        sorted(group.expand_entity_ids(hass, ["light.bowl", test_group.entity_id]))
+    ).to_equal(["light.bowl", "light.ceiling"])
 
 
-@test.skip("pending tryke port")
-async def expand_entity_ids_recursive() -> None:
-    """Stub for test_expand_entity_ids_recursive."""
+@test
+async def expand_entity_ids_recursive(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test expand_entity_ids method with a group that contains itself."""
+    hass.states.async_set("light.Bowl", STATE_ON)
+    hass.states.async_set("light.Ceiling", STATE_OFF)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    test_group = await group.Group.async_create_group(
+        hass,
+        "init_group",
+        created_by_service=True,
+        entity_ids=["light.Bowl", "light.Ceiling", "group.init_group"],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    expect(sorted(group.expand_entity_ids(hass, [test_group.entity_id]))).to_equal(
+        sorted(["light.ceiling", "light.bowl"])
+    )
 
 
-@test.skip("pending tryke port")
-async def expand_entity_ids_ignores_non_strings() -> None:
-    """Stub for test_expand_entity_ids_ignores_non_strings."""
+@test
+async def expand_entity_ids_ignores_non_strings(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test that non string elements in lists are ignored."""
+    expect(group.expand_entity_ids(hass, [5, True])).to_equal([])
 
 
-@test.skip("pending tryke port")
-async def get_entity_ids() -> None:
-    """Stub for test_get_entity_ids."""
+@test
+async def get_entity_ids(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test get_entity_ids method."""
+    hass.states.async_set("light.Bowl", STATE_ON)
+    hass.states.async_set("light.Ceiling", STATE_OFF)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    test_group = await group.Group.async_create_group(
+        hass,
+        "init_group",
+        created_by_service=True,
+        entity_ids=["light.Bowl", "light.Ceiling"],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    expect(sorted(group.get_entity_ids(hass, test_group.entity_id))).to_equal(
+        ["light.bowl", "light.ceiling"]
+    )
 
 
-@test.skip("pending tryke port")
-async def get_entity_ids_with_domain_filter() -> None:
-    """Stub for test_get_entity_ids_with_domain_filter."""
+@test
+async def get_entity_ids_with_domain_filter(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test if get_entity_ids works with a domain_filter."""
+    hass.states.async_set("switch.AC", STATE_OFF)
+
+    expect(await async_setup_component(hass, "group", {})).to_be_truthy()
+
+    mixed_group = await group.Group.async_create_group(
+        hass,
+        "mixed_group",
+        created_by_service=True,
+        entity_ids=["light.Bowl", "switch.AC"],
+        icon=None,
+        mode=None,
+        object_id=None,
+        order=None,
+    )
+
+    expect(
+        group.get_entity_ids(hass, mixed_group.entity_id, domain_filter="switch")
+    ).to_equal(["switch.ac"])
 
 
-@test.skip("pending tryke port")
-async def get_entity_ids_with_non_existing_group_name() -> None:
-    """Stub for test_get_entity_ids_with_non_existing_group_name."""
+@test
+async def get_entity_ids_with_non_existing_group_name(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test get_entity_ids with a non existing group."""
+    expect(group.get_entity_ids(hass, "non_existing")).to_equal([])
 
 
-@test.skip("pending tryke port")
-async def get_entity_ids_with_non_group_state() -> None:
-    """Stub for test_get_entity_ids_with_non_group_state."""
+@test
+async def get_entity_ids_with_non_group_state(
+    hass: HomeAssistant = Depends(_trigger_executor),
+) -> None:
+    """Test get_entity_ids with a non group state."""
+    expect(group.get_entity_ids(hass, "switch.AC")).to_equal([])
 
 
 @test.skip("pending tryke port")
@@ -313,4 +641,3 @@ async def entity_platforms_with_multiple_on_states_no_state_match() -> None:
 @test.skip("pending tryke port")
 async def entity_platforms_with_multiple_on_states_with_state_match() -> None:
     """Stub for test_entity_platforms_with_multiple_on_states_with_state_match."""
-

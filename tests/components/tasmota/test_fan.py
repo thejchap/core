@@ -6,8 +6,9 @@ from typing import Any
 
 from tryke import Depends, expect, fixture, test
 
+from homeassistant.components import fan
 from homeassistant.components.tasmota.const import DEFAULT_PREFIX
-from homeassistant.const import ATTR_ASSUMED_STATE, STATE_OFF
+from homeassistant.const import ATTR_ASSUMED_STATE, STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 
 from ._fixtures import mqtt_mock as mqtt_mock_fixture, setup_tasmota
@@ -50,6 +51,43 @@ async def controlling_state_via_mqtt(
     await hass.async_block_till_done()
     state = hass.states.get("fan.tasmota")
     expect(state.state).to_equal(STATE_OFF)
+    expect(state.attributes["percentage"]).to_be(None)
+    expect(state.attributes["supported_features"]).to_equal(
+        fan.FanEntityFeature.SET_SPEED
+        | fan.FanEntityFeature.TURN_OFF
+        | fan.FanEntityFeature.TURN_ON
+    )
+    expect(bool(state.attributes.get(ATTR_ASSUMED_STATE))).to_be(False)
+
+    async_fire_mqtt_message(hass, "tasmota_49A3BC/tele/STATE", '{"FanSpeed":1}')
+    state = hass.states.get("fan.tasmota")
+    expect(state.state).to_equal(STATE_ON)
+    expect(state.attributes["percentage"]).to_equal(33)
+
+    async_fire_mqtt_message(hass, "tasmota_49A3BC/tele/STATE", '{"FanSpeed":2}')
+    state = hass.states.get("fan.tasmota")
+    expect(state.state).to_equal(STATE_ON)
+    expect(state.attributes["percentage"]).to_equal(66)
+
+    async_fire_mqtt_message(hass, "tasmota_49A3BC/tele/STATE", '{"FanSpeed":3}')
+    state = hass.states.get("fan.tasmota")
+    expect(state.state).to_equal(STATE_ON)
+    expect(state.attributes["percentage"]).to_equal(100)
+
+    async_fire_mqtt_message(hass, "tasmota_49A3BC/tele/STATE", '{"FanSpeed":0}')
+    state = hass.states.get("fan.tasmota")
+    expect(state.state).to_equal(STATE_OFF)
+    expect(state.attributes["percentage"]).to_equal(0)
+
+    async_fire_mqtt_message(hass, "tasmota_49A3BC/stat/RESULT", '{"FanSpeed":1}')
+    state = hass.states.get("fan.tasmota")
+    expect(state.state).to_equal(STATE_ON)
+    expect(state.attributes["percentage"]).to_equal(33)
+
+    async_fire_mqtt_message(hass, "tasmota_49A3BC/stat/RESULT", '{"FanSpeed":0}')
+    state = hass.states.get("fan.tasmota")
+    expect(state.state).to_equal(STATE_OFF)
+    expect(state.attributes["percentage"]).to_equal(0)
 
 
 @test.skip("requires mqtt_mock + tasmota discovery — port deferred")

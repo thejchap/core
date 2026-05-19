@@ -75,14 +75,41 @@ async def tilt_support(
     expect(state.attributes["supported_features"]).to_be(COVER_SUPPORT)
 
 
+@test("multiple_covers").cases(
+    test.case("16", relay_config=[3, 3, 3, 3, 3, 3, 1, 1, 3, 3] + [3, 3] * 12, num_covers=16),
+    test.case("4", relay_config=[3, 3, 3, 3, 3, 3, 1, 1, 3, 3], num_covers=4),
+    test.case("2", relay_config=[3, 3, 3, 3, 0, 0, 0, 0], num_covers=2),
+    test.case("1", relay_config=[3, 3, 1, 1, 0, 0, 0, 0], num_covers=1),
+    test.case("0", relay_config=[3, 3, 3, 1, 0, 0, 0, 0], num_covers=0),
+)
+async def multiple_covers(
+    relay_config: list[int],
+    num_covers: int,
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    _setup: None = Depends(setup_tasmota),
+) -> None:
+    """Test discovery of multiple covers."""
+    config = copy.deepcopy(DEFAULT_CONFIG)
+    config["rl"] = relay_config
+    mac = config["mac"]
+
+    expect(len(hass.states.async_all("cover"))).to_equal(0)
+
+    async_fire_mqtt_message(
+        hass,
+        f"{DEFAULT_PREFIX}/{mac}/config",
+        json.dumps(config),
+    )
+    await hass.async_block_till_done()
+
+    expect(len(hass.states.async_all("cover"))).to_equal(num_covers)
+
+
 @test.skip("requires mqtt_mock + tasmota discovery — port deferred")
 async def missing_relay() -> None:
     """Stub for test_missing_relay."""
-
-
-@test.skip("requires mqtt_mock + tasmota discovery — port deferred")
-async def multiple_covers() -> None:
-    """Stub for test_multiple_covers."""
 
 
 @test.skip("requires mqtt_mock + tasmota discovery — port deferred")

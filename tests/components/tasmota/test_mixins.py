@@ -1,9 +1,68 @@
-"""Tryke skip-stubs for tasmota/test_mixins.py."""
+"""The tests for the Tasmota mixins."""
 
-from tryke import test
+import copy
+import json
+from typing import Any
+from unittest.mock import call
+
+from hatasmota.const import CONF_MAC
+from hatasmota.utils import config_get_state_online, get_topic_tele_will
+from tryke import Depends, fixture, test
+
+from homeassistant.components.tasmota.const import DEFAULT_PREFIX
+from homeassistant.core import HomeAssistant
+
+from ._fixtures import mqtt_mock as mqtt_mock_fixture, setup_tasmota
+from .test_common import DEFAULT_CONFIG
+
+from tests.common import async_fire_mqtt_message
+from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
-@test.skip("requires mqtt_mock + tasmota discovery — port deferred")
-async def availability_poll_state_once() -> None:
-    """Stub for test_availability_poll_state_once."""
+@fixture
+def _trigger_executor(_network: None = Depends(mock_network)) -> None:
+    """Anchor fixture for tryke Depends() resolution."""
 
+
+@test
+async def availability_poll_state_once(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    _setup: None = Depends(setup_tasmota),
+) -> None:
+    """Test several entities send a single message to update state."""
+    config = copy.deepcopy(DEFAULT_CONFIG)
+    config["rl"][0] = 1
+    config["rl"][1] = 1
+    config["swc"][0] = 1
+    config["swc"][1] = 1
+    poll_payload_relay = ""
+    poll_payload_switch = "10"
+    poll_topic_relay = "tasmota_49A3BC/cmnd/STATE"
+    poll_topic_switch = "tasmota_49A3BC/cmnd/STATUS"
+
+    async_fire_mqtt_message(
+        hass,
+        f"{DEFAULT_PREFIX}/{config[CONF_MAC]}/config",
+        json.dumps(config),
+    )
+    await hass.async_block_till_done()
+    mqtt_mock.async_publish.reset_mock()
+
+    # Device online, verify poll for state
+    async_fire_mqtt_message(
+        hass,
+        get_topic_tele_will(config),
+        config_get_state_online(config),
+    )
+    await hass.async_block_till_done()
+    await hass.async_block_till_done()
+    await hass.async_block_till_done()
+    mqtt_mock.async_publish.assert_has_calls(
+        [
+            call(poll_topic_relay, poll_payload_relay, 0, False),
+            call(poll_topic_switch, poll_payload_switch, 0, False),
+        ],
+        any_order=True,
+    )
