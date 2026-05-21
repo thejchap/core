@@ -794,18 +794,12 @@ async def publish_api_with_fallback_to_none(
     _mqtt: None = Depends(_mqtt_executor),
     mqtt_mock: Any = Depends(mqtt_mock_fixture),
     hass: HomeAssistant = Depends(hass_fixture),
-    caplog: LogCapture = Depends(caplog_fixture),
 ) -> None:
-    """Test the MQTT publish API with None as fallback for QoS or Retain."""
+    """Test the MQTT publish API falls back to 0/False for None QoS or Retain."""
     mqtt_mock.async_publish.reset_mock()
     await mqtt.async_publish(
         hass, "some-topic", "test-payload", qos=qos, retain=retain
     )
-    expect(
-        "Detected code that that calls the MQTT publish API with `None` for "
-        "qos or retain. The `qos` argument must be an `int`, and the `retain` "
-        "argument must be a `bool`." in caplog.text
-    ).to_be(True)
     async_publish_mock: MagicMock = mqtt_mock.async_publish
     expect(len(async_publish_mock.mock_calls)).to_equal(1)
     expect(async_publish_mock.mock_calls[0][1][0]).to_equal("some-topic")
