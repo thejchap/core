@@ -2,14 +2,89 @@
 
 from tryke import Depends, expect, fixture, test
 
+from homeassistant import config_entries
+from homeassistant.components import mqtt
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
+from tests.common import MockConfigEntry
 from tests.hass_fixtures import hass as hass_fixture, mock_network
 
 
 @fixture
 def _trigger_executor(_network: None = Depends(mock_network)) -> None:
     """Present so tryke builds a fixture executor for this module."""
+
+
+@test
+async def user_single_instance(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we only allow a single config flow."""
+    MockConfigEntry(
+        domain="mqtt",
+        version=mqtt.CONFIG_ENTRY_VERSION,
+        minor_version=mqtt.CONFIG_ENTRY_MINOR_VERSION,
+    ).add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        "mqtt", context={"source": config_entries.SOURCE_USER}
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
+
+
+@test
+async def hassio_already_configured(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we only allow a single config flow."""
+    MockConfigEntry(
+        domain="mqtt",
+        version=mqtt.CONFIG_ENTRY_VERSION,
+        minor_version=mqtt.CONFIG_ENTRY_MINOR_VERSION,
+    ).add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        "mqtt", context={"source": config_entries.SOURCE_HASSIO}
+    )
+    expect(result["type"]).to_be(FlowResultType.ABORT)
+    expect(result["reason"]).to_equal("single_instance_allowed")
+
+
+@test
+async def hassio_ignored(
+    _trigger: None = Depends(_trigger_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test we supervisor discovered instance can be ignored."""
+    MockConfigEntry(
+        domain=mqtt.DOMAIN,
+        source=config_entries.SOURCE_IGNORE,
+        version=mqtt.CONFIG_ENTRY_VERSION,
+        minor_version=mqtt.CONFIG_ENTRY_MINOR_VERSION,
+    ).add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        mqtt.DOMAIN,
+        data=HassioServiceInfo(
+            config={
+                "addon": "Mosquitto",
+                "host": "mock-mosquitto",
+                "port": "1883",
+                "protocol": "3.1.1",
+            },
+            name="Mosquitto",
+            slug="mosquitto",
+            uuid="1234",
+        ),
+        context={"source": config_entries.SOURCE_HASSIO},
+    )
+    expect(result.get("type")).to_be(FlowResultType.ABORT)
+    expect(result.get("reason")).to_equal("single_instance_allowed")
 
 
 @test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
@@ -39,7 +114,7 @@ async def user_v5_connection_works(
     expect(True).to_be(True)
 
 
-@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
+@test.skip("paho-mqtt not installed in tryke environment")
 async def user_connection_fails(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
@@ -48,39 +123,12 @@ async def user_connection_fails(
     expect(True).to_be(True)
 
 
-@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
+@test.skip("paho-mqtt not installed in tryke environment")
 async def manual_config_set(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
 ) -> None:
     """Test manual config does not create an entry, and entry can be setup late."""
-    expect(True).to_be(True)
-
-
-@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
-async def user_single_instance(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we only allow a single config flow."""
-    expect(True).to_be(True)
-
-
-@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
-async def hassio_already_configured(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we only allow a single config flow."""
-    expect(True).to_be(True)
-
-
-@test.skip("mqtt_mock fixture itself — bootstraps the chain we don't shim")
-async def hassio_ignored(
-    _trigger: None = Depends(_trigger_executor),
-    hass: HomeAssistant = Depends(hass_fixture),
-) -> None:
-    """Test we supervisor discovered instance can be ignored."""
     expect(True).to_be(True)
 
 
@@ -442,5 +490,3 @@ async def subentry_configflow_section_feature(
 ) -> None:
     """Test the subentry ConfigFlow sections are hidden when they have no configurable options."""
     expect(True).to_be(True)
-
-

@@ -1,7 +1,7 @@
 """Tryke fixtures for camera tests."""
 
 from collections.abc import AsyncGenerator, Generator
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from tryke import Depends, fixture
 from webrtc_models import RTCIceCandidateInit
@@ -73,6 +73,19 @@ async def mock_camera(
 
 
 @fixture
+async def image_mock_url(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _setup_ha: None = Depends(setup_homeassistant),
+    _camera_only: None = Depends(camera_only),
+) -> None:
+    """Fixture for get_image tests."""
+    await async_setup_component(
+        hass, camera.DOMAIN, {camera.DOMAIN: {"platform": "demo"}}
+    )
+    await hass.async_block_till_done()
+
+
+@fixture
 def mock_stream_source() -> Generator[Mock]:
     """Fixture to create an RTSP stream source."""
     with patch(
@@ -80,6 +93,30 @@ def mock_stream_source() -> Generator[Mock]:
         return_value=STREAM_SOURCE,
     ) as mock_stream_source:
         yield mock_stream_source
+
+
+@fixture
+async def mock_stream(
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Initialize a demo camera platform with streaming."""
+    assert await async_setup_component(hass, "stream", {"stream": {}})
+
+
+@fixture
+def mock_create_stream() -> Generator[Mock]:
+    """Fixture to mock create_stream and prevent real stream threads."""
+    mock_stream = Mock()
+    mock_stream.add_provider = Mock()
+    mock_stream.start = AsyncMock()
+    mock_stream.endpoint_url = Mock(return_value="http://home.assistant/playlist.m3u8")
+    mock_stream.set_update_callback = Mock()
+    mock_stream.available = True
+    with patch(
+        "homeassistant.components.camera.create_stream",
+        return_value=mock_stream,
+    ):
+        yield mock_stream
 
 
 @fixture
