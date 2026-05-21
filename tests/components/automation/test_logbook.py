@@ -6,6 +6,7 @@ from homeassistant.components import automation
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.setup import async_setup_component
 
+from tests.components.automation._fixtures import recorder_mock as recorder_mock_fixture
 from tests.components.logbook.common import MockRow, mock_humanify
 from tests.hass_fixtures import hass as hass_fixture
 
@@ -20,9 +21,9 @@ async def _trigger_executor(
 @test
 async def humanify_automation_trigger_event(
     hass: HomeAssistant = Depends(_trigger_executor),
+    recorder_mock: object = Depends(recorder_mock_fixture),
 ) -> None:
     """Test humanifying Shelly click event."""
-    hass.config.components.add("recorder")
     expect(await async_setup_component(hass, "automation", {})).to_be_truthy()
     expect(await async_setup_component(hass, "logbook", {})).to_be_truthy()
     await hass.async_block_till_done()
