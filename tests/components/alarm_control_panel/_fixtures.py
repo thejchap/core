@@ -5,18 +5,173 @@ from __future__ import annotations
 from collections.abc import Generator
 import logging
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from tryke import Depends, fixture
 
+from homeassistant.components.alarm_control_panel import (
+    DOMAIN,
+    AlarmControlPanelEntity,
+    AlarmControlPanelEntityFeature,
+)
+from homeassistant.components.alarm_control_panel.const import CodeFormat
+from homeassistant.config_entries import ConfigEntry, ConfigFlow
+from homeassistant.const import Platform
 from homeassistant.core import Context, HomeAssistant, ServiceCall, ServiceResponse
 from homeassistant.exceptions import ServiceNotFound
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from tests.common import (
+    MockConfigEntry,
+    MockModule,
+    MockPlatform,
+    mock_config_flow,
+    mock_integration,
+    mock_platform,
+)
 from tests.hass_fixtures import hass as hass_fixture
 
 from .common import MockAlarm
 
 _LOGGER = logging.getLogger(__name__)
+
+TEST_DOMAIN = "test"
+
+DEFAULT_SUPPORTED_FEATURES = (
+    AlarmControlPanelEntityFeature.ARM_AWAY
+    | AlarmControlPanelEntityFeature.ARM_CUSTOM_BYPASS
+    | AlarmControlPanelEntityFeature.ARM_HOME
+    | AlarmControlPanelEntityFeature.ARM_NIGHT
+    | AlarmControlPanelEntityFeature.ARM_VACATION
+    | AlarmControlPanelEntityFeature.TRIGGER
+)
+
+
+class MockAlarmControlPanel(AlarmControlPanelEntity):
+    """Mocked alarm control entity."""
+
+    def __init__(
+        self,
+        supported_features: AlarmControlPanelEntityFeature = AlarmControlPanelEntityFeature(
+            0
+        ),
+        code_format: CodeFormat | None = None,
+        code_arm_required: bool = True,
+    ) -> None:
+        """Initialize the alarm control."""
+        self.calls_disarm = MagicMock()
+        self.calls_arm_home = MagicMock()
+        self.calls_arm_away = MagicMock()
+        self.calls_arm_night = MagicMock()
+        self.calls_arm_vacation = MagicMock()
+        self.calls_trigger = MagicMock()
+        self.calls_arm_custom = MagicMock()
+        self._attr_code_format = code_format
+        self._attr_supported_features = supported_features
+        self._attr_code_arm_required = code_arm_required
+        self._attr_has_entity_name = True
+        self._attr_name = "test_alarm_control_panel"
+        self._attr_unique_id = "very_unique_alarm_control_panel_id"
+        super().__init__()
+
+    def alarm_disarm(self, code: str | None = None) -> None:
+        """Mock alarm disarm calls."""
+        self.calls_disarm(code)
+
+    def alarm_arm_home(self, code: str | None = None) -> None:
+        """Mock arm home calls."""
+        self.calls_arm_home(code)
+
+    def alarm_arm_away(self, code: str | None = None) -> None:
+        """Mock arm away calls."""
+        self.calls_arm_away(code)
+
+    def alarm_arm_night(self, code: str | None = None) -> None:
+        """Mock arm night calls."""
+        self.calls_arm_night(code)
+
+    def alarm_arm_vacation(self, code: str | None = None) -> None:
+        """Mock arm vacation calls."""
+        self.calls_arm_vacation(code)
+
+    def alarm_trigger(self, code: str | None = None) -> None:
+        """Mock trigger calls."""
+        self.calls_trigger(code)
+
+    def alarm_arm_custom_bypass(self, code: str | None = None) -> None:
+        """Mock arm custom bypass calls."""
+        self.calls_arm_custom(code)
+
+
+class _MockFlow(ConfigFlow):
+    """Test flow."""
+
+
+async def setup_mock_alarm_control_panel(
+    hass: HomeAssistant,
+    *,
+    code_format: CodeFormat | None = CodeFormat.NUMBER,
+    supported_features: AlarmControlPanelEntityFeature = DEFAULT_SUPPORTED_FEATURES,
+    code_arm_required: bool = True,
+) -> MockAlarmControlPanel:
+    """Set up a MockAlarmControlPanel entity via an integration config entry.
+
+    Combines the original ``config_flow_fixture`` and
+    ``mock_alarm_control_panel_entity`` pytest fixtures into a single helper
+    so tests can pass per-case parameters without indirect fixture
+    parametrization.
+    """
+    mock_platform(hass, f"{TEST_DOMAIN}.config_flow")
+    # Register the test config flow for the lifetime of the test.
+    cm = mock_config_flow(TEST_DOMAIN, _MockFlow)
+    cm.__enter__()
+
+    async def async_setup_entry_init(
+        hass: HomeAssistant, config_entry: ConfigEntry
+    ) -> bool:
+        """Set up test config entry."""
+        await hass.config_entries.async_forward_entry_setups(
+            config_entry, [Platform.ALARM_CONTROL_PANEL]
+        )
+        return True
+
+    mock_integration(
+        hass,
+        MockModule(
+            TEST_DOMAIN,
+            async_setup_entry=async_setup_entry_init,
+        ),
+    )
+
+    entity = MockAlarmControlPanel(
+        supported_features=supported_features,
+        code_format=code_format,
+        code_arm_required=code_arm_required,
+    )
+
+    async def async_setup_entry_platform(
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        async_add_entities: AddConfigEntryEntitiesCallback,
+    ) -> None:
+        """Set up test alarm control panel platform via config entry."""
+        async_add_entities([entity])
+
+    mock_platform(
+        hass,
+        f"{TEST_DOMAIN}.{DOMAIN}",
+        MockPlatform(async_setup_entry=async_setup_entry_platform),
+    )
+
+    config_entry = MockConfigEntry(domain=TEST_DOMAIN)
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get(entity.entity_id)
+    assert state is not None
+
+    return entity
 
 
 @fixture
