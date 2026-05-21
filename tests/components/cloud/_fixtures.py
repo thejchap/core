@@ -1,6 +1,6 @@
 """Tryke fixtures for cloud tests."""
 
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
 from typing import Any
 from unittest.mock import DEFAULT, AsyncMock, MagicMock, PropertyMock, patch
 
@@ -18,6 +18,10 @@ import jwt
 from tryke import Depends, fixture
 
 from homeassistant.components.cloud.client import CloudClient
+from homeassistant.components.cloud.prefs import (
+    PREF_ALEXA_DEFAULT_EXPOSE,
+    PREF_GOOGLE_DEFAULT_EXPOSE,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 from homeassistant.util.dt import utcnow
@@ -203,3 +207,20 @@ async def cloud(
         mock_cloud.logout.side_effect = mock_logout
 
         yield mock_cloud
+
+
+@fixture
+def set_cloud_prefs(
+    cloud: MagicMock = Depends(cloud),
+) -> Callable[[dict[str, Any]], Awaitable[None]]:
+    """Return a callable to set cloud prefs."""
+
+    async def _set_cloud_prefs(prefs_settings: dict[str, Any]) -> None:
+        """Set cloud prefs."""
+        prefs_to_set = cloud.client.prefs.as_dict()
+        prefs_to_set.pop(PREF_ALEXA_DEFAULT_EXPOSE)
+        prefs_to_set.pop(PREF_GOOGLE_DEFAULT_EXPOSE)
+        prefs_to_set.update(prefs_settings)
+        await cloud.client.prefs.async_update(**prefs_to_set)
+
+    return _set_cloud_prefs
