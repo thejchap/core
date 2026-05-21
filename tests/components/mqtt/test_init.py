@@ -20,13 +20,18 @@ from homeassistant.components.mqtt.util import (
     valid_subscribe_topic_template,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr, template
 from homeassistant.helpers.entity import Entity
 
 from ._fixtures import mqtt_mock as mqtt_mock_fixture
 from tests.common import MockEntity, MockEntityPlatform, async_fire_mqtt_message
-from tests.hass_fixtures import LogCapture, caplog as caplog_fixture, hass as hass_fixture, mock_network
+from tests.hass_fixtures import (
+    LogCapture,
+    caplog as caplog_fixture,
+    hass as hass_fixture,
+    mock_network,
+)
 from tests.hass_tryke_helpers import expect_raises_async
 
 
@@ -35,6 +40,14 @@ def _trigger_executor(
     _network: None = Depends(mock_network),
 ) -> None:
     """Present so tryke builds a fixture executor for this module."""
+
+
+@fixture
+def _mqtt_executor(
+    _network: None = Depends(mock_network),
+    _mqtt: Any = Depends(mqtt_mock_fixture),
+) -> None:
+    """Executor that also sets up the MQTT integration with a mocked client."""
 
 
 @test
@@ -571,3 +584,278 @@ def validate_subscribe_topic_accepts_root_test() -> None:
 def mqtt_module_constant_exports(name: str) -> None:
     """Test the public constants exported by the mqtt module."""
     expect(hasattr(mqtt, name)).to_be(True)
+
+
+@test
+async def service_call_without_topic_does_not_publish(
+    _mqtt: None = Depends(_mqtt_executor),
+    mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the publish service call if topic is missing."""
+    mqtt_mock.async_publish.reset_mock()
+    async with expect_raises_async(vol.Invalid):
+        await hass.services.async_call(
+            mqtt.DOMAIN,
+            mqtt.SERVICE_PUBLISH,
+            {},
+            blocking=True,
+        )
+    expect(mqtt_mock.async_publish.called).to_be(False)
+
+
+@test
+async def service_call_with_template_topic_renders_invalid_topic(
+    _mqtt: None = Depends(_mqtt_executor),
+    mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the publish action call with a rendered, invalid topic template."""
+    mqtt_mock.async_publish.reset_mock()
+    async with expect_raises_async(vol.Invalid):
+        await hass.services.async_call(
+            mqtt.DOMAIN,
+            mqtt.SERVICE_PUBLISH,
+            {
+                mqtt.ATTR_TOPIC: "test/{{ '+' if True else 'topic' }}/topic",
+                mqtt.ATTR_PAYLOAD: "payload",
+            },
+            blocking=True,
+        )
+    expect(mqtt_mock.async_publish.called).to_be(False)
+
+
+@test.cases(
+    test.case(
+        "raw-bytes",
+        attr_payload="b'\\xde\\xad\\xbe\\xef'",
+        payload=b"\xde\xad\xbe\xef",
+        evaluate_payload=True,
+        literal_eval_calls=1,
+    ),
+    test.case(
+        "string-bytes-literal",
+        attr_payload="b'\\xde\\xad\\xbe\\xef'",
+        payload="b'\\xde\\xad\\xbe\\xef'",
+        evaluate_payload=False,
+        literal_eval_calls=0,
+    ),
+    test.case(
+        "plain-string",
+        attr_payload="DEADBEEF",
+        payload="DEADBEEF",
+        evaluate_payload=False,
+        literal_eval_calls=0,
+    ),
+    test.case(
+        "invalid-bytes-literal",
+        attr_payload="b'\\xde",
+        payload="b'\\xde",
+        evaluate_payload=True,
+        literal_eval_calls=1,
+    ),
+)
+async def mqtt_publish_action_call_with_raw_data(
+    attr_payload: str,
+    payload: str | bytes,
+    evaluate_payload: bool,
+    literal_eval_calls: int,
+    _mqtt: None = Depends(_mqtt_executor),
+    mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the mqtt publish action call with raw data.
+
+    When ``payload`` represents a ``bytes`` object, it should be published
+    as raw data if ``evaluate_payload`` is set.
+    """
+    mqtt_mock.async_publish.reset_mock()
+    await hass.services.async_call(
+        mqtt.DOMAIN,
+        mqtt.SERVICE_PUBLISH,
+        {
+            mqtt.ATTR_TOPIC: "test/topic",
+            mqtt.ATTR_PAYLOAD: attr_payload,
+            "evaluate_payload": evaluate_payload,
+        },
+        blocking=True,
+    )
+    expect(mqtt_mock.async_publish.called).to_be(True)
+    expect(mqtt_mock.async_publish.call_args[0][1]).to_equal(payload)
+
+    with patch(
+        "homeassistant.components.mqtt.models.literal_eval"
+    ) as literal_eval_mock:
+        await hass.services.async_call(
+            mqtt.DOMAIN,
+            mqtt.SERVICE_PUBLISH,
+            {
+                mqtt.ATTR_TOPIC: "test/topic",
+                mqtt.ATTR_PAYLOAD: attr_payload,
+            },
+            blocking=True,
+        )
+        literal_eval_mock.assert_not_called()
+
+        await hass.services.async_call(
+            mqtt.DOMAIN,
+            mqtt.SERVICE_PUBLISH,
+            {
+                mqtt.ATTR_TOPIC: "test/topic",
+                mqtt.ATTR_PAYLOAD: attr_payload,
+                "evaluate_payload": evaluate_payload,
+            },
+            blocking=True,
+        )
+        expect(len(literal_eval_mock.mock_calls)).to_equal(literal_eval_calls)
+
+
+@test
+async def service_call_with_ascii_qos_retain_flags(
+    _mqtt: None = Depends(_mqtt_executor),
+    mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    hass: HomeAssistant = Depends(hass_fixture),
+) -> None:
+    """Test the publish service call with ascii formatted qos and retain flags."""
+    mqtt_mock.async_publish.reset_mock()
+    await hass.services.async_call(
+        mqtt.DOMAIN,
+        mqtt.SERVICE_PUBLISH,
+        {
+            mqtt.ATTR_TOPIC: "test/topic",
+            mqtt.ATTR_PAYLOAD: "",
+            mqtt.ATTR_QOS: "2",
+            mqtt.ATTR_RETAIN: "no",
+        },
+        blocking=True,
+    )
+    expect(mqtt_mock.async_publish.called).to_be(True)
+    expect(mqtt_mock.async_publish.call_args[0][1]).to_equal("")
+    expect(mqtt_mock.async_publish.call_args[0][2]).to_equal(2)
+    expect(bool(mqtt_mock.async_publish.call_args[0][3])).to_be(False)
+
+    mqtt_mock.async_publish.reset_mock()
+
+    # Test service call without payload
+    await hass.services.async_call(
+        mqtt.DOMAIN,
+        mqtt.SERVICE_PUBLISH,
+        {
+            mqtt.ATTR_TOPIC: "test/topic",
+            mqtt.ATTR_QOS: "2",
+            mqtt.ATTR_RETAIN: "no",
+        },
+        blocking=True,
+    )
+    expect(mqtt_mock.async_publish.called).to_be(True)
+    expect(mqtt_mock.async_publish.call_args[0][1]).to_be_none()
+    expect(mqtt_mock.async_publish.call_args[0][2]).to_equal(2)
+    expect(bool(mqtt_mock.async_publish.call_args[0][3])).to_be(False)
+
+
+@test
+async def publish_function_with_bad_encoding_conditions(
+    _mqtt: None = Depends(_mqtt_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    caplog: LogCapture = Depends(caplog_fixture),
+) -> None:
+    """Test the internal publish function with bad encoding conditions."""
+    await mqtt.async_publish(
+        hass, "some-topic", "test-payload", qos=0, retain=False, encoding=None
+    )
+    expect(
+        "Can't pass-through payload for publishing test-payload"
+        " on some-topic with no encoding set, need 'bytes'"
+        " got <class 'str'>" in caplog.text
+    ).to_be(True)
+    caplog.clear()
+    await mqtt.async_publish(
+        hass,
+        "some-topic",
+        "test-payload",
+        qos=0,
+        retain=False,
+        encoding="invalid_encoding",
+    )
+    expect(
+        "Can't encode payload for publishing test-payload on"
+        " some-topic with encoding invalid_encoding" in caplog.text
+    ).to_be(True)
+
+
+@test.cases(
+    test.case("both-none", qos=None, retain=None),
+    test.case("qos-zero", qos=0, retain=None),
+    test.case("retain-false", qos=None, retain=False),
+)
+async def publish_api_with_fallback_to_none(
+    qos: int | None,
+    retain: bool | None,
+    _mqtt: None = Depends(_mqtt_executor),
+    mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    hass: HomeAssistant = Depends(hass_fixture),
+    caplog: LogCapture = Depends(caplog_fixture),
+) -> None:
+    """Test the MQTT publish API with None as fallback for QoS or Retain."""
+    mqtt_mock.async_publish.reset_mock()
+    await mqtt.async_publish(
+        hass, "some-topic", "test-payload", qos=qos, retain=retain
+    )
+    expect(
+        "Detected code that that calls the MQTT publish API with `None` for "
+        "qos or retain. The `qos` argument must be an `int`, and the `retain` "
+        "argument must be a `bool`." in caplog.text
+    ).to_be(True)
+    async_publish_mock: MagicMock = mqtt_mock.async_publish
+    expect(len(async_publish_mock.mock_calls)).to_equal(1)
+    expect(async_publish_mock.mock_calls[0][1][0]).to_equal("some-topic")
+    expect(async_publish_mock.mock_calls[0][1][1]).to_equal("test-payload")
+    expect(async_publish_mock.mock_calls[0][1][2]).to_equal(0)
+    expect(async_publish_mock.mock_calls[0][1][3]).to_be(False)
+
+
+@test
+async def receiving_non_utf8_message_gets_logged(
+    _mqtt: None = Depends(_mqtt_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    caplog: LogCapture = Depends(caplog_fixture),
+) -> None:
+    """Test receiving a non utf8 encoded message gets logged."""
+    recorded_calls: list[Any] = []
+
+    @callback
+    def record_calls(msg: Any) -> None:
+        recorded_calls.append(msg)
+
+    await mqtt.async_subscribe(hass, "test-topic", record_calls)
+
+    async_fire_mqtt_message(hass, "test-topic", b"\x9a")
+
+    await hass.async_block_till_done()
+    expect(
+        "Can't decode payload b'\\x9a' on test-topic with encoding utf-8"
+        in caplog.text
+    ).to_be(True)
+
+
+@test
+async def message_callback_exception_gets_logged(
+    _mqtt: None = Depends(_mqtt_executor),
+    hass: HomeAssistant = Depends(hass_fixture),
+    caplog: LogCapture = Depends(caplog_fixture),
+) -> None:
+    """Test an exception raised by a message handler gets logged."""
+
+    @callback
+    def bad_handler(msg: Any) -> None:
+        """Handle callback."""
+        raise ValueError("This is a bad message callback")
+
+    await mqtt.async_subscribe(hass, "test-topic", bad_handler)
+    async_fire_mqtt_message(hass, "test-topic", "test")
+    await hass.async_block_till_done()
+
+    expect(
+        "Exception in bad_handler when handling msg on 'test-topic':"
+        " 'test'" in caplog.text
+    ).to_be(True)

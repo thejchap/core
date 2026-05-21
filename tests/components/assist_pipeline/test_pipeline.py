@@ -406,7 +406,6 @@ async def get_pipelines(
     test.case("pt-pt", ha_language="pt", ha_country="pt", conv_language="pt"),
     test.case("pt-br", ha_language="pt", ha_country="br", conv_language="pt-BR"),
 )
-@test
 async def default_pipeline_no_stt_tts(
     ha_language: str,
     ha_country: str | None,
@@ -500,7 +499,6 @@ async def default_pipeline_no_stt_tts(
         tts_language="pt-br",
     ),
 )
-@test
 async def default_pipeline(
     ha_language: str,
     ha_country: str | None,
