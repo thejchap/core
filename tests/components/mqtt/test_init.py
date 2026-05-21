@@ -1,5 +1,6 @@
 """The tests for the MQTT component setup and helpers."""
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from tryke import Depends, expect, fixture, test
@@ -18,12 +19,14 @@ from homeassistant.components.mqtt.util import (
     valid_birth_will,
     valid_subscribe_topic_template,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, template
 from homeassistant.helpers.entity import Entity
 
-from tests.common import MockEntity, MockEntityPlatform
-from tests.hass_fixtures import hass as hass_fixture, mock_network
+from ._fixtures import mqtt_mock as mqtt_mock_fixture
+from tests.common import MockEntity, MockEntityPlatform, async_fire_mqtt_message
+from tests.hass_fixtures import LogCapture, caplog as caplog_fixture, hass as hass_fixture, mock_network
 from tests.hass_tryke_helpers import expect_raises_async
 
 
