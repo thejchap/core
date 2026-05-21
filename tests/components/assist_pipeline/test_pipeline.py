@@ -235,7 +235,8 @@ async def loading_pipelines_from_storage(
 
     pipeline_data: PipelineData = hass.data[DOMAIN]
     store = pipeline_data.pipeline_store
-    raise AssertionError(f"DEBUG len={len(store.data)} keys={list(store.data)} storage_keys={list(hass_storage)}")
+    assert len(store.data) == 3
+    assert store.async_get_preferred_item() == id_1
     assert store.data[id_1].conversation_engine == conversation.HOME_ASSISTANT_AGENT
 
 
