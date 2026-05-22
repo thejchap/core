@@ -7,7 +7,7 @@ from unittest.mock import ANY, Mock, patch
 
 from tryke import Depends, expect, fixture, test
 
-from homeassistant.components import script
+from homeassistant.components import labs, script
 from homeassistant.components.script import DOMAIN, EVENT_SCRIPT_STARTED, ScriptEntity
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import (
@@ -42,7 +42,7 @@ from homeassistant.helpers.script import (
 )
 from homeassistant.helpers.service import async_get_all_descriptions
 from homeassistant.setup import async_setup_component
-from homeassistant.util import dt as dt_util
+from homeassistant.util import dt as dt_util, yaml as yaml_util
 
 from tests.common import (
     MockConfigEntry,
@@ -313,9 +313,112 @@ async def bad_config_validation_critical(
     expect(hass.states.async_entity_ids("script")).to_equal(["script.good_script"])
 
 
-@test.skip("pending tryke port - requires hass_ws_client + hass_admin_user + repairs helpers")
-async def bad_config_validation() -> None:
-    """Stub for test_bad_config_validation (port deferred)."""
+@test.cases(
+    test.case(
+        "validation_failed_schema",
+        object_id="bad_script",
+        broken_config={},
+        problem="could not be validated",
+        details="required key not provided @ data['sequence']",
+        issue="validation_failed_schema",
+    ),
+    test.case(
+        "validation_failed_sequence",
+        object_id="bad_script",
+        broken_config={
+            "sequence": {
+                "condition": "state",
+                "entity_id": "abcdabcdabcdabcdabcdabcdabcdabcd",
+                "state": "blah",
+            },
+        },
+        problem="failed to setup sequence",
+        details="Unknown entity registry entry abcdabcdabcdabcdabcdabcdabcdabcd.",
+        issue="validation_failed_sequence",
+    ),
+)
+async def bad_config_validation(
+    object_id: str,
+    broken_config: dict[str, Any],
+    problem: str,
+    details: str,
+    issue: str,
+    hass: HomeAssistant = Depends(_trigger_executor),
+    hass_ws_client: WebSocketGenerator = Depends(hass_ws_client_fixture),
+    caplog: LogCapture = Depends(caplog_fixture),
+    hass_admin_user: MockUser = Depends(hass_admin_user_fixture),
+) -> None:
+    """Test bad script configuration which can be detected during validation."""
+    expect(
+        await async_setup_component(
+            hass,
+            script.DOMAIN,
+            {
+                script.DOMAIN: {
+                    object_id: {"alias": "bad_script", **broken_config},
+                    "good_script": {
+                        "alias": "good_script",
+                        "sequence": {
+                            "action": "test.automation",
+                            "entity_id": "hello.world",
+                        },
+                    },
+                }
+            },
+        )
+    ).to_be_truthy()
+
+    expect(
+        f"Script with alias 'bad_script' {problem} and has been disabled: {details}"
+        in caplog.text
+    ).to_be(True)
+    issues = await get_repairs(hass, hass_ws_client)
+    expect(len(issues)).to_equal(1)
+    expect(issues[0]["issue_id"]).to_equal(f"script.bad_script_{issue}")
+    expect(issues[0]["translation_key"]).to_equal(issue)
+    expect(issues[0]["translation_placeholders"]).to_equal(
+        {
+            "edit": "/config/script/edit/bad_script",
+            "entity_id": "script.bad_script",
+            "error": ANY,
+            "name": "bad_script",
+        }
+    )
+    expect(
+        issues[0]["translation_placeholders"]["error"].startswith(details)
+    ).to_be(True)
+
+    expect(set(hass.states.async_entity_ids("script"))).to_equal(
+        {
+            "script.bad_script",
+            "script.good_script",
+        }
+    )
+    expect(hass.states.get("script.bad_script").state).to_equal(STATE_UNAVAILABLE)
+
+    with patch(
+        "homeassistant.config.load_yaml_config_file",
+        autospec=True,
+        return_value={
+            script.DOMAIN: {
+                object_id: {
+                    "alias": "bad_script",
+                    "sequence": {
+                        "action": "test.automation",
+                        "entity_id": "hello.world",
+                    },
+                },
+            }
+        },
+    ):
+        await hass.services.async_call(
+            script.DOMAIN,
+            SERVICE_RELOAD,
+            context=Context(user_id=hass_admin_user.id),
+            blocking=True,
+        )
+    issues = await get_repairs(hass, hass_ws_client)
+    expect(len(issues)).to_equal(0)
 
 
 @test.cases(
@@ -1711,14 +1814,127 @@ async def blueprint_script(
     )
 
 
-@test.skip("pending tryke port - requires hass_ws_client + repairs helpers + parametrize")
-async def blueprint_script_bad_config() -> None:
-    """Stub for test_blueprint_script_bad_config (port deferred)."""
+@test.cases(
+    test.case(
+        "no_input",
+        blueprint_inputs={},
+        problem="Failed to generate script from blueprint",
+        details="Missing input service_to_call",
+    ),
+    test.case(
+        "missing_input",
+        blueprint_inputs={"a_number": 5},
+        problem="Failed to generate script from blueprint",
+        details="Missing input service_to_call",
+    ),
+    test.case(
+        "wrong_input",
+        blueprint_inputs={
+            "trigger_event": "blueprint_event",
+            "service_to_call": {"dict": "not allowed"},
+            "a_number": 5,
+        },
+        problem="Blueprint 'Call service' generated invalid script",
+        details=(
+            "value should be a string for dictionary value @ "
+            "data['sequence'][0]['action']"
+        ),
+    ),
+)
+async def blueprint_script_bad_config(
+    blueprint_inputs: dict[str, Any],
+    problem: str,
+    details: str,
+    hass: HomeAssistant = Depends(_trigger_executor),
+    hass_ws_client: WebSocketGenerator = Depends(hass_ws_client_fixture),
+    caplog: LogCapture = Depends(caplog_fixture),
+) -> None:
+    """Test blueprint script with bad inputs."""
+    expect(
+        await async_setup_component(
+            hass,
+            script.DOMAIN,
+            {
+                script.DOMAIN: {
+                    "test_script": {
+                        "use_blueprint": {
+                            "path": "test_service.yaml",
+                            "input": blueprint_inputs,
+                        }
+                    }
+                }
+            },
+        )
+    ).to_be_truthy()
+    expect(problem in caplog.text).to_be(True)
+    expect(details in caplog.text).to_be(True)
+
+    issues = await get_repairs(hass, hass_ws_client)
+    expect(len(issues)).to_equal(1)
+    issue = "validation_failed_blueprint"
+    expect(issues[0]["issue_id"]).to_equal(f"script.test_script_{issue}")
+    expect(issues[0]["translation_key"]).to_equal(issue)
+    expect(issues[0]["translation_placeholders"]).to_equal(
+        {
+            "edit": "/config/script/edit/test_script",
+            "entity_id": "script.test_script",
+            "error": ANY,
+            "name": "test_script",
+        }
+    )
+    expect(
+        issues[0]["translation_placeholders"]["error"].startswith(details)
+    ).to_be(True)
 
 
-@test.skip("pending tryke port - requires hass_ws_client + repairs helpers")
-async def blueprint_script_fails_substitution() -> None:
-    """Stub for test_blueprint_script_fails_substitution (port deferred)."""
+@test
+async def blueprint_script_fails_substitution(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    hass_ws_client: WebSocketGenerator = Depends(hass_ws_client_fixture),
+    caplog: LogCapture = Depends(caplog_fixture),
+) -> None:
+    """Test blueprint script with bad inputs."""
+    with patch(
+        "homeassistant.components.blueprint.models.BlueprintInputs.async_substitute",
+        side_effect=yaml_util.UndefinedSubstitution("blah"),
+    ):
+        expect(
+            await async_setup_component(
+                hass,
+                script.DOMAIN,
+                {
+                    script.DOMAIN: {
+                        "test_script": {
+                            "use_blueprint": {
+                                "path": "test_service.yaml",
+                                "input": {
+                                    "service_to_call": "test.automation",
+                                },
+                            }
+                        }
+                    }
+                },
+            )
+        ).to_be_truthy()
+    expect(
+        "Blueprint 'Call service' failed to generate script with inputs "
+        "{'service_to_call': 'test.automation'}: No substitution found for input blah"
+        in caplog.text
+    ).to_be(True)
+
+    issues = await get_repairs(hass, hass_ws_client)
+    expect(len(issues)).to_equal(1)
+    issue = "validation_failed_blueprint"
+    expect(issues[0]["issue_id"]).to_equal(f"script.test_script_{issue}")
+    expect(issues[0]["translation_key"]).to_equal(issue)
+    expect(issues[0]["translation_placeholders"]).to_equal(
+        {
+            "edit": "/config/script/edit/test_script",
+            "entity_id": "script.test_script",
+            "error": "No substitution found for input blah",
+            "name": "test_script",
+        }
+    )
 
 
 @test.cases(
@@ -1861,9 +2077,80 @@ async def script_queued_mode(
     expect(calls).to_equal(4)
 
 
-@test.skip("pending tryke port - requires hass_ws_client + labs domain setup")
-async def reload_when_labs_flag_changes() -> None:
-    """Stub for test_reload_when_labs_flag_changes (port deferred)."""
+@test
+async def reload_when_labs_flag_changes(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    hass_ws_client: WebSocketGenerator = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test scripts are reloaded when labs flag changes."""
+    event = "test_event"
+    hass.states.async_set("test.script", "off")
+
+    ws_client = await hass_ws_client(hass)
+
+    expect(
+        await async_setup_component(
+            hass,
+            "script",
+            {
+                "script": {
+                    "test": {
+                        "sequence": [
+                            {"event": event},
+                            {
+                                "wait_template": (
+                                    "{{ is_state('test.script', 'on') }}"
+                                )
+                            },
+                        ]
+                    }
+                }
+            },
+        )
+    ).to_be_truthy()
+    expect(await async_setup_component(hass, labs.DOMAIN, {})).to_be_truthy()
+
+    expect(hass.states.get(ENTITY_ID) is not None).to_be(True)
+    expect(hass.services.has_service(script.DOMAIN, "test")).to_be(True)
+
+    for enabled, active_object_id, inactive_object_ids in (
+        (False, "test2", ("test",)),
+        (True, "test3", ("test", "test2")),
+    ):
+        with patch(
+            "homeassistant.config.load_yaml_config_file",
+            return_value={
+                "script": {
+                    active_object_id: {"sequence": [{"delay": {"seconds": 5}}]}
+                }
+            },
+        ):
+            await ws_client.send_json_auto_id(
+                {
+                    "type": "labs/update",
+                    "domain": "automation",
+                    "preview_feature": "new_triggers_conditions",
+                    "enabled": enabled,
+                }
+            )
+
+            msg = await ws_client.receive_json()
+            expect(msg["success"]).to_be_truthy()
+            await hass.async_block_till_done()
+
+        for inactive_object_id in inactive_object_ids:
+            state = hass.states.get(f"script.{inactive_object_id}")
+            expect(state.attributes["restored"]).to_be(True)
+            expect(
+                hass.services.has_service(script.DOMAIN, inactive_object_id)
+            ).to_be(False)
+
+        expect(hass.states.get(f"script.{active_object_id}") is not None).to_be(
+            True
+        )
+        expect(
+            hass.services.has_service(script.DOMAIN, active_object_id)
+        ).to_be(True)
 
 
 @test
