@@ -1,9 +1,16 @@
 """The tests for sensor recorder platform (tryke port)."""
 
+from typing import Any
+
 from sqlalchemy import select
-from tryke import test
+from tryke import Depends, expect, fixture, test
 
 from homeassistant.components.recorder.db_schema import StatisticsShortTerm
+from homeassistant.components.recorder.models import (
+    StatisticData,
+    StatisticMeanType,
+    StatisticMetaData,
+)
 from homeassistant.components.recorder.statistics import (
     _PRIMARY_UNIT_CONVERTERS,
     _SECONDARY_UNIT_CONVERTERS,
@@ -12,12 +19,29 @@ from homeassistant.components.recorder.statistics import (
     _generate_statistics_at_time_stmt_dependent_sub_query,
     _generate_statistics_at_time_stmt_group_by,
     _generate_statistics_during_period_stmt,
+    async_add_external_statistics,
+    async_import_statistics,
 )
 from homeassistant.components.recorder.table_managers.statistics_meta import (
     _generate_get_metadata_stmt,
 )
 from homeassistant.components.sensor import UNIT_CONVERTERS
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
+
+from tests.hass_fixtures import hass as hass_fixture
+
+from ._fixtures import recorder_mock
+
+
+@fixture
+async def _recorder_hass(
+    hass: HomeAssistant = Depends(hass_fixture),
+    _recorder: Any = Depends(recorder_mock),
+) -> HomeAssistant:
+    """Opt the module into Tryke's HookExecutor path with recorder set up."""
+    return hass
 
 
 @test
@@ -207,14 +231,139 @@ async def import_statistics() -> None:
     """Stub for test_import_statistics (port deferred)."""
 
 
-@test.skip("requires recorder_mock (port deferred)")
-async def external_statistics_errors() -> None:
-    """Stub for test_external_statistics_errors (port deferred)."""
+@test
+async def external_statistics_errors(
+    hass: HomeAssistant = Depends(_recorder_hass),
+) -> None:
+    """Test validation of external statistics."""
+    zero = dt_util.utcnow()
+    period1 = zero.replace(minute=0, second=0, microsecond=0)
+
+    _external_statistics: StatisticData = {
+        "start": period1,
+        "last_reset": None,
+        "state": 0,
+        "sum": 2,
+    }
+
+    _external_metadata: StatisticMetaData = {
+        "has_mean": False,
+        "mean_type": StatisticMeanType.NONE,
+        "has_sum": True,
+        "name": "Total imported energy",
+        "source": "test",
+        "statistic_id": "test:total_energy_import",
+        "unit_class": "energy",
+        "unit_of_measurement": "kWh",
+    }
+
+    # Attempt to insert statistics for an entity
+    external_metadata = {**_external_metadata, "statistic_id": "sensor.total_energy_import"}
+    external_statistics = {**_external_statistics}
+    expect(
+        lambda: async_add_external_statistics(
+            hass, external_metadata, (external_statistics,)
+        )
+    ).to_raise(HomeAssistantError)
+
+    # Attempt to insert statistics for the wrong domain
+    external_metadata = {**_external_metadata, "source": "other"}
+    external_statistics = {**_external_statistics}
+    expect(
+        lambda: async_add_external_statistics(
+            hass, external_metadata, (external_statistics,)
+        )
+    ).to_raise(HomeAssistantError)
+
+    # Attempt to insert statistics for a naive starting time
+    external_metadata = {**_external_metadata}
+    external_statistics = {
+        **_external_statistics,
+        "start": period1.replace(tzinfo=None),
+    }
+    expect(
+        lambda: async_add_external_statistics(
+            hass, external_metadata, (external_statistics,)
+        )
+    ).to_raise(HomeAssistantError)
+
+    # Attempt to insert statistics for an invalid starting time
+    external_metadata = {**_external_metadata}
+    external_statistics = {**_external_statistics, "start": period1.replace(minute=1)}
+    expect(
+        lambda: async_add_external_statistics(
+            hass, external_metadata, (external_statistics,)
+        )
+    ).to_raise(HomeAssistantError)
 
 
-@test.skip("requires recorder_mock (port deferred)")
-async def import_statistics_errors() -> None:
-    """Stub for test_import_statistics_errors (port deferred)."""
+@test
+async def import_statistics_errors(
+    hass: HomeAssistant = Depends(_recorder_hass),
+) -> None:
+    """Test validation of imported statistics."""
+    zero = dt_util.utcnow()
+    period1 = zero.replace(minute=0, second=0, microsecond=0)
+
+    _external_statistics: StatisticData = {
+        "start": period1,
+        "last_reset": None,
+        "state": 0,
+        "sum": 2,
+    }
+
+    _external_metadata: StatisticMetaData = {
+        "has_mean": False,
+        "mean_type": StatisticMeanType.NONE,
+        "has_sum": True,
+        "name": "Total imported energy",
+        "source": "recorder",
+        "statistic_id": "sensor.total_energy_import",
+        "unit_class": "energy",
+        "unit_of_measurement": "kWh",
+    }
+
+    # Attempt to insert statistics for an external source
+    external_metadata = {
+        **_external_metadata,
+        "statistic_id": "test:total_energy_import",
+    }
+    external_statistics = {**_external_statistics}
+    expect(
+        lambda: async_import_statistics(
+            hass, external_metadata, (external_statistics,)
+        )
+    ).to_raise(HomeAssistantError)
+
+    # Attempt to insert statistics for the wrong source
+    external_metadata = {**_external_metadata, "source": "other"}
+    external_statistics = {**_external_statistics}
+    expect(
+        lambda: async_import_statistics(
+            hass, external_metadata, (external_statistics,)
+        )
+    ).to_raise(HomeAssistantError)
+
+    # Attempt to insert statistics for a naive starting time
+    external_metadata = {**_external_metadata}
+    external_statistics = {
+        **_external_statistics,
+        "start": period1.replace(tzinfo=None),
+    }
+    expect(
+        lambda: async_import_statistics(
+            hass, external_metadata, (external_statistics,)
+        )
+    ).to_raise(HomeAssistantError)
+
+    # Attempt to insert statistics for an invalid starting time
+    external_metadata = {**_external_metadata}
+    external_statistics = {**_external_statistics, "start": period1.replace(minute=1)}
+    expect(
+        lambda: async_import_statistics(
+            hass, external_metadata, (external_statistics,)
+        )
+    ).to_raise(HomeAssistantError)
 
 
 @test.skip("requires recorder_mock (port deferred)")

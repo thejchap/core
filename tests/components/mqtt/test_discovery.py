@@ -107,14 +107,32 @@ async def invalid_json(
         assert not mock_dispatcher_send.called
 
 
-@test.skip("requires caplog fixture and parametrized domain inputs")
+@test.cases(
+    test.case("binary_sensor", domain="binary_sensor"),
+    test.case("device", domain="device"),
+)
 async def discovery_schema_error(
+    domain: str,
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
     mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    caplog: LogCapture = Depends(caplog_fixture),
 ) -> None:
-    """Test discovery schema errors."""
-    _ = (hass, mqtt_mock)
+    """Test invalid discovery schema."""
+    _ = mqtt_mock
+    with patch(
+        "homeassistant.components.mqtt.discovery.async_dispatcher_send"
+    ) as mock_dispatcher_send:
+        mock_dispatcher_send = AsyncMock(return_value=None)
+
+        async_fire_mqtt_message(
+            hass,
+            f"homeassistant/{domain}/bla/config",
+            '{"name": 1}',
+        )
+        await hass.async_block_till_done()
+        assert "Error 'expected" in caplog.text or "Invalid MQTT" in caplog.text
+        assert not mock_dispatcher_send.called
 
 
 @test
