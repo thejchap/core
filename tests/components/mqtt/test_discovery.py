@@ -2,16 +2,21 @@
 
 import json
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 from tryke import Depends, fixture, test
 
 from homeassistant.components import mqtt
 from homeassistant.const import STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 
 from ._fixtures import mqtt_mock as mqtt_mock_fixture
 from tests.common import async_fire_mqtt_message
 from tests.hass_fixtures import (
+    LogCapture,
+    caplog as caplog_fixture,
+    device_registry as device_registry_fixture,
     hass as hass_fixture,
     mock_network,
 )
@@ -39,24 +44,67 @@ async def subscribing_config_topic(
     _ = (hass, mqtt_mock)
 
 
-@test.skip("requires caplog fixture and parametrized topic/log inputs")
+@test.cases(
+    test.case("not_config", topic="homeassistant/binary_sensor/bla/not_config", log=False),
+    test.case(
+        "illegal_chars", topic="homeassistant/binary_sensor/rörkrökare/config", log=True
+    ),
+    test.case("device_not_config", topic="homeassistant/device/bla/not_config", log=False),
+    test.case(
+        "device_illegal_chars",
+        topic="homeassistant/device/rörkrökare/config",
+        log=True,
+    ),
+)
 async def invalid_topic(
+    topic: str,
+    log: bool,
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
     mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    caplog: LogCapture = Depends(caplog_fixture),
 ) -> None:
     """Test sending in invalid topic."""
-    _ = (hass, mqtt_mock)
+    _ = mqtt_mock
+    with patch(
+        "homeassistant.components.mqtt.discovery.async_dispatcher_send"
+    ) as mock_dispatcher_send:
+        mock_dispatcher_send = AsyncMock(return_value=None)
+
+        async_fire_mqtt_message(hass, topic, "{}")
+        await hass.async_block_till_done()
+        assert not mock_dispatcher_send.called
+        if log:
+            assert (
+                f"Received message on illegal discovery topic '{topic}'" in caplog.text
+            )
+        else:
+            assert "Received message on illegal discovery topic'" not in caplog.text
+        caplog.clear()
 
 
-@test.skip("requires caplog fixture and parametrized discovery_topic")
+@test.cases(
+    test.case("binary_sensor", discovery_topic="homeassistant/binary_sensor/bla/config"),
+    test.case("device", discovery_topic="homeassistant/device/bla/config"),
+)
 async def invalid_json(
+    discovery_topic: str,
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
     mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    caplog: LogCapture = Depends(caplog_fixture),
 ) -> None:
     """Test sending in invalid JSON."""
-    _ = (hass, mqtt_mock)
+    _ = mqtt_mock
+    with patch(
+        "homeassistant.components.mqtt.discovery.async_dispatcher_send"
+    ) as mock_dispatcher_send:
+        mock_dispatcher_send = AsyncMock(return_value=None)
+
+        async_fire_mqtt_message(hass, discovery_topic, "not json")
+        await hass.async_block_till_done()
+        assert "Unable to parse JSON" in caplog.text
+        assert not mock_dispatcher_send.called
 
 
 @test.skip("requires caplog fixture and parametrized domain inputs")
@@ -69,14 +117,24 @@ async def discovery_schema_error(
     _ = (hass, mqtt_mock)
 
 
-@test.skip("requires caplog fixture for log assertions")
+@test
 async def invalid_config(
     _trigger: None = Depends(_trigger_executor),
     hass: HomeAssistant = Depends(hass_fixture),
     mqtt_mock: Any = Depends(mqtt_mock_fixture),
+    caplog: LogCapture = Depends(caplog_fixture),
 ) -> None:
     """Test sending in JSON that violates the platform schema."""
-    _ = (hass, mqtt_mock)
+    _ = mqtt_mock
+    async_fire_mqtt_message(
+        hass,
+        "homeassistant/alarm_control_panel/bla/config",
+        '{"name": "abc", "state_topic": "home/alarm", '
+        '"command_topic": "home/alarm/set", '
+        '"qos": "some_invalid_value"}',
+    )
+    await hass.async_block_till_done()
+    assert "Error 'expected int for dictionary value @ data['qos']'" in caplog.text
 
 
 @test.skip("requires caplog fixture for log assertions")
