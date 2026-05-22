@@ -1,8 +1,9 @@
 """The tests for the Script component."""
 
 import asyncio
+from datetime import timedelta
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from tryke import Depends, expect, fixture, test
 
@@ -31,23 +32,37 @@ from homeassistant.core import (
 from homeassistant.exceptions import ServiceNotFound, TemplateError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.event import async_track_state_change
+from homeassistant.helpers.script import (
+    SCRIPT_MODE_CHOICES,
+    SCRIPT_MODE_PARALLEL,
+    SCRIPT_MODE_QUEUED,
+    SCRIPT_MODE_RESTART,
+    SCRIPT_MODE_SINGLE,
+    _async_stop_scripts_at_shutdown,
+)
 from homeassistant.helpers.service import async_get_all_descriptions
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 
 from tests.common import (
     MockConfigEntry,
+    MockUser,
+    async_fire_time_changed,
     async_mock_service,
     mock_restore_cache,
 )
 from tests.components.logbook.common import MockRow, mock_humanify
+from tests.components.repairs import get_repairs
 from tests.hass_fixtures import (
     LogCapture,
     caplog as caplog_fixture,
     device_registry as device_registry_fixture,
     entity_registry as entity_registry_fixture,
     hass as hass_fixture,
+    hass_admin_user as hass_admin_user_fixture,
+    hass_ws_client as hass_ws_client_fixture,
 )
+from tests.typing import WebSocketGenerator
 
 ENTITY_ID = "script.test"
 
@@ -120,11 +135,6 @@ async def passing_variables(
     expect(len(calls)).to_equal(2)
     expect(calls[1].context).to_be(context)
     expect(calls[1].data["hello"]).to_equal("universe")
-
-
-@test.skip("pending tryke port - 2x2 parametrize over toggle/action_schema_variations")
-async def turn_on_off_toggle() -> None:
-    """Stub for test_turn_on_off_toggle (port deferred)."""
 
 
 async def _verify_turn_on_off_toggle(
@@ -428,9 +438,78 @@ async def reload_unchanged_does_not_stop(
     expect(len(calls)).to_equal(1)
 
 
-@test.skip("pending tryke port - parametrized over 4 script_config variations incl. blueprint")
-async def reload_unchanged_script() -> None:
-    """Stub for test_reload_unchanged_script (port deferred)."""
+@test.cases(
+    test.case(
+        "plain",
+        script_config={"test": {"sequence": [{"action": "test.script"}]}},
+    ),
+    test.case(
+        "templated",
+        script_config={"test": {"sequence": [{"action": "{{ 'test.script' }}"}]}},
+    ),
+    test.case(
+        "blueprint",
+        script_config={
+            "test": {
+                "use_blueprint": {
+                    "path": "test_service.yaml",
+                    "input": {"service_to_call": "test.script"},
+                }
+            }
+        },
+    ),
+    test.case(
+        "blueprint_templated_input",
+        script_config={
+            "test": {
+                "use_blueprint": {
+                    "path": "test_service.yaml",
+                    "input": {"service_to_call": "{{ 'test.script' }}"},
+                }
+            }
+        },
+    ),
+)
+async def reload_unchanged_script(
+    script_config: dict[str, Any],
+    hass: HomeAssistant = Depends(_trigger_executor),
+    calls: list[ServiceCall] = Depends(calls),
+) -> None:
+    """Test an unmodified script is not reloaded."""
+    with patch(
+        "homeassistant.components.script.ScriptEntity", wraps=ScriptEntity
+    ) as script_entity_init:
+        config = {script.DOMAIN: [script_config]}
+        expect(
+            await async_setup_component(hass, script.DOMAIN, config)
+        ).to_be_truthy()
+        expect(hass.states.get(ENTITY_ID) is not None).to_be(True)
+        expect(hass.services.has_service(script.DOMAIN, "test")).to_be(True)
+
+        expect(script_entity_init.call_count).to_equal(1)
+        script_entity_init.reset_mock()
+
+        _, object_id = split_entity_id(ENTITY_ID)
+        await hass.services.async_call(DOMAIN, object_id)
+        await hass.async_block_till_done()
+        expect(len(calls)).to_equal(1)
+
+        with patch(
+            "homeassistant.config.load_yaml_config_file",
+            autospec=True,
+            return_value=config,
+        ):
+            await hass.services.async_call(
+                script.DOMAIN, SERVICE_RELOAD, blocking=True
+            )
+
+        expect(script_entity_init.call_count).to_equal(0)
+        script_entity_init.reset_mock()
+
+        _, object_id = split_entity_id(ENTITY_ID)
+        await hass.services.async_call(DOMAIN, object_id)
+        await hass.async_block_till_done()
+        expect(len(calls)).to_equal(2)
 
 
 @test
@@ -1220,19 +1299,244 @@ async def script_restore_last_triggered(
     expect(state.attributes["last_triggered"]).to_equal(time)
 
 
-@test.skip("pending tryke port - parametrized over 4 script modes")
-async def recursive_script() -> None:
-    """Stub for test_recursive_script (port deferred)."""
+@test.cases(
+    test.case(
+        "parallel", script_mode=SCRIPT_MODE_PARALLEL,
+        warning_msg="Maximum number of runs exceeded",
+    ),
+    test.case(
+        "queued", script_mode=SCRIPT_MODE_QUEUED,
+        warning_msg="Disallowed recursion detected",
+    ),
+    test.case(
+        "restart", script_mode=SCRIPT_MODE_RESTART,
+        warning_msg="Disallowed recursion detected",
+    ),
+    test.case(
+        "single", script_mode=SCRIPT_MODE_SINGLE,
+        warning_msg="Already running",
+    ),
+)
+async def recursive_script(
+    script_mode: str,
+    warning_msg: str,
+    hass: HomeAssistant = Depends(_trigger_executor),
+    caplog: LogCapture = Depends(caplog_fixture),
+) -> None:
+    """Test recursive script calls does not deadlock."""
+    expect(
+        [
+            SCRIPT_MODE_PARALLEL,
+            SCRIPT_MODE_QUEUED,
+            SCRIPT_MODE_RESTART,
+            SCRIPT_MODE_SINGLE,
+        ]
+    ).to_equal(SCRIPT_MODE_CHOICES)
+
+    expect(
+        await async_setup_component(
+            hass,
+            "script",
+            {
+                "script": {
+                    "script1": {
+                        "mode": script_mode,
+                        "sequence": [
+                            {"action": "script.script1"},
+                            {"action": "test.script"},
+                        ],
+                    },
+                }
+            },
+        )
+    ).to_be_truthy()
+
+    service_called = asyncio.Event()
+
+    async def async_service_handler(service: ServiceCall) -> None:
+        service_called.set()
+
+    hass.services.async_register("test", "script", async_service_handler)
+
+    await hass.services.async_call("script", "script1")
+    await asyncio.wait_for(service_called.wait(), 1)
+
+    expect(warning_msg in caplog.text).to_be(True)
 
 
-@test.skip("pending tryke port - parametrized over 4 script modes")
-async def recursive_script_indirect() -> None:
-    """Stub for test_recursive_script_indirect (port deferred)."""
+@test.cases(
+    test.case(
+        "parallel", script_mode=SCRIPT_MODE_PARALLEL,
+        warning_msg="Maximum number of runs exceeded",
+    ),
+    test.case(
+        "queued", script_mode=SCRIPT_MODE_QUEUED,
+        warning_msg="Disallowed recursion detected",
+    ),
+    test.case(
+        "restart", script_mode=SCRIPT_MODE_RESTART,
+        warning_msg="Disallowed recursion detected",
+    ),
+    test.case(
+        "single", script_mode=SCRIPT_MODE_SINGLE,
+        warning_msg="Already running",
+    ),
+)
+async def recursive_script_indirect(
+    script_mode: str,
+    warning_msg: str,
+    hass: HomeAssistant = Depends(_trigger_executor),
+    caplog: LogCapture = Depends(caplog_fixture),
+) -> None:
+    """Test recursive script calls does not deadlock."""
+    expect(
+        [
+            SCRIPT_MODE_PARALLEL,
+            SCRIPT_MODE_QUEUED,
+            SCRIPT_MODE_RESTART,
+            SCRIPT_MODE_SINGLE,
+        ]
+    ).to_equal(SCRIPT_MODE_CHOICES)
+
+    expect(
+        await async_setup_component(
+            hass,
+            "script",
+            {
+                "script": {
+                    "script1": {
+                        "mode": script_mode,
+                        "sequence": [{"action": "script.script2"}],
+                    },
+                    "script2": {
+                        "mode": script_mode,
+                        "sequence": [{"action": "script.script3"}],
+                    },
+                    "script3": {
+                        "mode": script_mode,
+                        "sequence": [{"action": "script.script4"}],
+                    },
+                    "script4": {
+                        "mode": script_mode,
+                        "sequence": [
+                            {"action": "script.script1"},
+                            {"action": "test.script"},
+                        ],
+                    },
+                }
+            },
+        )
+    ).to_be_truthy()
+
+    service_called = asyncio.Event()
+
+    async def async_service_handler(service: ServiceCall) -> None:
+        service_called.set()
+
+    hass.services.async_register("test", "script", async_service_handler)
+
+    await hass.services.async_call("script", "script1")
+    await asyncio.wait_for(service_called.wait(), 1)
+
+    expect(warning_msg in caplog.text).to_be(True)
 
 
-@test.skip("pending tryke port - parametrized + wait_for_stop_scripts_after_shutdown")
-async def recursive_script_turn_on() -> None:
-    """Stub for test_recursive_script_turn_on (port deferred)."""
+@test.cases(
+    test.case("parallel", script_mode=SCRIPT_MODE_PARALLEL),
+    test.case("queued", script_mode=SCRIPT_MODE_QUEUED),
+    test.case("restart", script_mode=SCRIPT_MODE_RESTART),
+)
+async def recursive_script_turn_on(
+    script_mode: str,
+    hass: HomeAssistant = Depends(_trigger_executor),
+    caplog: LogCapture = Depends(caplog_fixture),
+) -> None:
+    """Test script turning itself on.
+
+    - Illegal recursion detection should not be triggered
+    - Home Assistant should not hang on shut down
+    - SCRIPT_MODE_SINGLE is not relevant because such a script can't turn itself on
+    """
+    expect(
+        [
+            SCRIPT_MODE_PARALLEL,
+            SCRIPT_MODE_QUEUED,
+            SCRIPT_MODE_RESTART,
+            SCRIPT_MODE_SINGLE,
+        ]
+    ).to_equal(SCRIPT_MODE_CHOICES)
+    stop_scripts_at_shutdown_called = asyncio.Event()
+    real_stop_scripts_at_shutdown = _async_stop_scripts_at_shutdown
+
+    async def stop_scripts_at_shutdown(*args: Any) -> None:
+        await real_stop_scripts_at_shutdown(*args)
+        stop_scripts_at_shutdown_called.set()
+
+    with patch(
+        "homeassistant.helpers.script._async_stop_scripts_at_shutdown",
+        wraps=stop_scripts_at_shutdown,
+    ):
+        expect(
+            await async_setup_component(
+                hass,
+                script.DOMAIN,
+                {
+                    script.DOMAIN: {
+                        "script1": {
+                            "mode": script_mode,
+                            "sequence": [
+                                {
+                                    "choose": {
+                                        "conditions": {
+                                            "condition": "template",
+                                            "value_template": (
+                                                "{{ request == 'step_2' }}"
+                                            ),
+                                        },
+                                        "sequence": {
+                                            "action": "test.script_done"
+                                        },
+                                    },
+                                    "default": {
+                                        "action": "script.turn_on",
+                                        "data": {
+                                            "entity_id": "script.script1",
+                                            "variables": {"request": "step_2"},
+                                        },
+                                    },
+                                },
+                                {
+                                    "action": "script.turn_on",
+                                    "data": {"entity_id": "script.script1"},
+                                },
+                            ],
+                        }
+                    }
+                },
+            )
+        ).to_be_truthy()
+
+        service_called = asyncio.Event()
+
+        async def async_service_handler(service: ServiceCall) -> None:
+            if service.service == "script_done":
+                service_called.set()
+
+        hass.services.async_register(
+            "test", "script_done", async_service_handler
+        )
+
+        await hass.services.async_call("script", "script1")
+        await asyncio.wait_for(service_called.wait(), 1)
+
+        hass.set_state(CoreState.stopping)
+        hass.bus.async_fire("homeassistant_stop")
+        await asyncio.wait_for(stop_scripts_at_shutdown_called.wait(), 1)
+
+        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=90))
+        await hass.async_block_till_done()
+
+        expect("Disallowed recursion detected" not in caplog.text).to_be(True)
 
 
 @test
@@ -1265,9 +1569,51 @@ async def setup_with_duplicate_scripts(
     expect(len(hass.states.async_entity_ids("script"))).to_equal(1)
 
 
-@test.skip("pending tryke port - requires hass_ws_client")
-async def websocket_config() -> None:
-    """Stub for test_websocket_config (port deferred)."""
+@test
+async def websocket_config(
+    hass: HomeAssistant = Depends(_trigger_executor),
+    hass_ws_client: WebSocketGenerator = Depends(hass_ws_client_fixture),
+) -> None:
+    """Test config command."""
+    config = {
+        "alias": "hello",
+        "sequence": [{"action": "light.turn_on"}],
+    }
+    expect(
+        await async_setup_component(
+            hass,
+            "script",
+            {
+                "script": {
+                    "hello": config,
+                },
+            },
+        )
+    ).to_be_truthy()
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {
+            "id": 5,
+            "type": "script/config",
+            "entity_id": "script.hello",
+        }
+    )
+
+    msg = await client.receive_json()
+    expect(msg["success"]).to_be_truthy()
+    expect(msg["result"]).to_equal({"config": config})
+
+    await client.send_json(
+        {
+            "id": 6,
+            "type": "script/config",
+            "entity_id": "script.not_exist",
+        }
+    )
+
+    msg = await client.receive_json()
+    expect(msg["success"]).to_be_falsy()
+    expect(msg["error"]["code"]).to_equal("not_found")
 
 
 @test
